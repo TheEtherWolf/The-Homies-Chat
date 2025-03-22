@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Homies!</title>
+    <style>
+        :root {
+            --message-top: 50px;
+            --message-left: 1px;
+            --message-right: 5px;
+            --message-bottom: 78px;
+            --form-bottom: 2px;
+            --form-left: 4px;
+            --form-right: 2px;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to bottom, rgb(67, 20, 128), rgb(240, 65, 129));
+            color: rgb(240, 250, 200);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #usernameContainer {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        #chatContainer {
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+            width: 600px;
+            max-width: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            overflow: hidden;
+            box-sizing: border-box;
+            border: none;
+            position: relative;
+            padding-bottom: 70px;
+        }
+
+        .call-status {
+            padding: 5px 10px;
+            text-align: center;
+            font-weight: bold;
+            z-index: 2; 
+            position: relative;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 5px;
+            margin-top: 50px; 
+            color: white;
+            display: none; /* Hide by default */
+        }
+
+        .call-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            margin-bottom: 10px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1;
+        }
+
+        .active-users {
+            padding: 5px 10px;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            display: none;
+        }
+
+        #messages {
+            list-style-type: none;
+            padding: 10px;
+            margin: 0;
+            flex: 1;
+            overflow-y: scroll !important; 
+            overflow-x: hidden;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+            min-height: 460px; 
+            border: none;
+            max-height: none; /* Remove max height to allow full expansion */
+            margin-bottom: 0px; 
+            position: absolute; 
+            top: var(--message-top); /* Using CSS variable */
+            left: var(--message-left); /* Using CSS variable */
+            right: var(--message-right); /* Using CSS variable */
+            bottom: var(--message-bottom); /* Using CSS variable */
+        }
+
+        /* Force scrollbar for all browsers */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: rgb(67, 20, 128) rgba(0, 0, 0, 0.1);
+        }
+
+        /* WebKit browsers (Chrome, Safari, etc.) */
+        ::-webkit-scrollbar {
+            width: 12px !important;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2) !important;
+            border-radius: 5px !important;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgb(67, 20, 128) !important;
+            border-radius: 5px !important;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgb(240, 65, 129) !important;
+        }
+
+        /* Firefox - using variables for hover effect simulation */
+        * {
+            --scrollbar-color: rgb(67, 20, 128);
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-color) rgba(0, 0, 0, 0.2);
+        }
+
+        /* Add a hover effect via JavaScript since Firefox doesn't support hover on scrollbars directly */
+        
+        /* Make sure the messages container has specific styling */
+        #messages::-webkit-scrollbar-thumb {
+            background: rgb(67, 20, 128) !important;
+            border-radius: 5px !important;
+        }
+
+        #messages::-webkit-scrollbar-thumb:hover {
+            background: rgb(240, 65, 129) !important;
+        }
+
+        #messageForm {
+            padding: 14px;
+            display: flex;
+            gap: 5px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            position: absolute;
+            bottom: var(--form-bottom); /* Using CSS variable */
+            left: var(--form-left); /* Using CSS variable */
+            right: var(--form-right); /* Using CSS variable */
+            border: none;
+            box-sizing: border-box;
+            margin: 0;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 10px;
+            border-radius: 6px;
+            border: none;
+            font-size: 16px;
+            background: rgb(240, 250, 200);
+            color: rgb(67, 20, 128);
+            margin-left: -3px; /* Added negative margin to extend left */
+        }
+
+        #messageInput::placeholder {
+            color: rgba(67, 20, 128, 0.7);
+        }
+
+        /* Add common button styles near the top */
+        button, .call-button, .send-button {
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        button:hover, .call-button:hover, .send-button:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        button[type="submit"] {
+            padding: 0 15px;
+        }
+
+        .send-button {
+            padding: 10px 20px;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+
+        .send-button:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        .call-button {
+            padding: 10px 20px;
+        }
+
+        .call-button:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        .accept-call {
+            background-color: rgb(67, 20, 128);
+        }
+
+        .accept-call:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        .decline-call {
+            background-color: rgb(67, 20, 128);
+        }
+
+        .decline-call:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        .start-call, .test-audio {
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+        }
+
+        .start-call:hover, .test-audio:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        .end-call {
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+            padding: 10px 20px;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .end-call:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        .accept-call {
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+        }
+
+        .accept-call:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        .decline-call {
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+        }
+
+        .decline-call:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        #callTarget {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid rgb(67, 20, 128);
+            margin-right: 10px;
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+            transition: background-color 0.3s;
+        }
+
+        #callTarget:hover {
+            background-color: rgb(26, 179, 59);
+            border-color: rgb(26, 179, 59);
+        }
+
+        #callTarget option {
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+        }
+
+        #callTarget option:hover {
+            background-color: rgb(26, 179, 59);
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+
+        .message-content {
+            max-width: 70%;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            padding: 10px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+            box-sizing: border-box;
+            overflow: hidden;
+            border: none;
+        }
+
+        .username {
+            font-size: 0.8em;
+            margin-bottom: 2px;
+            opacity: 0.8;
+        }
+
+        .user {
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .other {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .user .message-content {
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+            text-align: right;
+            border: 3px solid rgb(240, 65, 129);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            border-radius: 18px 18px 0 18px;
+            position: relative;
+        }
+
+        .user .message-content::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            right: 15px;
+            width: 0;
+            height: 0;
+            border: 10px solid transparent;
+            border-top-color: rgb(240, 65, 129);
+            border-bottom: 0;
+            border-right: 0;
+            margin-left: -5px;
+            margin-bottom: -10px;
+        }
+
+        .other .message-content {
+            background-color: rgb(240, 65, 129);
+            color: rgb(240, 250, 200);
+            text-align: left;
+            border: 3px solid rgb(67, 20, 128);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            border-radius: 18px 18px 18px 0;
+        }
+
+        input[type="text"] {
+            padding: 10px;
+            margin-top: 10px;
+            width: 100%;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: pre-wrap;
+            box-sizing: border-box;
+        }
+
+        .call-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .call-button {
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+
+        .settings-button {
+            background: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .settings-button:hover {
+            background: rgb(240, 65, 129);
+        }
+
+        .settings-button.testing {
+            background-color: #ff3b3b;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            display: none;
+        }
+
+        .debug-info {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            display: none;
+        }
+
+        .debug-toggle {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 1001;
+        }
+
+        .debug-toggle:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
+        .settings-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgb(255, 255, 255);
+            z-index: 1000;
+            display: none;
+            color: black;
+            width: 350px;
+        }
+
+        .settings-panel h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: black;
+        }
+        
+        .settings-panel label {
+            color: black;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .settings-panel input, 
+        .settings-panel select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        .settings-panel button {
+            margin-top: 5px;
+        }
+
+        /* Remove the round call button styles - we'll use the standard button styles instead */
+        .round-call-button {
+            display: none; /* Hide this class */
+        }
+        
+        .round-end-button {
+            display: none; /* Hide this class */
+        }
+
+        /* Make sure the start-call and end-call classes are properly defined */
+        .start-call {
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+            padding: 10px 20px;
+            border-radius: 5px;
+        }
+        
+        .end-call {
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+            padding: 10px 20px;
+            border-radius: 5px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="usernameContainer" style="display: none;">
+        <h2>Enter your details</h2>
+        <form id="usernameForm">
+            <input type="text" id="usernameInput" placeholder="Enter username..." required />
+            <input type="password" id="passwordInput" placeholder="Enter password..." required />
+            <button type="submit">Join Chat</button>
+        </form>
+    </div>
+    
+    <div id="chatContainer" class="chat-container">
+        <div class="call-status" id="callStatus"></div>
+        <div class="call-controls">
+            <select id="callTarget">
+                <option value="">Select user to call...</option>
+            </select>
+            <button class="call-button start-call" id="startCall">Start Call</button>
+            <button class="call-button end-call" id="endCall">End Call</button>
+            <button class="call-button accept-call" id="acceptCall" style="display: none;">Accept</button>
+            <button class="call-button decline-call" id="declineCall" style="display: none;">Decline</button>
+            <button class="settings-button" id="showSettings">⚙️</button>
+            <button class="settings-button" id="signOutBtn" style="background-color: #d9534f;">Sign Out</button>
+        </div>
+        <div id="activeUsers" class="active-users" style="display: none;"></div>
+        <ul id="messages"></ul>
+        <form id="messageForm">
+            <input type="text" id="messageInput" placeholder="Type a message..." />
+            <button type="submit" class="send-button">Send</button>
+        </form>
+    </div>
+
+    <div class="modal-backdrop" id="settingsBackdrop"></div>
+    <div class="settings-panel" id="settingsPanel">
+        <h3>Audio Settings</h3>
+        <div>
+            <label for="audioInput">Microphone:</label>
+            <select id="audioInput"></select>
+        </div>
+        <div>
+            <label for="audioOutput">Speaker:</label>
+            <select id="audioOutput"></select>
+        </div>
+        <div style="margin-top: 20px;">
+            <button class="settings-button" id="testMicrophone">Test Microphone</button>
+            <button class="settings-button" id="testSpeaker">Test Speaker</button>
+            <button class="settings-button" id="saveSettings">Save</button>
+        </div>
+        
+        <h3>Account Settings</h3>
+        <form id="changePasswordForm">
+            <div>
+                <label for="currentPassword">Current Password:</label>
+                <input type="password" id="currentPassword" required />
+            </div>
+            <div>
+                <label for="newPassword">New Password:</label>
+                <input type="password" id="newPassword" required />
+            </div>
+            <div>
+                <label for="confirmPassword">Confirm New Password:</label>
+                <input type="password" id="confirmPassword" required />
+            </div>
+            <div style="margin-top: 10px;">
+                <button type="submit" class="settings-button">Change Password</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="debugInfo" class="debug-info"></div>
+    <button id="debugToggle" class="debug-toggle">Debug</button>
+    <audio id="remoteAudio" autoplay style="display:none;"></audio>
+    <audio id="testAudioOut" src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"></audio>
+    <div id="audioFeedback" style="display: none; position: fixed; bottom: 20px; right: 20px; padding: 10px; background-color: rgba(0,0,0,0.7); color: white; border-radius: 5px; z-index: 1000;"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Clear variables to avoid conflicts
+        let socket = io();
+        let username = localStorage.getItem('username') || '';
+        let localStream = null;
+        let peerConnection = null;
+        let activeCall = false;
+        let callInProgress = false;
+        let incomingCall = false;
+        let callToUsername = '';
+        let callFromUsername = '';
+        let pendingOffer = null;
+        let debugEnabled = localStorage.getItem('debugEnabled') === 'true' || false;
+        
+        // Debug information
+        const debugInfoElement = document.createElement('pre');
+        debugInfoElement.style.position = 'fixed';
+        debugInfoElement.style.bottom = '10px';
+        debugInfoElement.style.right = '10px';
+        debugInfoElement.style.background = 'rgba(0, 0, 0, 0.7)';
+        debugInfoElement.style.color = 'lime';
+        debugInfoElement.style.padding = '10px';
+        debugInfoElement.style.fontSize = '12px';
+        debugInfoElement.style.maxHeight = '300px';
+        debugInfoElement.style.overflow = 'auto';
+        debugInfoElement.style.zIndex = '9999';
+        document.body.appendChild(debugInfoElement);
+        
+        function updateDebugInfo(info) {
+            try {
+                const currentInfo = JSON.parse(debugInfoElement.textContent || '{}');
+                const updatedInfo = { ...currentInfo, ...info, timestamp: new Date().toISOString() };
+                debugInfoElement.textContent = JSON.stringify(updatedInfo, null, 2);
+            } catch (e) {
+                console.error("Error updating debug info:", e);
+            }
+        }
+        
+        // DOM elements - Get references to all required elements
+        const usernameContainer = document.getElementById('usernameContainer');
+        const chatContainer = document.getElementById('chatContainer');
+        const messageForm = document.getElementById('messageForm');
+        const messageInput = document.getElementById('messageInput');
+        const messagesContainer = document.getElementById('messages');
+        const callTarget = document.getElementById('callTarget');
+        const startCallBtn = document.getElementById('startCall');
+        const endCallBtn = document.getElementById('endCall');
+        const acceptCallBtn = document.getElementById('acceptCall');
+        const declineCallBtn = document.getElementById('declineCall');
+        const callStatus = document.getElementById('callStatus');
+        const showSettingsBtn = document.getElementById('showSettings');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const settingsBackdrop = document.getElementById('settingsBackdrop');
+        const usernameForm = document.getElementById('usernameForm');
+        const usernameInput = document.getElementById('usernameInput');
+        const passwordInput = document.getElementById('passwordInput');
+        
+        // Scroll position handling
+        let userIsScrolling = false;
+        let lastScrollTop = 0;
+        
+        function forceScrollToBottom() {
+            try {
+                // Only scroll if user is not manually viewing history
+                if (!userIsScrolling) {
+                    // Set scrollTop directly to force scroll to bottom
+                    const messagesDiv = document.getElementById('messages');
+                    if (messagesDiv) {
+                        messagesDiv.scrollTop = messagesDiv.scrollHeight + 10000;
+                        console.log('Forced scroll to bottom:', messagesDiv.scrollHeight);
+                    }
+                }
+            } catch (e) {
+                console.error('Scroll error:', e);
+            }
+        }
+        
+        function scrollToBottom() {
+            // Only auto-scroll if user isn't manually scrolling up
+            if (!userIsScrolling) {
+                forceScrollToBottom();
+                // Set multiple timeouts to ensure scrolling happens
+                setTimeout(forceScrollToBottom, 100);
+                setTimeout(forceScrollToBottom, 500);
+                setTimeout(forceScrollToBottom, 1000);
+            }
+        }
+        
+        function isUserAtBottom() {
+            const scrollPosition = messagesContainer.scrollTop + messagesContainer.clientHeight;
+            const scrollThreshold = messagesContainer.scrollHeight - 50; // 50px threshold
+            return scrollPosition >= scrollThreshold;
+        }
+        
+        // Detect when user manually scrolls
+        messagesContainer.addEventListener('scroll', function() {
+            // Get current scroll position
+            const currentScrollTop = messagesContainer.scrollTop;
+            
+            // If scrolling up, user is manually viewing history
+            if (currentScrollTop < lastScrollTop) {
+                userIsScrolling = true;
+                console.log('User is scrolling up, pausing auto-scroll');
+            }
+            
+            // If scrolled to bottom, resume auto-scroll
+            if (isUserAtBottom()) {
+                userIsScrolling = false;
+                console.log('User scrolled to bottom, resuming auto-scroll');
+            }
+            
+            // Update last position
+            lastScrollTop = currentScrollTop;
+        });
+        
+        // Manual control to let user view history
+        messagesContainer.addEventListener('mousewheel', function() {
+            // Temporarily disable auto-scroll during active scrolling
+            userIsScrolling = true;
+            
+            // Re-enable if user scrolls to bottom
+            if (isUserAtBottom()) {
+                userIsScrolling = false;
+            }
+            
+            // Set a timeout to check if user is at bottom after scrolling stops
+            clearTimeout(messagesContainer.scrollTimeout);
+            messagesContainer.scrollTimeout = setTimeout(function() {
+                if (isUserAtBottom()) {
+                    userIsScrolling = false;
+                }
+            }, 1000);
+        });
+        
+        // Always scroll to bottom on page load and on document ready
+        window.addEventListener('load', scrollToBottom);
+        document.addEventListener('DOMContentLoaded', scrollToBottom);
+        
+        // Initialize UI state based on username availability
+        if (!username || localStorage.getItem('isLoggedOut') === 'true') {
+            // Pre-fill the username field if it exists in localStorage
+            if (username) {
+                usernameInput.value = username;
+            }
+            
+            usernameContainer.style.display = 'block';
+            chatContainer.style.display = 'none';
+        } else {
+            // Try to use stored credentials
+            const storedPassword = localStorage.getItem('chatPassword');
+            if (storedPassword) {
+                socket.emit('verify-user', { username, password: storedPassword }, (response) => {
+                    if (response.success) {
+                        // Clear any logged out flag
+                        localStorage.removeItem('isLoggedOut');
+                        joinChat(username);
+                    } else {
+                        // If stored password is invalid, clear localStorage and prompt login
+                        localStorage.removeItem('username');
+                        localStorage.removeItem('chatPassword');
+                        usernameContainer.style.display = 'block';
+                        chatContainer.style.display = 'none';
+                        alert("Session expired. Please log in again.");
+                    }
+                });
+            } else {
+                // No stored password, prompt login
+                localStorage.removeItem('username');
+                usernameContainer.style.display = 'block';
+                chatContainer.style.display = 'none';
+            }
+        }
+        
+        // Hide end call button initially
+        endCallBtn.style.display = 'none';
+        
+        // Create audio elements
+        const remoteAudioElement = document.createElement('audio');
+        remoteAudioElement.autoplay = true;
+        document.body.appendChild(remoteAudioElement);
+        
+        // Create test audio elements
+        const testAudioOut = document.getElementById('testAudioOut');
+        const testAudioFeedback = document.getElementById('audioFeedback');
+
+        // WebRTC configuration
+        const rtcConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                {
+                    urls: 'turn:turn.relay.metered.ca:80',
+                    username: 'f5a0a71f13c8c8a7f40a5f2f',
+                    credential: 'LFgXIqb+TE+YNRQF'
+                },
+                {
+                    urls: 'turn:turn.relay.metered.ca:443',
+                    username: 'f5a0a71f13c8c8a7f40a5f2f',
+                    credential: 'LFgXIqb+TE+YNRQF'
+                }
+            ]
+        };
+        
+        // Event listeners
+        usernameForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newUsername = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+            
+            if (newUsername && password) {
+                // If socket is disconnected, reconnect it
+                if (!socket.connected) {
+                    socket.connect();
+                }
+                
+                // Verify with server
+                socket.emit('verify-user', { username: newUsername, password }, (response) => {
+                    if (response.success) {
+                        // Store in localStorage for future sessions
+                        localStorage.setItem('username', newUsername);
+                        localStorage.setItem('chatPassword', password);
+                        
+                        // Make sure to clear the logged out flag
+                        localStorage.removeItem('isLoggedOut');
+                        
+                        joinChat(newUsername);
+                    } else {
+                        alert("Incorrect password. Please try again.");
+                    }
+                });
+            }
+        });
+        
+        function joinChat(username) {
+            usernameContainer.style.display = 'none';
+            chatContainer.style.display = 'flex';
+            
+            // Make sure socket is connected
+            if (!socket.connected) {
+                socket.connect();
+            }
+            
+            // Join the chat
+            socket.emit('join', username);
+            
+            // Update active user list
+            updateDebugInfo({
+                username: username,
+                action: 'joined-chat'
+            });
+            
+            // Clear the logged out flag
+            localStorage.removeItem('isLoggedOut');
+            
+            // Scroll to bottom after a short delay
+            setTimeout(scrollToBottom, 300);
+        }
+        
+        messageForm.addEventListener('submit', function(e) {
+            e.preventDefault(); // Prevent page refresh
+            
+            const message = messageInput.value.trim();
+            if (message) {
+                // Emit message to server with the correct event name
+                socket.emit('message', {
+                    username: username,
+                    message: message
+                });
+                
+                // Clear input field
+                messageInput.value = '';
+                
+                // Force scroll to bottom
+                setTimeout(scrollToBottom, 100);
+            }
+            
+            // Return focus to input
+            messageInput.focus();
+        });
+        
+        // Call functions
+        async function startCall() {
+            if (!callTarget.value || callTarget.value === username) {
+                alert('Please select a valid user to call');
+                return;
+            }
+            
+            try {
+                callToUsername = callTarget.value;
+                callStatus.textContent = `Calling ${callToUsername}...`;
+                callStatus.style.display = 'block'; // Show call status
+                
+                // Get user media with audio constraints
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                
+                // Create peer connection
+                peerConnection = new RTCPeerConnection(rtcConfig);
+                
+                // Add local audio track to connection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                    console.log(`Added local track: ${track.kind}`);
+                });
+                
+                // Set up event handlers
+                setupPeerConnectionHandlers();
+                
+                // Create and send offer
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                socket.emit('call-offer', {
+                    offer: peerConnection.localDescription,
+                    caller: username,
+                    target: callToUsername
+                });
+                
+                // Update UI
+                startCallBtn.style.display = 'none';
+                endCallBtn.style.display = 'inline-block';
+                activeCall = true;
+                
+                updateDebugInfo({
+                    action: 'call-started',
+                    target: callToUsername
+                });
+                
+            } catch (error) {
+                console.error('Error starting call:', error);
+                callStatus.textContent = `Call failed: ${error.message}`;
+                callStatus.style.display = 'block'; // Show call status
+                updateDebugInfo({
+                    error: error.message
+                });
+            }
+        }
+        
+        async function acceptCall() {
+            try {
+                callStatus.textContent = `Connecting to ${callFromUsername}...`;
+                callStatus.style.display = 'block'; // Show call status
+                
+                // Hide accept/decline buttons, show end call button
+                acceptCallBtn.style.display = 'none';
+                declineCallBtn.style.display = 'none';
+                endCallBtn.style.display = 'inline-block';
+                
+                // Get user media
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                
+                // Create peer connection
+                peerConnection = new RTCPeerConnection(rtcConfig);
+                
+                // Add local tracks to peer connection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                    console.log(`Added local track: ${track.kind}`);
+                });
+                
+                // Set up event handlers
+                setupPeerConnectionHandlers();
+                
+                // Set remote description (the offer)
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+                
+                // Create and send answer
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                socket.emit('call-answer', {
+                    answer: peerConnection.localDescription,
+                    caller: callFromUsername
+                });
+                
+                // Update state
+                activeCall = true;
+                callInProgress = true;
+                incomingCall = false;
+                
+                callStatus.textContent = `Connected to ${callFromUsername}`;
+                
+                updateDebugInfo({
+                    action: 'call-accepted',
+                    from: callFromUsername
+                });
+                
+            } catch (error) {
+                console.error('Error accepting call:', error);
+                callStatus.textContent = `Call failed: ${error.message}`;
+                callStatus.style.display = 'block'; // Show call status
+                resetCallState();
+                updateDebugInfo({
+                    error: error.message
+                });
+            }
+        }
+        
+        function declineCall() {
+            socket.emit('call-declined', {
+                caller: callFromUsername,
+                reason: 'declined'
+            });
+            
+            resetCallState();
+            callStatus.textContent = '';
+            callStatus.style.display = 'none'; // Hide call status
+        }
+        
+        function endCall() {
+            console.log('Ending call...');
+            callStatus.textContent = 'Ending call...';
+            callStatus.style.display = 'block'; // Show call status
+            
+            // Notify the other user
+            const target = callToUsername || callFromUsername;
+            if (target) {
+                socket.emit('end-call', { target });
+            }
+            
+            // Clean up resources
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            resetCallState();
+            callStatus.textContent = '';
+            callStatus.style.display = 'none'; // Hide call status
+            
+            updateDebugInfo({
+                action: 'call-ended'
+            });
+        }
+        
+        function resetCallState() {
+            // Reset UI
+            startCallBtn.style.display = 'inline-block';
+            endCallBtn.style.display = 'none';
+            acceptCallBtn.style.display = 'none';
+            declineCallBtn.style.display = 'none';
+            
+            // Reset state variables
+            activeCall = false;
+            callInProgress = false;
+            incomingCall = false;
+            callToUsername = '';
+            callFromUsername = '';
+            pendingOffer = null;
+            
+            // Clear audio element
+            if (remoteAudioElement) {
+                remoteAudioElement.srcObject = null;
+            }
+        }
+        
+        function setupPeerConnectionHandlers() {
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    const target = callToUsername || callFromUsername;
+                    socket.emit('ice-candidate', {
+                        candidate: event.candidate,
+                        target: target
+                    });
+                }
+            };
+            
+            // Log connection state changes
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log(`ICE state: ${peerConnection.iceConnectionState}`);
+                updateDebugInfo({
+                    iceState: peerConnection.iceConnectionState
+                });
+                
+                if (peerConnection.iceConnectionState === 'disconnected' ||
+                    peerConnection.iceConnectionState === 'failed' ||
+                    peerConnection.iceConnectionState === 'closed') {
+                    callStatus.textContent = 'Connection lost';
+                    callStatus.style.display = 'block'; // Show call status
+                    setTimeout(() => {
+                        endCall();
+                    }, 2000);
+                }
+            };
+            
+            // Handle remote tracks
+            peerConnection.ontrack = (event) => {
+                console.log(`Received remote track: ${event.track.kind}`);
+                
+                // Create new MediaStream with the remote track
+                const remoteStream = new MediaStream();
+                remoteStream.addTrack(event.track);
+                
+                // Set remote stream as source for audio element
+                remoteAudioElement.srcObject = remoteStream;
+                
+                // Play the audio
+                remoteAudioElement.play().catch(e => {
+                    console.error('Error playing remote audio:', e);
+                });
+                
+                // Monitor remote audio levels
+                try {
+                    const audioCtx = new AudioContext();
+                    const source = audioCtx.createMediaStreamSource(remoteStream);
+                    const analyser = audioCtx.createAnalyser();
+                    analyser.fftSize = 256;
+                    source.connect(analyser);
+                    
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    
+                    function checkRemoteAudioLevels() {
+                        if (!remoteStream.active) return;
+                        
+                        analyser.getByteFrequencyData(dataArray);
+                        const sum = Array.from(dataArray).reduce((a, b) => a + b, 0);
+                        const average = sum / dataArray.length;
+                        
+                        updateDebugInfo({
+                            remoteAudioLevel: average
+                        });
+                        
+                        requestAnimationFrame(checkRemoteAudioLevels);
+                    }
+                    
+                    checkRemoteAudioLevels();
+                    
+                } catch (error) {
+                    console.error('Error setting up audio analysis:', error);
+                }
+            };
+        }
+        
+        // Socket event handlers
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            if (username) {
+                socket.emit('join', username);
+            }
+        });
+        
+        socket.on('user-joined', (user) => {
+            appendMessage(`${user} joined the chat`);
+            addActiveUser(user);
+        });
+        
+        socket.on('user-left', (user) => {
+            appendMessage(`${user} left the chat`);
+            removeActiveUser(user);
+        });
+        
+        socket.on('chat-message', (data) => {
+            appendMessage(data);
+            scrollToBottom();
+        });
+        
+        socket.on('chat history', (history) => {
+            // Clear existing messages first
+            messagesContainer.innerHTML = '';
+            
+            // Add each message from history
+            history.forEach(msg => {
+                appendMessage(msg);
+            });
+            
+            // Always scroll to the bottom after history is loaded
+            setTimeout(scrollToBottom, 100);
+            setTimeout(scrollToBottom, 500);
+            setTimeout(scrollToBottom, 1000);
+            
+            // Mark that history has been loaded
+            updateDebugInfo({historyLoaded: true, messageCount: history.length});
+        });
+        
+        socket.on('active-users', (users) => {
+            updateActiveUsers(users);
+        });
+        
+        socket.on('call-offer', (data) => {
+            // Reject if already in a call
+            if (activeCall) {
+                socket.emit('call-declined', {
+                    caller: data.caller,
+                    reason: 'busy'
+                });
+                return;
+            }
+            
+            callFromUsername = data.caller;
+            pendingOffer = data.offer;
+            incomingCall = true;
+            
+            // Show incoming call UI
+            callStatus.textContent = `Incoming call from ${callFromUsername}`;
+            callStatus.style.display = 'block'; // Show call status
+            startCallBtn.style.display = 'none';
+            acceptCallBtn.style.display = 'inline-block';
+            declineCallBtn.style.display = 'inline-block';
+            
+            updateDebugInfo({
+                action: 'received-call-offer',
+                from: callFromUsername
+            });
+        });
+        
+        socket.on('call-answer', (data) => {
+            if (!activeCall) return;
+            
+            peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
+                .then(() => {
+                    callStatus.textContent = `Connected to ${callToUsername}`;
+                    callStatus.style.display = 'block'; // Show call status
+                    callInProgress = true;
+                    
+                    updateDebugInfo({
+                        action: 'received-call-answer'
+                    });
+                })
+                .catch(error => {
+                    console.error('Error setting remote description:', error);
+                    callStatus.textContent = 'Connection failed';
+                    callStatus.style.display = 'block'; // Show call status
+                    updateDebugInfo({
+                        error: error.message
+                    });
+                });
+        });
+        
+        socket.on('ice-candidate', (data) => {
+            if (!peerConnection) return;
+            
+            peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
+                .catch(error => {
+                    console.error('Error adding ICE candidate:', error);
+                    updateDebugInfo({
+                        error: error.message
+                    });
+                });
+        });
+        
+        socket.on('call-declined', (data) => {
+            callStatus.textContent = `Call declined: ${data.reason}`;
+            callStatus.style.display = 'block'; // Show call status
+            resetCallState();
+            
+            updateDebugInfo({
+                action: 'call-declined',
+                reason: data.reason
+            });
+        });
+        
+        socket.on('call-ended', () => {
+            callStatus.textContent = 'Call ended by the other party';
+            callStatus.style.display = 'block'; // Show call status
+            
+            // Clean up resources
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            
+            resetCallState();
+            callStatus.textContent = '';
+            callStatus.style.display = 'none'; // Hide call status
+            
+            // Clear status after a delay
+            setTimeout(() => {
+                callStatus.textContent = '';
+                callStatus.style.display = 'none'; // Hide call status
+            }, 3000);
+            
+            updateDebugInfo({
+                action: 'call-ended-by-peer'
+            });
+        });
+        
+        // UI helper functions
+        function appendMessage(message) {
+            const li = document.createElement('li');
+            li.className = 'message ' + (message.username === username ? 'user' : 'other');
+            
+            // Create username element
+            const usernameEl = document.createElement('div');
+            usernameEl.className = 'username';
+            usernameEl.textContent = message.username;
+            
+            // Create message content
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.textContent = message.message || message.text;
+            
+            // Append to list item
+            li.appendChild(usernameEl);
+            li.appendChild(messageContent);
+            
+            // Add to messages
+            messagesContainer.appendChild(li);
+            
+            // Always scroll to bottom when new messages are added
+            scrollToBottom();
+        }
+        
+        function addActiveUser(user) {
+            if (user === username) return;
+            
+            // Add to active users list
+            const userElement = document.createElement('div');
+            userElement.textContent = user;
+            userElement.classList.add('active-user');
+            userElement.dataset.username = user;
+            activeUsersList.appendChild(userElement);
+            
+            // Add to call target dropdown
+            const option = document.createElement('option');
+            option.value = user;
+            option.textContent = user;
+            callTarget.appendChild(option);
+        }
+        
+        function removeActiveUser(user) {
+            // Remove from active users list
+            const userElement = document.querySelector(`.active-user[data-username="${user}"]`);
+            if (userElement) userElement.remove();
+            
+            // Remove from call target dropdown
+            const option = Array.from(callTarget.options).find(opt => opt.value === user);
+            if (option) callTarget.removeChild(option);
+        }
+        
+        function updateActiveUsers(users) {
+            // Clear current lists
+            activeUsersList.innerHTML = '';
+            
+            // Keep only the empty option in call target
+            while (callTarget.options.length > 1) {
+                callTarget.removeChild(callTarget.options[1]);
+            }
+            
+            // Add all active users
+            users.forEach(user => {
+                if (user !== username) {
+                    addActiveUser(user);
+                }
+            });
+        }
+        
+        // Attach event listeners for call controls
+        startCallBtn.addEventListener('click', startCall);
+        endCallBtn.addEventListener('click', endCall);
+        acceptCallBtn.addEventListener('click', acceptCall);
+        declineCallBtn.addEventListener('click', declineCall);
+        
+        // Microphone test functionality
+        document.getElementById('testMicrophone').addEventListener('click', async function() {
+            try {
+                // Get selected microphone
+                const audioInputSelect = document.getElementById('audioInput');
+                const selectedMicrophoneId = audioInputSelect.value;
+                
+                // Create audio context for visualizing
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                
+                // Show feedback
+                const feedbackDiv = document.getElementById('audioFeedback');
+                feedbackDiv.textContent = 'Listening to microphone...';
+                feedbackDiv.style.display = 'block';
+                
+                // Get user media with selected device
+                const testStream = await navigator.mediaDevices.getUserMedia({
+                    audio: selectedMicrophoneId ? {deviceId: {exact: selectedMicrophoneId}} : true
+                });
+                
+                // Connect to audio analyser
+                const source = audioContext.createMediaStreamSource(testStream);
+                source.connect(analyser);
+                
+                // Create data array for analysis
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                // Test for 5 seconds
+                let testDuration = 5; // seconds
+                feedbackDiv.textContent = `Testing microphone: ${testDuration}s remaining`;
+                
+                // Update every 500ms
+                const testInterval = setInterval(() => {
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    // Calculate average volume
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        sum += dataArray[i];
+                    }
+                    const average = sum / dataArray.length;
+                    
+                    // Update feedback based on volume
+                    if (average > 50) {
+                        feedbackDiv.textContent = `Microphone working! Sound detected (${testDuration}s remaining)`;
+                        feedbackDiv.style.backgroundColor = 'rgba(0,128,0,0.7)';
+                    } else {
+                        feedbackDiv.textContent = `No sound detected (${testDuration}s remaining)`;
+                        feedbackDiv.style.backgroundColor = 'rgba(128,0,0,0.7)';
+                    }
+                    
+                    testDuration--;
+                    
+                    if (testDuration < 0) {
+                        clearInterval(testInterval);
+                        // Stop all tracks
+                        testStream.getTracks().forEach(track => track.stop());
+                        // Hide feedback after a delay
+                        setTimeout(() => {
+                            feedbackDiv.style.display = 'none';
+                        }, 1000);
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                console.error("Error testing microphone:", error);
+                const feedbackDiv = document.getElementById('audioFeedback');
+                feedbackDiv.textContent = 'Error accessing microphone';
+                feedbackDiv.style.backgroundColor = 'rgba(128,0,0,0.7)';
+                feedbackDiv.style.display = 'block';
+                setTimeout(() => {
+                    feedbackDiv.style.display = 'none';
+                }, 3000);
+            }
+        });
+        
+        // Speaker test functionality
+        document.getElementById('testSpeaker').addEventListener('click', function() {
+            try {
+                const audioOutputSelect = document.getElementById('audioOutput');
+                const selectedSpeakerId = audioOutputSelect.value;
+                const testSound = document.getElementById('testAudioOut');
+                
+                // Set the audio output device if browser supports it
+                if (typeof testSound.setSinkId === 'function' && selectedSpeakerId) {
+                    testSound.setSinkId(selectedSpeakerId)
+                    .then(() => {
+                        console.log(`Audio output device set to: ${selectedSpeakerId}`);
+                        playTestSound();
+                    })
+                    .catch(error => {
+                        console.error("Error setting audio output device:", error);
+                        // Play on default device if there's an error
+                        playTestSound();
+                    });
+                } else {
+                    // If setSinkId is not supported, just play on default device
+                    playTestSound();
+                }
+                
+                function playTestSound() {
+                    // Show feedback
+                    const feedbackDiv = document.getElementById('audioFeedback');
+                    feedbackDiv.textContent = 'Playing test sound...';
+                    feedbackDiv.style.backgroundColor = 'rgba(0,0,128,0.7)';
+                    feedbackDiv.style.display = 'block';
+                    
+                    // Play the test sound
+                    testSound.currentTime = 0;
+                    testSound.play()
+                    .then(() => {
+                        console.log("Test sound is playing");
+                    })
+                    .catch(error => {
+                        console.error("Error playing test sound:", error);
+                        feedbackDiv.textContent = 'Error playing sound';
+                        feedbackDiv.style.backgroundColor = 'rgba(128,0,0,0.7)';
+                    });
+                    
+                    // Hide feedback after sound duration
+                    setTimeout(() => {
+                        feedbackDiv.style.display = 'none';
+                    }, testSound.duration * 1000 + 500);
+                }
+                
+            } catch (error) {
+                console.error("Error testing speaker:", error);
+                const feedbackDiv = document.getElementById('audioFeedback');
+                feedbackDiv.textContent = 'Error testing speaker';
+                feedbackDiv.style.backgroundColor = 'rgba(128,0,0,0.7)';
+                feedbackDiv.style.display = 'block';
+                setTimeout(() => {
+                    feedbackDiv.style.display = 'none';
+                }, 3000);
+            }
+        });
+        
+        // Settings panel toggle
+        showSettingsBtn.addEventListener('click', () => {
+            settingsPanel.style.display = 'block';
+            settingsBackdrop.style.display = 'block';
+            
+            // Populate audio devices when settings panel is opened
+            populateAudioDevices();
+        });
+        
+        // Function to populate audio device lists
+        async function populateAudioDevices() {
+            try {
+                // Get microphone and speaker selectors
+                const audioInputSelect = document.getElementById('audioInput');
+                const audioOutputSelect = document.getElementById('audioOutput');
+                
+                // Clear existing options
+                audioInputSelect.innerHTML = '';
+                audioOutputSelect.innerHTML = '';
+                
+                // Get a list of all media devices
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                
+                // Filter audio input devices (microphones)
+                const audioInputDevices = devices.filter(device => device.kind === 'audioinput');
+                audioInputDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Microphone ${audioInputSelect.length + 1}`;
+                    audioInputSelect.appendChild(option);
+                });
+                
+                // Filter audio output devices (speakers)
+                const audioOutputDevices = devices.filter(device => device.kind === 'audiooutput');
+                audioOutputDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Speaker ${audioOutputSelect.length + 1}`;
+                    audioOutputSelect.appendChild(option);
+                });
+                
+                // If no devices were found with labels, we need to request permission
+                if (!audioInputDevices.some(device => device.label) || !audioOutputDevices.some(device => device.label)) {
+                    console.log("No labeled devices found, requesting permission...");
+                    // Request microphone permission to get device labels
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    // After getting permission, re-enumerate devices to get labels
+                    stream.getTracks().forEach(track => track.stop());
+                    populateAudioDevices(); // Recursively call to populate with labels
+                }
+            } catch (error) {
+                console.error("Error populating audio devices:", error);
+                alert("Could not access audio devices. Please ensure you've granted microphone permissions.");
+            }
+        }
+        
+        // Save audio settings
+        document.getElementById('saveSettings').addEventListener('click', () => {
+            const audioInputSelect = document.getElementById('audioInput');
+            const audioOutputSelect = document.getElementById('audioOutput');
+            
+            // Save selected devices to localStorage
+            if (audioInputSelect.value) {
+                localStorage.setItem('preferredMicrophone', audioInputSelect.value);
+            }
+            
+            if (audioOutputSelect.value) {
+                localStorage.setItem('preferredSpeaker', audioOutputSelect.value);
+            }
+            
+            alert("Audio settings saved!");
+            
+            // Close settings panel
+            settingsPanel.style.display = 'none';
+            settingsBackdrop.style.display = 'none';
+        });
+        
+        // Close settings when clicking backdrop
+        settingsBackdrop.addEventListener('click', () => {
+            settingsPanel.style.display = 'none';
+            settingsBackdrop.style.display = 'none';
+        });
+        
+        // Debug toggle functionality
+        const debugInfo = document.getElementById('debugInfo');
+        const debugToggle = document.getElementById('debugToggle');
+        
+        // Initialize debug display based on saved preference
+        if (debugEnabled) {
+            debugInfo.style.display = 'block';
+            debugToggle.textContent = 'Hide Debug';
+        }
+        
+        debugToggle.addEventListener('click', () => {
+            debugEnabled = !debugEnabled;
+            localStorage.setItem('debugEnabled', debugEnabled);
+            
+            if (debugEnabled) {
+                debugInfo.style.display = 'block';
+                debugToggle.textContent = 'Hide Debug';
+            } else {
+                debugInfo.style.display = 'none';
+                debugToggle.textContent = 'Show Debug';
+            }
+        });
+        
+        // Function to update debug info
+        function updateDebugInfo(info) {
+            if (debugEnabled) {
+                debugInfo.innerHTML = JSON.stringify(info, null, 2);
+            }
+        }
+        
+        // Add sign out functionality
+        const signOutBtn = document.getElementById('signOutBtn');
+        
+        signOutBtn.addEventListener('click', () => {
+            if (confirm('Are you sure you want to sign out? You will need to log in again, but your credentials will be saved.')) {
+                // Set a flag in localStorage to indicate logged out state
+                localStorage.setItem('isLoggedOut', 'true');
+                
+                // Notify server about leaving (use disconnection flow)
+                socket.disconnect();
+                
+                // Show login screen
+                usernameContainer.style.display = 'block';
+                chatContainer.style.display = 'none';
+                
+                // Pre-fill the username field if available
+                if (username) {
+                    usernameInput.value = username;
+                    // Clear password field for security
+                    passwordInput.value = '';
+                }
+                
+                // Reset any active call state
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                }
+                
+                if (peerConnection) {
+                    peerConnection.close();
+                    peerConnection = null;
+                }
+                
+                console.log('User signed out but credentials saved');
+            }
+        });
+        
+        // Fix for initial page load - force scroll to bottom after everything else
+        window.onload = function() {
+            setTimeout(function() {
+                scrollToBottom();
+            }, 1000);
+        };
+        
+        // Very aggressive approach to ensure scrolling works - only when at bottom
+        setInterval(function() {
+            if (messagesContainer && messagesContainer.scrollHeight > 0 && !userIsScrolling) {
+                forceScrollToBottom();
+            }
+        }, 2000);
+        
+        // Add scrollbar hover effect for Firefox and other browsers with limited scrollbar hover support
+        document.addEventListener('DOMContentLoaded', function() {
+            const scrollElements = document.querySelectorAll('#messages');
+            
+            scrollElements.forEach(el => {
+                el.addEventListener('mouseover', function(e) {
+                    // Check if we're hovering over the scrollbar area (right edge)
+                    const rect = el.getBoundingClientRect();
+                    const isNearRightEdge = (e.clientX > rect.right - 15);
+                    
+                    if (isNearRightEdge) {
+                        document.documentElement.style.setProperty('--scrollbar-color', 'rgb(240, 65, 129)');
+                    }
+                });
+                
+                el.addEventListener('mouseout', function() {
+                    document.documentElement.style.setProperty('--scrollbar-color', 'rgb(67, 20, 128)');
+                });
+            });
+        });
+        
+        // Add password change functionality
+        const changePasswordForm = document.getElementById('changePasswordForm');
+        
+        changePasswordForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            // Verify passwords match
+            if (newPassword !== confirmPassword) {
+                alert("New passwords do not match!");
+                return;
+            }
+            
+            // Verify with server
+            socket.emit('change-password', {
+                username,
+                currentPassword,
+                newPassword
+            }, (response) => {
+                if (response.success) {
+                    // Update stored password
+                    localStorage.setItem('chatPassword', newPassword);
+                    alert("Password changed successfully!");
+                    
+                    // Clear form
+                    document.getElementById('currentPassword').value = '';
+                    document.getElementById('newPassword').value = '';
+                    document.getElementById('confirmPassword').value = '';
+                    
+                    // Close settings panel
+                    settingsPanel.style.display = 'none';
+                    settingsBackdrop.style.display = 'none';
+                } else {
+                    alert(response.message || "Failed to change password. Please try again.");
+                }
+            });
+        });
+    </script>
+</body>
+</html>

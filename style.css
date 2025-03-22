@@ -1,0 +1,32 @@
+/* Set background color */
+body {
+    background-color: #121212; /* Dark mode */
+    color: #ffffff; /* White text */
+    font-family: Arial, sans-serif;
+}
+
+/* Style chat messages */
+.message {
+    background-color: #1f1f1f; /* Dark gray */
+    color: #00ffcc; /* Neon cyan */
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 5px;
+}
+
+/* Style the input box */
+input {
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #00ffcc;
+    padding: 5px;
+}
+
+/* Style the send button */
+button {
+    background-color: #00ffcc;
+    color: black;
+    padding: 5px 10px;
+    border: none;
+    cursor: pointer;
+}
