@@ -607,16 +607,19 @@
     <script>
         // Clear variables to avoid conflicts
         let socket = io();
-        let username = localStorage.getItem('username') || '';
+        let username = localStorage.getItem('username');
         let localStream = null;
         let peerConnection = null;
+        let callToUsername = null;
         let activeCall = false;
-        let callInProgress = false;
-        let incomingCall = false;
-        let callToUsername = '';
-        let callFromUsername = '';
-        let pendingOffer = null;
-        let debugEnabled = localStorage.getItem('debugEnabled') === 'true' || false;
+        
+        // Prevent accidental form submissions on page load
+        let pageFullyLoaded = false;
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                pageFullyLoaded = true;
+            }, 500);
+        });
         
         // Debug information
         const debugInfoElement = document.createElement('pre');
@@ -863,6 +866,12 @@
         
         messageForm.addEventListener('submit', function(e) {
             e.preventDefault(); // Prevent page refresh
+            
+            // Don't process messages until page is fully loaded
+            if (!pageFullyLoaded) {
+                console.log("Prevented message send during page load");
+                return;
+            }
             
             const message = messageInput.value.trim();
             if (message) {
@@ -1156,8 +1165,27 @@
         // Socket event handlers
         socket.on('connect', () => {
             console.log('Connected to server');
+            updateDebugInfo({socketConnected: true, socketId: socket.id});
+            
             if (username) {
-                socket.emit('join', username);
+                // Use verify-user instead of join to match server expectations
+                const storedPassword = localStorage.getItem('chatPassword');
+                if (storedPassword) {
+                    socket.emit('verify-user', { username, password: storedPassword }, (response) => {
+                        if (response.success) {
+                            updateDebugInfo({verifiedUser: true, username: username});
+                            console.log('Successfully verified user on socket connect');
+                        } else {
+                            console.log('Failed to verify user on socket connect');
+                            updateDebugInfo({verifiedUser: false, error: 'Failed to verify on socket connect'});
+                        }
+                    });
+                } else {
+                    // For backward compatibility
+                    socket.emit('set-username', username);
+                    updateDebugInfo({setUsername: true, username: username});
+                    console.log('Using set-username as fallback');
+                }
             }
         });
         
@@ -1602,16 +1630,16 @@
         const debugToggle = document.getElementById('debugToggle');
         
         // Initialize debug display based on saved preference
-        if (debugEnabled) {
+        if (localStorage.getItem('debugEnabled') === 'true') {
             debugInfo.style.display = 'block';
             debugToggle.textContent = 'Hide Debug';
         }
         
         debugToggle.addEventListener('click', () => {
-            debugEnabled = !debugEnabled;
-            localStorage.setItem('debugEnabled', debugEnabled);
+            const debugEnabled = localStorage.getItem('debugEnabled') === 'true';
+            localStorage.setItem('debugEnabled', !debugEnabled);
             
-            if (debugEnabled) {
+            if (!debugEnabled) {
                 debugInfo.style.display = 'block';
                 debugToggle.textContent = 'Hide Debug';
             } else {
@@ -1622,7 +1650,7 @@
         
         // Function to update debug info
         function updateDebugInfo(info) {
-            if (debugEnabled) {
+            if (localStorage.getItem('debugEnabled') === 'true') {
                 debugInfo.innerHTML = JSON.stringify(info, null, 2);
             }
         }

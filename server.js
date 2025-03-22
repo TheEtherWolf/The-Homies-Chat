@@ -118,8 +118,8 @@ io.on("connection", (socket) => {
     
     // Listen for chat messages from the client
     socket.on("message", (data) => {
-        // Validate message format
-        if (data && data.message && data.username) {
+        // Validate message format - ensure message is not empty
+        if (data && data.message && data.username && data.message.trim() !== '') {
             // Save the message to the chat history
             const msg = {
                 text: data.message,
@@ -139,6 +139,8 @@ io.on("connection", (socket) => {
 
             // Broadcast the message to all connected clients
             io.emit("chat-message", data);
+        } else {
+            console.log("Rejected invalid message format or empty message:", data);
         }
     });
 
