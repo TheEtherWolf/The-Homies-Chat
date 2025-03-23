@@ -585,7 +585,7 @@
     
     <div id="chatContainer" class="chat-container">
         <div class="call-status" id="callStatus"></div>
-        <div class="call-controls">
+        <div class="call-controls" id="video-call-controls">
             <select id="callTarget">
                 <option value="">Select user to call...</option>
             </select>
@@ -659,6 +659,21 @@
         let activeCall = false;
         let socketInitialized = false;
         
+        // DOM elements
+        const messagesContainer = document.getElementById('messages');
+        const messageForm = document.getElementById('messageForm');
+        const messageInput = document.getElementById('messageInput');
+        const usernameContainer = document.getElementById('usernameContainer');
+        const chatContainer = document.getElementById('chatContainer');
+        const activeUsersList = document.getElementById('activeUsers');
+        const callTarget = document.getElementById('callTarget');
+        const startCallBtn = document.getElementById('startCall');
+        const endCallBtn = document.getElementById('endCall');
+        const acceptCallBtn = document.getElementById('acceptCall');
+        const declineCallBtn = document.getElementById('declineCall');
+        const callStatus = document.getElementById('callStatus');
+        const videoCallControls = document.getElementById('video-call-controls');
+        
         // Prevent accidental form submissions on page load
         let pageFullyLoaded = false;
         window.addEventListener('load', function() {
@@ -706,25 +721,6 @@
                 console.error("Error updating debug info:", e);
             }
         }
-        
-        // DOM elements - Get references to all required elements
-        const usernameContainer = document.getElementById('usernameContainer');
-        const chatContainer = document.getElementById('chatContainer');
-        const messageForm = document.getElementById('messageForm');
-        const messageInput = document.getElementById('messageInput');
-        const messagesContainer = document.getElementById('messages');
-        const callTarget = document.getElementById('callTarget');
-        const startCallBtn = document.getElementById('startCall');
-        const endCallBtn = document.getElementById('endCall');
-        const acceptCallBtn = document.getElementById('acceptCall');
-        const declineCallBtn = document.getElementById('declineCall');
-        const callStatus = document.getElementById('callStatus');
-        const showSettingsBtn = document.getElementById('showSettings');
-        const settingsPanel = document.getElementById('settingsPanel');
-        const settingsBackdrop = document.getElementById('settingsBackdrop');
-        const usernameForm = document.getElementById('usernameForm');
-        const usernameInput = document.getElementById('usernameInput');
-        const passwordInput = document.getElementById('passwordInput');
         
         // Scroll position handling
         let userIsScrolling = false;
@@ -1208,6 +1204,7 @@
                     analyser.fftSize = 256;
                     source.connect(analyser);
                     
+                    // Create data array for analysis
                     const dataArray = new Uint8Array(analyser.frequencyBinCount);
                     
                     function checkRemoteAudioLevels() {
@@ -1477,6 +1474,8 @@
         }
         
         function updateActiveUsers(users) {
+            console.log('Updating active users in UI:', users);
+            
             // Clear current lists
             activeUsersList.innerHTML = '';
             
@@ -1497,10 +1496,12 @@
                 // There are users available to call
                 videoCallControls.classList.remove('no-users');
                 callTarget.disabled = false;
+                console.log('Users available to call:', callTarget.options.length - 1);
             } else {
                 // No users available to call
                 videoCallControls.classList.add('no-users');
                 callTarget.disabled = true;
+                console.log('No users available to call');
             }
         }
         
