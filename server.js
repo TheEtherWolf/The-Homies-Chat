@@ -31,7 +31,43 @@ if (fs.existsSync(USERS_FILE)) {
 
 // Load messages when server starts
 if (fs.existsSync(MESSAGE_FILE)) {
-    messages = JSON.parse(fs.readFileSync(MESSAGE_FILE));
+    try {
+        const fileData = fs.readFileSync(MESSAGE_FILE);
+        if (fileData.length > 0) {
+            messages = JSON.parse(fileData);
+            
+            // Filter out any invalid messages
+            messages = messages.filter(msg => {
+                return msg && (msg.text || msg.message) && 
+                       ((msg.text && msg.text.trim() !== '') || 
+                        (msg.message && msg.message.trim() !== ''));
+            });
+            
+            console.log(`Loaded ${messages.length} valid messages from storage`);
+            
+            // Backup the cleaned messages
+            const backupFile = `${MESSAGE_FILE}.backup-${Date.now()}`;
+            fs.writeFileSync(backupFile, JSON.stringify(messages));
+            console.log(`Created backup of messages at ${backupFile}`);
+            
+            // Save the cleaned messages back to the original file
+            fs.writeFileSync(MESSAGE_FILE, JSON.stringify(messages));
+        } else {
+            console.log("Message file exists but is empty");
+            messages = [];
+        }
+    } catch (error) {
+        console.error("Error loading messages:", error);
+        messages = [];
+        // Create a backup of the corrupted file
+        const errorBackup = `${MESSAGE_FILE}.error-${Date.now()}`;
+        try {
+            fs.copyFileSync(MESSAGE_FILE, errorBackup);
+            console.log(`Created backup of corrupted messages at ${errorBackup}`);
+        } catch (backupError) {
+            console.error("Error creating backup:", backupError);
+        }
+    }
 }
 
 // Serve static files (like index.html)
@@ -118,11 +154,18 @@ io.on("connection", (socket) => {
     
     // Listen for chat messages from the client
     socket.on("message", (data) => {
-        // Validate message format - ensure message is not empty
-        if (data && data.message && data.username && data.message.trim() !== '') {
-            // Save the message to the chat history
+        // Enhanced validation for message data
+        const hasValidMessage = data && 
+                               data.message && 
+                               typeof data.message === 'string' && 
+                               data.message.trim() !== '' && 
+                               data.username && 
+                               typeof data.username === 'string';
+        
+        if (hasValidMessage) {
+            // Save the message to the chat history with normalized structure
             const msg = {
-                text: data.message,
+                text: data.message.trim(), // Ensure text is trimmed
                 username: data.username,
                 timestamp: new Date().toISOString()
             };
@@ -134,11 +177,20 @@ io.on("connection", (socket) => {
                 messages.shift();
             }
 
-            // Save the updated messages to the file
-            fs.writeFileSync(MESSAGE_FILE, JSON.stringify(messages));
+            // Save the updated messages to the file safely
+            try {
+                // Write to temp file first
+                const tempFile = `${MESSAGE_FILE}.temp`;
+                fs.writeFileSync(tempFile, JSON.stringify(messages));
+                
+                // Then rename to overwrite the original
+                fs.renameSync(tempFile, MESSAGE_FILE);
+            } catch (error) {
+                console.error("Error saving messages:", error);
+            }
 
-            // Broadcast the message to all connected clients
-            io.emit("chat-message", data);
+            // Broadcast the message to all connected clients with consistent format
+            io.emit("chat-message", msg);
         } else {
             console.log("Rejected invalid message format or empty message:", data);
         }
