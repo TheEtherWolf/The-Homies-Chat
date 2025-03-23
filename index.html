@@ -635,7 +635,8 @@
         window.addEventListener('load', function() {
             setTimeout(() => {
                 pageFullyLoaded = true;
-            }, 500);
+                console.log("Page fully loaded");
+            }, 1000); // Increased from 500ms to 1000ms
         });
         
         // Debug information
@@ -891,19 +892,22 @@
             }
             
             const message = messageInput.value.trim();
-            if (message) {
-                // Emit message to server with the correct event name
-                socket.emit('message', {
-                    username: username,
-                    message: message
-                });
-                
-                // Clear input field
-                messageInput.value = '';
-                
-                // Force scroll to bottom
-                setTimeout(scrollToBottom, 100);
+            if (!message) {
+                console.log("Empty message prevented");
+                return; // Prevent sending empty messages
             }
+            
+            // Emit message to server with the correct event name
+            socket.emit('message', {
+                username: username,
+                message: message
+            });
+            
+            // Clear input field
+            messageInput.value = '';
+            
+            // Force scroll to bottom
+            setTimeout(scrollToBottom, 100);
             
             // Return focus to input
             messageInput.focus();
@@ -1227,6 +1231,11 @@
             
             // Add each message from history
             history.forEach(msg => {
+                // Skip any messages that don't have text content
+                if (!msg.text && !msg.message) {
+                    console.log("Skipped empty message in history", msg);
+                    return;
+                }
                 appendMessage(msg);
             });
             
