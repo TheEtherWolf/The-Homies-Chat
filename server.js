@@ -129,8 +129,8 @@ io.on("connection", (socket) => {
             
             messages.push(msg);
 
-            // Keep only the last 100 messages
-            if (messages.length > 100) {
+            // Keep only the last 1000 messages
+            if (messages.length > 1000) {
                 messages.shift();
             }
 
