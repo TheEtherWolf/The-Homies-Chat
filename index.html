@@ -622,21 +622,37 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Clear variables to avoid conflicts
-        let socket = io();
+        // Variables to be initialized after page is ready
+        let socket;
         let username = localStorage.getItem('username');
         let localStream = null;
         let peerConnection = null;
         let callToUsername = null;
         let activeCall = false;
+        let socketInitialized = false;
         
         // Prevent accidental form submissions on page load
         let pageFullyLoaded = false;
         window.addEventListener('load', function() {
             setTimeout(() => {
+                // Initialize socket only after page is fully loaded
+                if (!socketInitialized) {
+                    socket = io({
+                        reconnectionAttempts: 5,
+                        timeout: 10000,
+                        autoConnect: true
+                    });
+                    
+                    // Set up all the socket event handlers
+                    setupSocketEvents();
+                    
+                    socketInitialized = true;
+                    console.log("Socket initialized");
+                }
+                
                 pageFullyLoaded = true;
                 console.log("Page fully loaded");
-            }, 1000); // Increased from 500ms to 1000ms
+            }, 1500); // Increased to 1500ms for better reliability
         });
         
         // Debug information
@@ -776,20 +792,7 @@
             // Try to use stored credentials
             const storedPassword = localStorage.getItem('chatPassword');
             if (storedPassword) {
-                socket.emit('verify-user', { username, password: storedPassword }, (response) => {
-                    if (response.success) {
-                        // Clear any logged out flag
-                        localStorage.removeItem('isLoggedOut');
-                        joinChat(username);
-                    } else {
-                        // If stored password is invalid, clear localStorage and prompt login
-                        localStorage.removeItem('username');
-                        localStorage.removeItem('chatPassword');
-                        usernameContainer.style.display = 'block';
-                        chatContainer.style.display = 'none';
-                        alert("Session expired. Please log in again.");
-                    }
-                });
+                // Wait for socket initialization before joining chat
             } else {
                 // No stored password, prompt login
                 localStorage.removeItem('username');
@@ -835,8 +838,17 @@
             
             if (newUsername && password) {
                 // If socket is disconnected, reconnect it
-                if (!socket.connected) {
-                    socket.connect();
+                if (!socket || !socket.connected) {
+                    if (!socket) {
+                        socket = io({
+                            reconnectionAttempts: 5,
+                            timeout: 10000,
+                            autoConnect: true
+                        });
+                        setupSocketEvents();
+                    } else {
+                        socket.connect();
+                    }
                 }
                 
                 // Verify with server
@@ -862,8 +874,17 @@
             chatContainer.style.display = 'flex';
             
             // Make sure socket is connected
-            if (!socket.connected) {
-                socket.connect();
+            if (!socket || !socket.connected) {
+                if (!socket) {
+                    socket = io({
+                        reconnectionAttempts: 5,
+                        timeout: 10000,
+                        autoConnect: true
+                    });
+                    setupSocketEvents();
+                } else {
+                    socket.connect();
+                }
             }
             
             // Join the chat
@@ -1183,175 +1204,189 @@
             };
         }
         
-        // Socket event handlers
-        socket.on('connect', () => {
-            console.log('Connected to server');
-            updateDebugInfo({socketConnected: true, socketId: socket.id});
-            
-            if (username) {
-                // Use verify-user instead of join to match server expectations
-                const storedPassword = localStorage.getItem('chatPassword');
-                if (storedPassword) {
-                    socket.emit('verify-user', { username, password: storedPassword }, (response) => {
-                        if (response.success) {
-                            updateDebugInfo({verifiedUser: true, username: username});
-                            console.log('Successfully verified user on socket connect');
-                        } else {
-                            console.log('Failed to verify user on socket connect');
-                            updateDebugInfo({verifiedUser: false, error: 'Failed to verify on socket connect'});
-                        }
-                    });
-                } else {
-                    // For backward compatibility
-                    socket.emit('set-username', username);
-                    updateDebugInfo({setUsername: true, username: username});
-                    console.log('Using set-username as fallback');
+        // Function to set up all socket.io event handlers
+        function setupSocketEvents() {
+            // Socket event handlers
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                updateDebugInfo({socketConnected: true, socketId: socket.id});
+                
+                if (username) {
+                    // Use verify-user instead of join to match server expectations
+                    const storedPassword = localStorage.getItem('chatPassword');
+                    if (storedPassword) {
+                        socket.emit('verify-user', { username, password: storedPassword }, (response) => {
+                            if (response.success) {
+                                updateDebugInfo({verifiedUser: true, username: username});
+                                console.log('Successfully verified user on socket connect');
+                                
+                                // Join chat after verification
+                                joinChat(username);
+                            } else {
+                                console.log('Failed to verify user on socket connect');
+                                updateDebugInfo({verifiedUser: false, error: 'Failed to verify on socket connect'});
+                            }
+                        });
+                    } else {
+                        // For backward compatibility
+                        socket.emit('set-username', username);
+                        updateDebugInfo({setUsername: true, username: username});
+                        console.log('Using set-username as fallback');
+                        
+                        // Join chat after setting username
+                        joinChat(username);
+                    }
                 }
-            }
-        });
-        
-        socket.on('user-joined', (user) => {
-            appendMessage(`${user} joined the chat`);
-            addActiveUser(user);
-        });
-        
-        socket.on('user-left', (user) => {
-            appendMessage(`${user} left the chat`);
-            removeActiveUser(user);
-        });
-        
-        socket.on('chat-message', (data) => {
-            appendMessage(data);
-            scrollToBottom();
-        });
-        
-        socket.on('chat history', (history) => {
-            // Clear existing messages first
-            messagesContainer.innerHTML = '';
+            });
             
-            // Add each message from history
-            history.forEach(msg => {
-                // Skip any messages that don't have text content
-                if (!msg.text && !msg.message) {
-                    console.log("Skipped empty message in history", msg);
+            socket.on('user-joined', (user) => {
+                appendMessage(`${user} joined the chat`);
+                addActiveUser(user);
+            });
+            
+            socket.on('user-left', (user) => {
+                appendMessage(`${user} left the chat`);
+                removeActiveUser(user);
+            });
+            
+            socket.on('chat-message', (data) => {
+                // Extra validation to prevent blank messages
+                if (data && (data.text || data.message)) {
+                    appendMessage(data);
+                    scrollToBottom();
+                } else {
+                    console.log("Received invalid message data:", data);
+                }
+            });
+            
+            socket.on('chat history', (history) => {
+                // Clear existing messages first
+                messagesContainer.innerHTML = '';
+                
+                // Add each message from history
+                history.forEach(msg => {
+                    // Skip any messages that don't have text content
+                    if (!msg.text && !msg.message) {
+                        console.log("Skipped empty message in history", msg);
+                        return;
+                    }
+                    appendMessage(msg);
+                });
+                
+                // Always scroll to the bottom after history is loaded
+                setTimeout(scrollToBottom, 100);
+                setTimeout(scrollToBottom, 500);
+                setTimeout(scrollToBottom, 1000);
+                
+                // Mark that history has been loaded
+                updateDebugInfo({historyLoaded: true, messageCount: history.length});
+            });
+            
+            socket.on('active-users', (users) => {
+                updateActiveUsers(users);
+            });
+            
+            socket.on('call-offer', (data) => {
+                // Reject if already in a call
+                if (activeCall) {
+                    socket.emit('call-declined', {
+                        caller: data.caller,
+                        reason: 'busy'
+                    });
                     return;
                 }
-                appendMessage(msg);
+                
+                callFromUsername = data.caller;
+                pendingOffer = data.offer;
+                incomingCall = true;
+                
+                // Show incoming call UI
+                callStatus.textContent = `Incoming call from ${callFromUsername}`;
+                callStatus.style.display = 'block'; // Show call status
+                startCallBtn.style.display = 'none';
+                acceptCallBtn.style.display = 'inline-block';
+                declineCallBtn.style.display = 'inline-block';
+                
+                updateDebugInfo({
+                    action: 'received-call-offer',
+                    from: callFromUsername
+                });
             });
             
-            // Always scroll to the bottom after history is loaded
-            setTimeout(scrollToBottom, 100);
-            setTimeout(scrollToBottom, 500);
-            setTimeout(scrollToBottom, 1000);
-            
-            // Mark that history has been loaded
-            updateDebugInfo({historyLoaded: true, messageCount: history.length});
-        });
-        
-        socket.on('active-users', (users) => {
-            updateActiveUsers(users);
-        });
-        
-        socket.on('call-offer', (data) => {
-            // Reject if already in a call
-            if (activeCall) {
-                socket.emit('call-declined', {
-                    caller: data.caller,
-                    reason: 'busy'
-                });
-                return;
-            }
-            
-            callFromUsername = data.caller;
-            pendingOffer = data.offer;
-            incomingCall = true;
-            
-            // Show incoming call UI
-            callStatus.textContent = `Incoming call from ${callFromUsername}`;
-            callStatus.style.display = 'block'; // Show call status
-            startCallBtn.style.display = 'none';
-            acceptCallBtn.style.display = 'inline-block';
-            declineCallBtn.style.display = 'inline-block';
-            
-            updateDebugInfo({
-                action: 'received-call-offer',
-                from: callFromUsername
+            socket.on('call-answer', (data) => {
+                if (!activeCall) return;
+                
+                peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
+                    .then(() => {
+                        callStatus.textContent = `Connected to ${callToUsername}`;
+                        callStatus.style.display = 'block'; // Show call status
+                        callInProgress = true;
+                        
+                        updateDebugInfo({
+                            action: 'received-call-answer'
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error setting remote description:', error);
+                        callStatus.textContent = 'Connection failed';
+                        callStatus.style.display = 'block'; // Show call status
+                        updateDebugInfo({
+                            error: error.message
+                        });
+                    });
             });
-        });
-        
-        socket.on('call-answer', (data) => {
-            if (!activeCall) return;
             
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
-                .then(() => {
-                    callStatus.textContent = `Connected to ${callToUsername}`;
-                    callStatus.style.display = 'block'; // Show call status
-                    callInProgress = true;
-                    
-                    updateDebugInfo({
-                        action: 'received-call-answer'
+            socket.on('ice-candidate', (data) => {
+                if (!peerConnection) return;
+                
+                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
+                    .catch(error => {
+                        console.error('Error adding ICE candidate:', error);
+                        updateDebugInfo({
+                            error: error.message
+                        });
                     });
-                })
-                .catch(error => {
-                    console.error('Error setting remote description:', error);
-                    callStatus.textContent = 'Connection failed';
-                    callStatus.style.display = 'block'; // Show call status
-                    updateDebugInfo({
-                        error: error.message
-                    });
-                });
-        });
-        
-        socket.on('ice-candidate', (data) => {
-            if (!peerConnection) return;
-            
-            peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
-                .catch(error => {
-                    console.error('Error adding ICE candidate:', error);
-                    updateDebugInfo({
-                        error: error.message
-                    });
-                });
-        });
-        
-        socket.on('call-declined', (data) => {
-            callStatus.textContent = `Call declined: ${data.reason}`;
-            callStatus.style.display = 'block'; // Show call status
-            resetCallState();
-            
-            updateDebugInfo({
-                action: 'call-declined',
-                reason: data.reason
             });
-        });
-        
-        socket.on('call-ended', () => {
-            callStatus.textContent = 'Call ended by the other party';
-            callStatus.style.display = 'block'; // Show call status
             
-            // Clean up resources
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
+            socket.on('call-declined', (data) => {
+                callStatus.textContent = `Call declined: ${data.reason}`;
+                callStatus.style.display = 'block'; // Show call status
+                resetCallState();
+                
+                updateDebugInfo({
+                    action: 'call-declined',
+                    reason: data.reason
+                });
+            });
             
-            if (peerConnection) {
-                peerConnection.close();
-            }
-            
-            resetCallState();
-            callStatus.textContent = '';
-            callStatus.style.display = 'none'; // Hide call status
-            
-            // Clear status after a delay
-            setTimeout(() => {
+            socket.on('call-ended', () => {
+                callStatus.textContent = 'Call ended by the other party';
+                callStatus.style.display = 'block'; // Show call status
+                
+                // Clean up resources
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                
+                if (peerConnection) {
+                    peerConnection.close();
+                }
+                
+                resetCallState();
                 callStatus.textContent = '';
                 callStatus.style.display = 'none'; // Hide call status
-            }, 3000);
-            
-            updateDebugInfo({
-                action: 'call-ended-by-peer'
+                
+                // Clear status after a delay
+                setTimeout(() => {
+                    callStatus.textContent = '';
+                    callStatus.style.display = 'none'; // Hide call status
+                }, 3000);
+                
+                updateDebugInfo({
+                    action: 'call-ended-by-peer'
+                });
             });
-        });
+        }
         
         // UI helper functions
         function appendMessage(message) {
