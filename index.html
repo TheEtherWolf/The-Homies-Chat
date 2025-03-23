@@ -197,6 +197,20 @@
             background-color: rgb(240, 65, 129);
         }
 
+        .secondary-button {
+            background-color: rgba(67, 20, 128, 0.8);
+            color: rgb(240, 250, 200);
+            border: 1px solid rgb(240, 65, 129);
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .secondary-button:hover {
+            background-color: rgb(240, 65, 129);
+        }
+
         button[type="submit"] {
             padding: 0 15px;
         }
@@ -537,6 +551,9 @@
             <input type="password" id="passwordInput" placeholder="Enter password..." required />
             <button type="submit">Join Chat</button>
         </form>
+        <div style="margin-top: 15px; display: flex; justify-content: center;">
+            <button id="createNewAccountBtn" class="secondary-button">Create New Account</button>
+        </div>
     </div>
     
     <div id="chatContainer" class="chat-container">
@@ -1657,9 +1674,10 @@
         
         // Add sign out functionality
         const signOutBtn = document.getElementById('signOutBtn');
+        const createNewAccountBtn = document.getElementById('createNewAccountBtn');
         
         signOutBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to sign out? You will need to log in again, but your credentials will be saved.')) {
+            if (confirm('Are you sure you want to sign out?')) {
                 // Set a flag in localStorage to indicate logged out state
                 localStorage.setItem('isLoggedOut', 'true');
                 
@@ -1689,6 +1707,44 @@
                 }
                 
                 console.log('User signed out but credentials saved');
+            }
+        });
+        
+        // Add create new account functionality
+        createNewAccountBtn.addEventListener('click', function() {
+            // Clear existing form fields to start fresh
+            usernameInput.value = '';
+            passwordInput.value = '';
+            
+            // Focus on username input
+            usernameInput.focus();
+            
+            // Optional: Add visual indication that we're in "create account" mode
+            document.querySelector('#usernameContainer h2').textContent = 'Create a New Account';
+            
+            // Change the submit button text temporarily
+            const submitBtn = usernameForm.querySelector('button[type="submit"]');
+            submitBtn.textContent = 'Create & Join';
+            
+            // Add a flag to indicate we're creating a new account
+            usernameForm.dataset.mode = 'create';
+            
+            // Add a back button option if they want to go back to login
+            if (!document.getElementById('backToLoginBtn')) {
+                const backBtn = document.createElement('button');
+                backBtn.id = 'backToLoginBtn';
+                backBtn.className = 'secondary-button';
+                backBtn.textContent = 'Back to Login';
+                backBtn.style.marginLeft = '10px';
+                createNewAccountBtn.parentNode.appendChild(backBtn);
+                
+                backBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    document.querySelector('#usernameContainer h2').textContent = 'Enter your details';
+                    submitBtn.textContent = 'Join Chat';
+                    usernameForm.dataset.mode = 'login';
+                    this.remove();
+                });
             }
         });
         
