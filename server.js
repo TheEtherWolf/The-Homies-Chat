@@ -74,9 +74,9 @@ if (fs.existsSync(MESSAGE_FILE)) {
 app.use(express.static(__dirname));
 
 function updateUserList() {
-    // Use a consistent event name that matches the client
+    // Send the consistent active users list to all clients
     const userList = Array.from(activeUsers.keys());
-    io.emit("users-updated", userList);
+    io.emit("active-users", userList);
 }
 
 // When a user connects, send stored messages
@@ -137,10 +137,10 @@ io.on("connection", (socket) => {
         // Notify other users
         socket.broadcast.emit('user-joined', username);
         
-        // Send active users list to the new user
-        socket.emit('active-users', Array.from(activeUsers.keys()));
+        // Send active users list to everyone (not just the new user)
+        updateUserList();
         
-        // Send chat history
+        // Send chat history to the new user
         socket.emit('chat history', messages);
     });
     
@@ -270,12 +270,10 @@ io.on("connection", (socket) => {
         const username = users[socket.id];
         if (username) {
             console.log(`User disconnected: ${username}`);
-            // Remove from active users
-            activeUsers.delete(username);
             delete users[socket.id];
-            
-            // Notify other users
-            socket.broadcast.emit('user-left', username);
+            activeUsers.delete(username);
+            io.emit('user-left', username);
+            updateUserList(); // Update the active user list after someone leaves
         }
     });
 });
