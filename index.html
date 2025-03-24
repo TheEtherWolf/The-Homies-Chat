@@ -542,21 +542,6 @@
             display: none;
         }
         
-        /* No users available styles */
-        .video-call-controls.no-users .call-target {
-            background-color: #f0f2f5;
-            color: #999;
-        }
-        
-        .video-call-controls.no-users .call-target option:first-child {
-            color: #999;
-        }
-        
-        .video-call-controls.no-users .call-btn {
-            background-color: #d4d4d4;
-            cursor: not-allowed;
-        }
-        
         /* Warning message when no users are available */
         .no-users-message {
             display: none;
@@ -673,6 +658,12 @@
         const declineCallBtn = document.getElementById('declineCall');
         const callStatus = document.getElementById('callStatus');
         const videoCallControls = document.getElementById('video-call-controls');
+        const showSettingsBtn = document.getElementById('showSettings');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const settingsBackdrop = document.getElementById('settingsBackdrop');
+        const usernameForm = document.getElementById('usernameForm');
+        const usernameInput = document.getElementById('usernameInput');
+        const passwordInput = document.getElementById('passwordInput');
         
         // Prevent accidental form submissions on page load
         let pageFullyLoaded = false;
@@ -1198,11 +1189,10 @@
                 
                 // Monitor remote audio levels
                 try {
-                    const audioCtx = new AudioContext();
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                     const source = audioCtx.createMediaStreamSource(remoteStream);
                     const analyser = audioCtx.createAnalyser();
                     analyser.fftSize = 256;
-                    source.connect(analyser);
                     
                     // Create data array for analysis
                     const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -1220,11 +1210,13 @@
                         const average = sum / dataArray.length;
                         
                         updateDebugInfo({
-                            remoteAudioLevel: average
+                            remoteAudioLevel: average.toFixed(2)
                         });
                         
                         requestAnimationFrame(checkRemoteAudioLevels);
                     }
+                    
+                    source.connect(analyser);
                     
                     checkRemoteAudioLevels();
                     
