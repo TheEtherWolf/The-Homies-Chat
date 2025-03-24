@@ -629,7 +629,7 @@
 
     <div id="debugInfo" class="debug-info"></div>
     <button id="debugToggle" class="debug-toggle">Debug</button>
-    <audio id="remoteAudio" autoplay style="display:none;"></audio>
+    <audio id="remoteAudio" autoplay controls style="display:none;"></audio>
     <audio id="testAudioOut" src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"></audio>
     <div id="audioFeedback" style="display: none; position: fixed; bottom: 20px; right: 20px; padding: 10px; background-color: rgba(0,0,0,0.7); color: white; border-radius: 5px; z-index: 1000;"></div>
 
@@ -820,9 +820,9 @@
         endCallBtn.style.display = 'none';
         
         // Create audio elements
-        const remoteAudioElement = document.createElement('audio');
-        remoteAudioElement.autoplay = true;
-        document.body.appendChild(remoteAudioElement);
+        const remoteAudioElement = document.getElementById('remoteAudio');
+        remoteAudioElement.volume = 1.0; // Ensure volume is at maximum
+        remoteAudioElement.muted = false; // Ensure it's not muted
         
         // Create test audio elements
         const testAudioOut = document.getElementById('testAudioOut');
@@ -1182,10 +1182,24 @@
                 // Set remote stream as source for audio element
                 remoteAudioElement.srcObject = remoteStream;
                 
-                // Play the audio
-                remoteAudioElement.play().catch(e => {
-                    console.error('Error playing remote audio:', e);
-                });
+                // Play the audio with a user gesture promise chain
+                const playPromise = remoteAudioElement.play();
+                
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        console.log('Remote audio playback started successfully');
+                        callStatus.textContent = 'Connected - Audio active';
+                    }).catch(error => {
+                        console.error('Error playing remote audio:', error);
+                        callStatus.textContent = 'Connected - Audio failed to play';
+                        
+                        // Try again after a short delay
+                        setTimeout(() => {
+                            remoteAudioElement.play().catch(e => 
+                                console.error('Second attempt to play audio failed:', e));
+                        }, 1000);
+                    });
+                }
                 
                 // Monitor remote audio levels
                 try {
@@ -1193,12 +1207,13 @@
                     const source = audioCtx.createMediaStreamSource(remoteStream);
                     const analyser = audioCtx.createAnalyser();
                     analyser.fftSize = 256;
+                    source.connect(analyser);
                     
                     // Create data array for analysis
                     const dataArray = new Uint8Array(analyser.frequencyBinCount);
                     
                     function checkRemoteAudioLevels() {
-                        if (!remoteStream.active) return;
+                        if (!remoteStream || !remoteStream.active) return;
                         
                         analyser.getByteFrequencyData(dataArray);
                         
@@ -1209,14 +1224,20 @@
                         }
                         const average = sum / dataArray.length;
                         
+                        // If we detect audio, update the UI to show it's working
+                        if (average > 5 && remoteAudioElement.paused) {
+                            console.log("Detected audio but element is paused, trying to play again");
+                            remoteAudioElement.play().catch(e => console.error("Failed to play on activity:", e));
+                        }
+                        
                         updateDebugInfo({
-                            remoteAudioLevel: average.toFixed(2)
+                            remoteAudioLevel: average.toFixed(2),
+                            audioElementState: remoteAudioElement.paused ? "paused" : "playing",
+                            audioMuted: remoteAudioElement.muted
                         });
                         
                         requestAnimationFrame(checkRemoteAudioLevels);
                     }
-                    
-                    source.connect(analyser);
                     
                     checkRemoteAudioLevels();
                     
