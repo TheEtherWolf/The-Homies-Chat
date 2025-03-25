@@ -197,7 +197,7 @@ io.on("connection", (socket) => {
     });
 
     // Call signaling
-    socket.on('call-offer', ({offer, caller, target}) => {
+    socket.on('call-offer', ({offer, caller, target, sender}) => {
         console.log(`Call offer from ${caller} to ${target}`);
         
         // Find the target socket
@@ -205,7 +205,11 @@ io.on("connection", (socket) => {
         
         if (targetSocketId) {
             console.log(`Found target socket: ${targetSocketId}`);
-            io.to(targetSocketId).emit('call-offer', {offer, caller});
+            io.to(targetSocketId).emit('call-offer', {
+                offer, 
+                caller,
+                sender: sender || caller // Ensure sender is always present
+            });
         } else {
             console.log(`Target user ${target} not found`);
             socket.emit('call-error', {
@@ -215,14 +219,18 @@ io.on("connection", (socket) => {
         }
     });
     
-    socket.on('call-answer', ({answer, caller}) => {
-        console.log(`Call answer to ${caller}`);
+    socket.on('call-answer', ({answer, caller, callee, sender}) => {
+        console.log(`Call answer from ${callee || sender} to ${caller}`);
         
         // Find the caller socket
         const callerSocketId = activeUsers.get(caller);
         
         if (callerSocketId) {
-            io.to(callerSocketId).emit('call-answer', {answer});
+            io.to(callerSocketId).emit('call-answer', {
+                answer,
+                callee: callee || sender || users[socket.id],
+                sender: sender || callee || users[socket.id]
+            });
         } else {
             socket.emit('call-error', {
                 message: `User ${caller} is not available anymore.`,
@@ -231,14 +239,17 @@ io.on("connection", (socket) => {
         }
     });
     
-    socket.on('ice-candidate', ({candidate, target}) => {
-        console.log(`ICE candidate to ${target}`);
+    socket.on('ice-candidate', ({candidate, target, sender}) => {
+        console.log(`ICE candidate from ${sender || users[socket.id]} to ${target}`);
         
         // Find the target socket
         const targetSocketId = activeUsers.get(target);
         
         if (targetSocketId) {
-            io.to(targetSocketId).emit('ice-candidate', {candidate});
+            io.to(targetSocketId).emit('ice-candidate', {
+                candidate,
+                sender: sender || users[socket.id] // Always include who sent this candidate
+            });
         }
     });
     

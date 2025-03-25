@@ -1005,7 +1005,8 @@
                 socket.emit('call-offer', {
                     offer: peerConnection.localDescription,
                     caller: username,
-                    target: callToUsername
+                    target: callToUsername,
+                    sender: username  // Add sender information 
                 });
                 
                 // Update UI
@@ -1034,9 +1035,10 @@
                     const target = callToUsername || callFromUsername;
                     socket.emit('ice-candidate', {
                         candidate: event.candidate,
+                        sender: username,  // Add sender information 
                         target: target
                     });
-                    console.log(`ICE candidate sent to ${target}`);
+                    console.log(`ICE candidate sent to ${target}:`, event.candidate.candidate.substring(0, 50) + '...');
                 } else {
                     console.log("ICE gathering complete");
                 }
@@ -1044,21 +1046,27 @@
             
             // Log connection state changes
             peerConnection.oniceconnectionstatechange = () => {
-                console.log(`ICE state: ${peerConnection.iceConnectionState}`);
+                console.log(`ICE state changed: ${peerConnection.iceConnectionState}`);
                 updateDebugInfo({
-                    iceState: peerConnection.iceConnectionState
+                    iceState: peerConnection.iceConnectionState,
+                    connectionTime: new Date().toISOString()
                 });
                 
                 if (peerConnection.iceConnectionState === 'connected' || 
                     peerConnection.iceConnectionState === 'completed') {
                     callStatus.textContent = 'Connected';
+                    console.log("ICE connection established successfully");
+                    
+                    // Play a test tone to ensure audio system is active
+                    testAudioOut.play().catch(e => console.error("Could not play test tone:", e));
                 }
                 
                 if (peerConnection.iceConnectionState === 'disconnected' ||
                     peerConnection.iceConnectionState === 'failed' ||
                     peerConnection.iceConnectionState === 'closed') {
                     callStatus.textContent = 'Connection lost';
-                    callStatus.style.display = 'block'; // Show call status
+                    callStatus.style.display = 'block';
+                    console.error(`ICE connection failed: ${peerConnection.iceConnectionState}`);
                     setTimeout(() => {
                         endCall();
                     }, 2000);
@@ -1147,8 +1155,8 @@
                 const source = audioCtx.createMediaStreamSource(audioElement.srcObject);
                 const analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 256;
-                source.connect(analyser);
                 
+                // Create data array for analysis
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
                 
                 function checkAudioLevels() {
@@ -1181,6 +1189,18 @@
                         connState: peerConnection ? peerConnection.connectionState : 'unknown'
                     });
                     
+                    // Also log to console for easier debugging
+                    console.log("Debug Info:", {
+                        remoteAudioLevel: average.toFixed(2),
+                        audioElementState: audioElement.paused ? "paused" : "playing",
+                        audioMuted: audioElement.muted,
+                        trackEnabled: track.enabled,
+                        trackMuted: track.muted,
+                        trackState: track.readyState,
+                        iceState: peerConnection ? peerConnection.iceConnectionState : 'unknown',
+                        connState: peerConnection ? peerConnection.connectionState : 'unknown'
+                    });
+                    
                     requestAnimationFrame(checkAudioLevels);
                 }
                 
@@ -1188,80 +1208,6 @@
                 
             } catch (error) {
                 console.error("Error setting up audio monitoring:", error);
-            }
-        }
-        
-        async function acceptCall() {
-            try {
-                callStatus.textContent = `Connecting to ${callFromUsername}...`;
-                callStatus.style.display = 'block';
-                
-                // Hide accept/decline buttons, show end call button
-                acceptCallBtn.style.display = 'none';
-                declineCallBtn.style.display = 'none';
-                endCallBtn.style.display = 'inline-block';
-                
-                // Use same constraints as the caller for consistency
-                const constraints = {
-                    audio: {
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    },
-                    video: false
-                };
-                
-                console.log("Using audio constraints for accepting call:", JSON.stringify(constraints));
-                
-                // Get user media
-                localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                
-                console.log("Local stream tracks (accept):", 
-                    localStream.getTracks().map(t => 
-                        `${t.kind}: enabled=${t.enabled}, muted=${t.muted}, label=${t.label}`
-                    ).join('\n')
-                );
-                
-                // Create peer connection
-                peerConnection = new RTCPeerConnection(rtcConfig);
-                
-                // Add local tracks to peer connection
-                localStream.getTracks().forEach(track => {
-                    peerConnection.addTrack(track, localStream);
-                    console.log(`Added local track to peer connection: ${track.kind}`);
-                });
-                
-                // Set up event handlers
-                setupPeerConnectionHandlers();
-                
-                // Set remote description (the offer)
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
-                
-                // Create and send answer
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                
-                socket.emit('call-answer', {
-                    answer: peerConnection.localDescription,
-                    caller: callFromUsername,
-                    callee: username
-                });
-                
-                // Set state
-                activeCall = true;
-                
-                updateDebugInfo({
-                    action: 'call-accepted',
-                    from: callFromUsername
-                });
-                
-            } catch (error) {
-                console.error('Error accepting call:', error);
-                callStatus.textContent = `Call failed: ${error.message}`;
-                resetCallState();
-                updateDebugInfo({
-                    error: error.message
-                });
             }
         }
         
@@ -1400,20 +1346,33 @@
             });
             
             socket.on('ice-candidate', (data) => {
-                if (!peerConnection) return;
+                console.log("Received ICE candidate");
                 
-                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
-                    .catch(error => {
-                        console.error('Error adding ICE candidate:', error);
-                        updateDebugInfo({
-                            error: error.message
+                if (!peerConnection) {
+                    console.error("No peer connection to add ICE candidate to");
+                    return;
+                }
+                
+                try {
+                    // Create a proper RTCIceCandidate object
+                    const candidate = new RTCIceCandidate(data.candidate);
+                    
+                    // Add the candidate to the peer connection
+                    peerConnection.addIceCandidate(candidate)
+                        .then(() => {
+                            console.log("Successfully added ICE candidate");
+                        })
+                        .catch(err => {
+                            console.error("Error adding ICE candidate:", err);
                         });
-                    });
+                } catch (error) {
+                    console.error("Error processing ICE candidate:", error);
+                }
             });
             
             socket.on('call-declined', (data) => {
                 callStatus.textContent = `Call declined: ${data.reason}`;
-                callStatus.style.display = 'block'; // Show call status
+                callStatus.style.display = 'block';
                 resetCallState();
                 
                 updateDebugInfo({
@@ -1424,7 +1383,7 @@
             
             socket.on('call-ended', () => {
                 callStatus.textContent = 'Call ended by the other party';
-                callStatus.style.display = 'block'; // Show call status
+                callStatus.style.display = 'block';
                 
                 // Clean up resources
                 if (localStream) {
@@ -1787,13 +1746,6 @@
             }
         });
         
-        // Function to update debug info
-        function updateDebugInfo(info) {
-            if (localStorage.getItem('debugEnabled') === 'true') {
-                debugInfo.innerHTML = JSON.stringify(info, null, 2);
-            }
-        }
-        
         // Add sign out functionality
         const signOutBtn = document.getElementById('signOutBtn');
         const createNewAccountBtn = document.getElementById('createNewAccountBtn');
@@ -1869,6 +1821,96 @@
                 });
             }
         });
+        
+        // Function to update debug info
+        function updateDebugInfo(info) {
+            const debugInfo = document.getElementById('debugInfo');
+            // Add timestamp to debug info
+            info.timestamp = new Date().toISOString();
+            
+            if (localStorage.getItem('debugEnabled') === 'true') {
+                debugInfo.innerHTML = JSON.stringify(info, null, 2);
+            }
+            
+            // Also log to console for easier debugging
+            console.log("Debug Info:", info);
+        }
+        
+        // Accept call functionality
+        async function acceptCall() {
+            try {
+                callStatus.textContent = `Connecting to ${callFromUsername}...`;
+                callStatus.style.display = 'block';
+                
+                // Hide accept/decline buttons, show end call button
+                acceptCallBtn.style.display = 'none';
+                declineCallBtn.style.display = 'none';
+                endCallBtn.style.display = 'inline-block';
+                
+                // Use same constraints as the caller for consistency
+                const constraints = {
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    },
+                    video: false
+                };
+                
+                console.log("Using audio constraints for accepting call:", JSON.stringify(constraints));
+                
+                // Get user media
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                console.log("Local stream tracks (accept):", 
+                    localStream.getTracks().map(t => 
+                        `${t.kind}: enabled=${t.enabled}, muted=${t.muted}, label=${t.label}`
+                    ).join('\n')
+                );
+                
+                // Create peer connection
+                peerConnection = new RTCPeerConnection(rtcConfig);
+                
+                // Add local tracks to peer connection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                    console.log(`Added local track to peer connection: ${track.kind}`);
+                });
+                
+                // Set up event handlers
+                setupPeerConnectionHandlers();
+                
+                // Set remote description (the offer)
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+                
+                // Create and send answer
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                socket.emit('call-answer', {
+                    answer: peerConnection.localDescription,
+                    caller: callFromUsername,
+                    callee: username,
+                    sender: username // Add sender information
+                });
+                
+                // Set state
+                activeCall = true;
+                
+                updateDebugInfo({
+                    action: 'call-accepted',
+                    from: callFromUsername
+                });
+                
+            } catch (error) {
+                console.error('Error accepting call:', error);
+                callStatus.textContent = `Call failed: ${error.message}`;
+                resetCallState();
+                updateDebugInfo({
+                    error: error.message
+                });
+            }
+        }
         
         // Fix for initial page load - force scroll to bottom after everything else
         window.onload = function() {
