@@ -1029,186 +1029,123 @@
         }
         
         function setupPeerConnectionHandlers() {
-            // Handle ICE candidates
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    const target = callToUsername || callFromUsername;
-                    socket.emit('ice-candidate', {
-                        candidate: event.candidate,
-                        sender: username,  // Add sender information 
-                        target: target
-                    });
-                    console.log(`ICE candidate sent to ${target}:`, event.candidate.candidate.substring(0, 50) + '...');
-                } else {
-                    console.log("ICE gathering complete");
-                }
-            };
-            
-            // Log connection state changes
-            peerConnection.oniceconnectionstatechange = () => {
-                console.log(`ICE state changed: ${peerConnection.iceConnectionState}`);
+            // Handle ICE connection state changes
+            peerConnection.oniceconnectionstatechange = (event) => {
+                console.log(`ICE connection state changed to: ${peerConnection.iceConnectionState}`);
                 updateDebugInfo({
-                    iceState: peerConnection.iceConnectionState,
-                    connectionTime: new Date().toISOString()
+                    iceStateChange: peerConnection.iceConnectionState,
+                    timestamp: new Date().toISOString()
                 });
                 
+                // If connected, ensure audio is playing
                 if (peerConnection.iceConnectionState === 'connected' || 
                     peerConnection.iceConnectionState === 'completed') {
-                    callStatus.textContent = 'Connected';
-                    console.log("ICE connection established successfully");
                     
-                    // Play a test tone to ensure audio system is active
-                    testAudioOut.play().catch(e => console.error("Could not play test tone:", e));
-                }
-                
-                if (peerConnection.iceConnectionState === 'disconnected' ||
-                    peerConnection.iceConnectionState === 'failed' ||
-                    peerConnection.iceConnectionState === 'closed') {
-                    callStatus.textContent = 'Connection lost';
-                    callStatus.style.display = 'block';
-                    console.error(`ICE connection failed: ${peerConnection.iceConnectionState}`);
-                    setTimeout(() => {
-                        endCall();
-                    }, 2000);
+                    // Ensure remote audio is unmuted and playing
+                    const remoteAudio = document.getElementById('remoteAudio');
+                    remoteAudio.muted = false;
+                    
+                    // Try to ensure audio is played after connection
+                    remoteAudio.play().catch(e => console.log("Error playing remote audio:", e));
+                    
+                    // Play a test tone to check audio system
+                    playTestTone(300);
                 }
             };
             
-            // Handle remote tracks
-            peerConnection.ontrack = (event) => {
-                console.log(`Received remote track: ${event.track.kind}, enabled: ${event.track.enabled}, muted: ${event.track.muted}`);
+            // Handle connection state changes
+            peerConnection.onconnectionstatechange = (event) => {
+                console.log(`Connection state changed to: ${peerConnection.connectionState}`);
+                updateDebugInfo({
+                    connStateChange: peerConnection.connectionState,
+                    timestamp: new Date().toISOString()
+                });
                 
-                // Get remote audio element
+                // If disconnected or failed, reset call
+                if (peerConnection.connectionState === 'disconnected' || 
+                    peerConnection.connectionState === 'failed') {
+                    console.log("Connection disconnected or failed");
+                    resetCallState();
+                    callStatus.textContent = 'Call ended due to connection issues';
+                }
+                
+                // If connected, ensure audio is playing
+                if (peerConnection.connectionState === 'connected') {
+                    const remoteAudio = document.getElementById('remoteAudio');
+                    // Force audio to play if it's paused
+                    if (remoteAudio.paused) {
+                        remoteAudio.play().catch(e => console.log("Error forcing play:", e));
+                    }
+                }
+            };
+            
+            // Handle ICE candidate events
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    const targetUser = callToUsername || callFromUsername;
+                    console.log(`Generated ICE candidate for ${targetUser}`);
+                    
+                    // Send to the other user along with sender info
+                    socket.emit('ice-candidate', {
+                        candidate: event.candidate,
+                        target: targetUser,
+                        sender: username
+                    });
+                    
+                    updateDebugInfo({
+                        action: 'ice-candidate-sent',
+                        to: targetUser,
+                        candidateType: event.candidate.type,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            };
+            
+            // Handle incoming audio track
+            peerConnection.ontrack = (event) => {
+                console.log(`Received track: ${event.track.kind}`);
+                
                 const remoteAudio = document.getElementById('remoteAudio');
                 
-                // Ensure we have a stream
+                // Create a new MediaStream if one doesn't exist
                 if (!remoteAudio.srcObject) {
                     remoteAudio.srcObject = new MediaStream();
                 }
                 
-                // Add the track to the stream
+                // Add the track to the MediaStream
                 remoteAudio.srcObject.addTrack(event.track);
                 
-                // Ensure audio is unmuted and volume is at maximum
-                remoteAudio.muted = false;
-                remoteAudio.volume = 1.0;
-                
-                // Try to play audio with backup strategies
-                playRemoteAudio(remoteAudio);
-                
-                // Set up audio monitoring for debugging
-                monitorAudioLevels(remoteAudio, event.track);
-            };
-        }
-        
-        // Attempt to play audio with fallbacks
-        function playRemoteAudio(audioElement) {
-            // First attempt to play
-            const playPromise = audioElement.play();
-            
-            if (playPromise !== undefined) {
-                playPromise.then(() => {
-                    console.log("Audio playback started successfully");
-                    callStatus.textContent = 'Connected - Audio active';
+                // Force audio to play
+                remoteAudio.play()
+                .then(() => {
+                    console.log("Remote audio playing successfully");
+                    // Unmute explicitly
+                    remoteAudio.muted = false;
+                    // Monitor audio levels
+                    monitorAudioLevels(remoteAudio, event.track);
                     
-                    // Create interval to ensure audio stays unmuted/playing
-                    const audioCheckInterval = setInterval(() => {
-                        if (!activeCall) {
-                            clearInterval(audioCheckInterval);
-                            return;
-                        }
-                        
-                        if (audioElement.muted) {
-                            console.log("Audio was muted, unmuting...");
-                            audioElement.muted = false;
-                        }
-                        
-                        if (audioElement.paused) {
-                            console.log("Audio was paused, playing...");
-                            audioElement.play().catch(e => console.error("Failed to restart audio:", e));
-                        }
-                    }, 2000);
-                    
-                }).catch(error => {
-                    console.error("Failed to play audio:", error);
-                    
-                    // Error during playback, try alternative approach
-                    alert("Please click OK to enable audio for the call");
-                    
-                    // Second attempt after user interaction
-                    audioElement.play().catch(e => {
-                        console.error("Second attempt to play audio failed:", e);
-                        
-                        // Add a click event on body as last resort
-                        document.body.addEventListener('click', function playOnce() {
-                            audioElement.play().catch(console.error);
-                            document.body.removeEventListener('click', playOnce);
-                        });
-                    });
-                });
-            }
-        }
-        
-        // Monitor audio levels for debugging
-        function monitorAudioLevels(audioElement, track) {
-            try {
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioCtx.createMediaStreamSource(audioElement.srcObject);
-                const analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 256;
-                
-                // Create data array for analysis
-                const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                
-                function checkAudioLevels() {
-                    if (!audioElement.srcObject || !activeCall) return;
-                    
-                    analyser.getByteFrequencyData(dataArray);
-                    
-                    // Calculate average level
-                    let sum = 0;
-                    for (let i = 0; i < dataArray.length; i++) {
-                        sum += dataArray[i];
-                    }
-                    const average = sum / dataArray.length;
-                    
-                    // If we detect audio but element is paused, try to play
-                    if (average > 5 && audioElement.paused) {
-                        console.log("Audio detected but element is paused, playing...");
-                        audioElement.play().catch(e => console.error("Failed to play on activity:", e));
-                    }
-                    
-                    // Update debug info with comprehensive details
+                    // Test tone to verify audio system is working
+                    playTestTone(200);
+                })
+                .catch(error => {
+                    console.error("Failed to play remote audio:", error);
                     updateDebugInfo({
-                        remoteAudioLevel: average.toFixed(2),
-                        audioElementState: audioElement.paused ? "paused" : "playing",
-                        audioMuted: audioElement.muted,
-                        trackEnabled: track.enabled,
-                        trackMuted: track.muted,
-                        trackState: track.readyState,
-                        iceState: peerConnection ? peerConnection.iceConnectionState : 'unknown',
-                        connState: peerConnection ? peerConnection.connectionState : 'unknown'
+                        remoteAudioError: error.message
                     });
                     
-                    // Also log to console for easier debugging
-                    console.log("Debug Info:", {
-                        remoteAudioLevel: average.toFixed(2),
-                        audioElementState: audioElement.paused ? "paused" : "playing",
-                        audioMuted: audioElement.muted,
-                        trackEnabled: track.enabled,
-                        trackMuted: track.muted,
-                        trackState: track.readyState,
-                        iceState: peerConnection ? peerConnection.iceConnectionState : 'unknown',
-                        connState: peerConnection ? peerConnection.connectionState : 'unknown'
-                    });
-                    
-                    requestAnimationFrame(checkAudioLevels);
-                }
+                    // Try again after a moment
+                    setTimeout(() => {
+                        remoteAudio.play().catch(e => console.log("Retry play failed:", e));
+                    }, 1000);
+                });
                 
-                checkAudioLevels();
-                
-            } catch (error) {
-                console.error("Error setting up audio monitoring:", error);
-            }
+                updateDebugInfo({
+                    action: 'track-received',
+                    kind: event.track.kind,
+                    trackId: event.track.id,
+                    timestamp: new Date().toISOString()
+                });
+            };
         }
         
         // Socket event handlers
@@ -1296,117 +1233,109 @@
             });
             
             socket.on('call-offer', (data) => {
-                // Reject if already in a call
-                if (activeCall) {
-                    socket.emit('call-declined', {
-                        caller: data.caller,
-                        reason: 'busy'
-                    });
-                    return;
-                }
+                const { offer, caller, sender } = data;
+                console.log(`Received call offer from ${caller}`);
                 
-                callFromUsername = data.caller;
-                pendingOffer = data.offer;
-                incomingCall = true;
+                // Store the pending offer and caller
+                pendingOffer = offer;
+                callFromUsername = caller;
                 
                 // Show incoming call UI
-                callStatus.textContent = `Incoming call from ${callFromUsername}`;
-                callStatus.style.display = 'block'; // Show call status
-                startCallBtn.style.display = 'none';
+                callStatus.textContent = `Incoming call from ${caller}`;
+                callStatus.style.display = 'block';
+                
                 acceptCallBtn.style.display = 'inline-block';
                 declineCallBtn.style.display = 'inline-block';
+                endCallBtn.style.display = 'none';
+                
+                // Play incoming call sound
+                incomingCallSound.play();
                 
                 updateDebugInfo({
-                    action: 'received-call-offer',
-                    from: callFromUsername
+                    action: 'call-offer-received',
+                    from: caller,
+                    sender: sender
                 });
             });
-            
+
             socket.on('call-answer', (data) => {
-                if (!activeCall) return;
+                const { answer, callee, sender } = data;
+                console.log(`Received call answer from ${callee || sender}`);
                 
-                peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
+                try {
+                    // Set remote description from answer
+                    peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
                     .then(() => {
-                        callStatus.textContent = `Connected to ${callToUsername}`;
-                        callStatus.style.display = 'block'; // Show call status
-                        callInProgress = true;
+                        console.log("Remote description set successfully from answer");
+                        
+                        // Update UI
+                        callStatus.textContent = `Connected to ${callee || sender}`;
                         
                         updateDebugInfo({
-                            action: 'received-call-answer'
+                            action: 'call-answered',
+                            remoteDescription: true,
+                            from: callee || sender
                         });
+                        
+                        // Start playing a test tone to help debug audio
+                        setTimeout(() => {
+                            playTestTone(500);
+                        }, 1000);
                     })
                     .catch(error => {
-                        console.error('Error setting remote description:', error);
-                        callStatus.textContent = 'Connection failed';
-                        callStatus.style.display = 'block'; // Show call status
+                        console.error("Error setting remote description from answer:", error);
                         updateDebugInfo({
+                            action: 'call-answer-error',
                             error: error.message
                         });
                     });
-            });
-            
-            socket.on('ice-candidate', (data) => {
-                console.log("Received ICE candidate");
-                
-                if (!peerConnection) {
-                    console.error("No peer connection to add ICE candidate to");
-                    return;
-                }
-                
-                try {
-                    // Create a proper RTCIceCandidate object
-                    const candidate = new RTCIceCandidate(data.candidate);
-                    
-                    // Add the candidate to the peer connection
-                    peerConnection.addIceCandidate(candidate)
-                        .then(() => {
-                            console.log("Successfully added ICE candidate");
-                        })
-                        .catch(err => {
-                            console.error("Error adding ICE candidate:", err);
-                        });
                 } catch (error) {
-                    console.error("Error processing ICE candidate:", error);
+                    console.error("Exception in call-answer handler:", error);
+                    updateDebugInfo({
+                        action: 'call-answer-exception',
+                        error: error.message
+                    });
                 }
             });
-            
-            socket.on('call-declined', (data) => {
-                callStatus.textContent = `Call declined: ${data.reason}`;
-                callStatus.style.display = 'block';
-                resetCallState();
-                
-                updateDebugInfo({
-                    action: 'call-declined',
-                    reason: data.reason
-                });
-            });
-            
-            socket.on('call-ended', () => {
-                callStatus.textContent = 'Call ended by the other party';
-                callStatus.style.display = 'block';
-                
-                // Clean up resources
-                if (localStream) {
-                    localStream.getTracks().forEach(track => track.stop());
-                }
+
+            socket.on('ice-candidate', (data) => {
+                const { candidate, sender } = data;
+                console.log(`Received ICE candidate from ${sender}`);
                 
                 if (peerConnection) {
-                    peerConnection.close();
+                    try {
+                        peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+                        .then(() => {
+                            console.log(`Added ICE candidate from ${sender}`);
+                            updateDebugInfo({
+                                action: 'ice-candidate-added',
+                                from: sender,
+                                iceState: peerConnection.iceConnectionState,
+                                connState: peerConnection.connectionState
+                            });
+                        })
+                        .catch(error => {
+                            console.error(`Error adding ICE candidate from ${sender}:`, error);
+                            updateDebugInfo({
+                                action: 'ice-candidate-error',
+                                error: error.message,
+                                from: sender
+                            });
+                        });
+                    } catch (error) {
+                        console.error("Exception in ice-candidate handler:", error);
+                        updateDebugInfo({
+                            action: 'ice-candidate-exception',
+                            error: error.message
+                        });
+                    }
+                } else {
+                    console.warn("Received ICE candidate but no peer connection exists");
+                    updateDebugInfo({
+                        action: 'ice-candidate-no-peer',
+                        from: sender
+                    });
                 }
-                
-                resetCallState();
-                callStatus.textContent = '';
-                callStatus.style.display = 'none'; // Hide call status
-                
-                // Clear status after a delay
-                setTimeout(() => {
-                    callStatus.textContent = '';
-                    callStatus.style.display = 'none'; // Hide call status
-                }, 3000);
-                
-                updateDebugInfo({
-                    action: 'call-ended-by-peer'
-                });
             });
         }
         
@@ -1987,6 +1916,94 @@
                 }
             });
         });
+        
+        // Add a function to play a test tone
+        function playTestTone(duration = 200) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.value = 440; // A4 note
+                gainNode.gain.value = 0.1; // Low volume
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                
+                // Stop after duration
+                setTimeout(() => {
+                    oscillator.stop();
+                    console.log("Test tone finished");
+                }, duration);
+                
+                console.log("Playing test tone");
+            } catch (error) {
+                console.error("Error playing test tone:", error);
+            }
+        }
+        
+        // Monitor audio levels for debugging
+        function monitorAudioLevels(audioElement, track) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(audioElement.srcObject);
+                const analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                
+                // Create data array for analysis
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                function checkAudioLevels() {
+                    if (!audioElement.srcObject || !activeCall) return;
+                    
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    // Calculate average level
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        sum += dataArray[i];
+                    }
+                    const average = sum / dataArray.length;
+                    
+                    // If we detect audio but element is paused, try to play
+                    if (average > 5 && audioElement.paused) {
+                        console.log("Audio detected but element is paused, playing...");
+                        audioElement.play().catch(e => console.error("Failed to play on activity:", e));
+                    }
+                    
+                    // Update debug info with comprehensive details
+                    updateDebugInfo({
+                        remoteAudioLevel: average.toFixed(2),
+                        audioElementState: audioElement.paused ? "paused" : "playing",
+                        audioMuted: audioElement.muted,
+                        trackEnabled: track.enabled,
+                        trackMuted: track.muted,
+                        trackState: track.readyState,
+                        iceState: peerConnection ? peerConnection.iceConnectionState : 'unknown',
+                        connState: peerConnection ? peerConnection.connectionState : 'unknown',
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // Also log to console for easier debugging
+                    console.log("Audio Levels:", {
+                        remoteAudioLevel: average.toFixed(2),
+                        audioState: audioElement.paused ? "paused" : "playing",
+                        iceState: peerConnection ? peerConnection.iceConnectionState : 'unknown'
+                    });
+                    
+                    requestAnimationFrame(checkAudioLevels);
+                }
+                
+                checkAudioLevels();
+                
+            } catch (error) {
+                console.error("Error setting up audio monitoring:", error);
+            }
+        }
     </script>
 </body>
 </html>
