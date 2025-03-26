@@ -834,12 +834,19 @@
                 {urls: 'stun:stun.l.google.com:19302'},
                 {urls: 'stun:stun1.l.google.com:19302'},
                 {urls: 'stun:stun2.l.google.com:19302'},
+                {urls: 'stun:stun3.l.google.com:19302'},
+                {urls: 'stun:stun4.l.google.com:19302'},
+                // Free TURN server with better reliability than the viagenie one
                 {
-                    urls: 'turn:numb.viagenie.ca',
-                    credential: 'muazkh',
-                    username: 'webrtc@live.com'
+                    urls: 'turn:turn.offlinetoremotework.com:3478',
+                    username: 'test',
+                    credential: 'test'
                 }
-            ]
+            ],
+            iceCandidatePoolSize: 10,
+            iceTransportPolicy: 'all',
+            rtcpMuxPolicy: 'require',
+            bundlePolicy: 'max-bundle'
         };
         
         // Event listeners
@@ -958,17 +965,15 @@
                 callStatus.textContent = `Calling ${callToUsername}...`;
                 callStatus.style.display = 'block';
                 
-                // Simplified audio constraints - disable processing features
+                // Use same constraints as the caller for consistency
                 const constraints = {
                     audio: {
-                        echoCancellation: false,  // Disable echo cancellation 
-                        noiseSuppression: false,  // Disable noise suppression
-                        autoGainControl: false    // Disable auto gain control
+                        echoCancellation: {ideal: false},
+                        noiseSuppression: {ideal: false},
+                        autoGainControl: {ideal: false}
                     },
                     video: false
                 };
-                
-                console.log("Using audio constraints:", JSON.stringify(constraints));
                 
                 // Get the media stream with simplified constraints
                 localStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -994,13 +999,15 @@
                 // Create offer with explicit audio options
                 const offerOptions = {
                     offerToReceiveAudio: true,
-                    offerToReceiveVideo: false
+                    offerToReceiveVideo: false,
+                    iceRestart: true, // Add explicit ice restart to force new ICE candidates
+                    voiceActivityDetection: true
                 };
                 
                 console.log("Creating offer with options:", JSON.stringify(offerOptions));
                 const offer = await peerConnection.createOffer(offerOptions);
                 
-                console.log("SDP offer created");
+                console.log("SDP offer created:", offer.sdp.substring(0, 100) + "...");
                 await peerConnection.setLocalDescription(offer);
                 
                 socket.emit('call-offer', {
@@ -1083,22 +1090,16 @@
             // Handle ICE candidate events
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    const targetUser = callToUsername || callFromUsername;
-                    console.log(`Generated ICE candidate for ${targetUser}`);
+                    console.log("Generated ICE candidate for:", callToUsername || incomingCaller);
                     
-                    // Send to the other user along with sender info
+                    // Send the ICE candidate to the other peer
                     socket.emit('ice-candidate', {
                         candidate: event.candidate,
-                        target: targetUser,
+                        target: callToUsername || incomingCaller,
                         sender: username
                     });
-                    
-                    updateDebugInfo({
-                        action: 'ice-candidate-sent',
-                        to: targetUser,
-                        candidateType: event.candidate.type,
-                        timestamp: new Date().toISOString()
-                    });
+                } else {
+                    console.log("All ICE candidates have been generated");
                 }
             };
             
@@ -1828,74 +1829,86 @@
         // Accept call functionality
         async function acceptCall() {
             try {
-                callStatus.textContent = `Connecting to ${callFromUsername}...`;
+                incomingCallDialog.style.display = 'none';
+                callStatus.textContent = `In call with ${incomingCaller}`;
                 callStatus.style.display = 'block';
-                
-                // Hide accept/decline buttons, show end call button
-                acceptCallBtn.style.display = 'none';
-                declineCallBtn.style.display = 'none';
-                endCallBtn.style.display = 'inline-block';
                 
                 // Use same constraints as the caller for consistency
                 const constraints = {
                     audio: {
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
+                        echoCancellation: {ideal: false},
+                        noiseSuppression: {ideal: false},
+                        autoGainControl: {ideal: false}
                     },
                     video: false
                 };
                 
-                console.log("Using audio constraints for accepting call:", JSON.stringify(constraints));
-                
-                // Get user media
+                // Get media stream
                 localStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
-                console.log("Local stream tracks (accept):", 
+                console.log("Local stream obtained for call answer with tracks:", 
                     localStream.getTracks().map(t => 
                         `${t.kind}: enabled=${t.enabled}, muted=${t.muted}, label=${t.label}`
                     ).join('\n')
                 );
                 
-                // Create peer connection
+                // Create peer connection with our enhanced configuration
                 peerConnection = new RTCPeerConnection(rtcConfig);
                 
-                // Add local tracks to peer connection
+                // Add our local stream to the connection
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
-                    console.log(`Added local track to peer connection: ${track.kind}`);
+                    console.log(`Added local track to peer connection in acceptCall: ${track.kind}`);
                 });
                 
-                // Set up event handlers
+                // Set up event handlers for this peer connection
                 setupPeerConnectionHandlers();
                 
-                // Set remote description (the offer)
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+                // Set the remote description (the offer)
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+                console.log("Set remote description successfully");
                 
-                // Create and send answer
-                const answer = await peerConnection.createAnswer();
+                // Create an answer
+                const answerOptions = {
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: false,
+                    iceRestart: true
+                };
+                
+                const answer = await peerConnection.createAnswer(answerOptions);
+                console.log("Answer created successfully");
+                
+                // Set local description (our answer)
                 await peerConnection.setLocalDescription(answer);
+                console.log("Set local description successfully");
                 
+                // Send the answer to the caller
                 socket.emit('call-answer', {
                     answer: peerConnection.localDescription,
-                    caller: callFromUsername,
-                    callee: username,
-                    sender: username // Add sender information
+                    caller: incomingCaller,
+                    target: incomingCaller,
+                    sender: username
                 });
                 
-                // Set state
+                // Update UI
                 activeCall = true;
+                endCallBtn.style.display = 'inline-block';
+                
+                // Try playing a test tone to ensure audio is active
+                setTimeout(() => {
+                    playTestTone(200);
+                }, 1000);
                 
                 updateDebugInfo({
                     action: 'call-accepted',
-                    from: callFromUsername
+                    caller: incomingCaller
                 });
                 
             } catch (error) {
                 console.error('Error accepting call:', error);
                 callStatus.textContent = `Call failed: ${error.message}`;
-                resetCallState();
                 updateDebugInfo({
+                    action: 'accept-call-error',
                     error: error.message
                 });
             }
@@ -2008,34 +2021,35 @@
         // Monitor audio levels for debugging
         function monitorAudioLevels(audioElement, track) {
             try {
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioCtx.createMediaStreamSource(audioElement.srcObject);
-                const analyser = audioCtx.createAnalyser();
+                console.log("Setting up audio level monitoring for", track.kind);
+                
+                // Create audio context and analyzer
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(audioElement.srcObject);
+                const analyser = audioContext.createAnalyser();
                 analyser.fftSize = 256;
-                source.connect(analyser);
+                source.connect(analyser); // Critical line - connect source to analyzer
                 
                 // Create data array for analysis
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
                 
-                function checkAudioLevels() {
-                    if (!audioElement.srcObject || !activeCall) return;
+                // Check audio levels every 500ms
+                const levelCheckInterval = setInterval(() => {
+                    if (!audioElement || !audioElement.srcObject || !track.enabled) {
+                        clearInterval(levelCheckInterval);
+                        return;
+                    }
                     
                     analyser.getByteFrequencyData(dataArray);
                     
-                    // Calculate average level
+                    // Calculate average volume
                     let sum = 0;
                     for (let i = 0; i < dataArray.length; i++) {
                         sum += dataArray[i];
                     }
                     const average = sum / dataArray.length;
                     
-                    // If we detect audio but element is paused, try to play
-                    if (average > 5 && audioElement.paused) {
-                        console.log("Audio detected but element is paused, playing...");
-                        audioElement.play().catch(e => console.error("Failed to play on activity:", e));
-                    }
-                    
-                    // Update debug info with comprehensive details
+                    // Update debug info with audio levels
                     updateDebugInfo({
                         remoteAudioLevel: average.toFixed(2),
                         audioElementState: audioElement.paused ? "paused" : "playing",
@@ -2043,25 +2057,24 @@
                         trackEnabled: track.enabled,
                         trackMuted: track.muted,
                         trackState: track.readyState,
-                        iceState: peerConnection ? peerConnection.iceConnectionState : 'unknown',
-                        connState: peerConnection ? peerConnection.connectionState : 'unknown',
+                        iceState: peerConnection ? peerConnection.iceConnectionState : "none",
+                        connState: peerConnection ? peerConnection.connectionState : "none",
                         timestamp: new Date().toISOString()
                     });
                     
-                    // Also log to console for easier debugging
-                    console.log("Audio Levels:", {
-                        remoteAudioLevel: average.toFixed(2),
-                        audioState: audioElement.paused ? "paused" : "playing",
-                        iceState: peerConnection ? peerConnection.iceConnectionState : 'unknown'
-                    });
-                    
-                    requestAnimationFrame(checkAudioLevels);
-                }
-                
-                checkAudioLevels();
-                
-            } catch (error) {
-                console.error("Error setting up audio monitoring:", error);
+                    // If audio level is zero but we should be getting audio, try to restart
+                    if (average < 0.01 && audioElement.srcObject && !audioElement.paused && track.enabled) {
+                        console.log("Zero audio level detected - trying to recover");
+                        
+                        // Force play if possible
+                        audioElement.play().catch(e => console.log("Play during recovery failed:", e));
+                        
+                        // Try a test tone to "wake up" the audio system
+                        playTestTone(50);
+                    }
+                }, 500);
+            } catch (e) {
+                console.error("Error monitoring audio levels:", e);
             }
         }
     </script>
