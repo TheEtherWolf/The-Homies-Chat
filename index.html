@@ -552,6 +552,30 @@
         .video-call-controls.no-users .no-users-message {
             display: block;
         }
+        
+        /* Incoming call dialog */
+        #incomingCallDialog {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(67, 20, 128, 0.9);
+            color: rgb(240, 250, 200);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1001;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        
+        #incomingCallDialog h3 {
+            margin-top: 0;
+        }
+        
+        #incomingCallDialog button {
+            margin-top: 15px;
+        }
     </style>
 </head>
 <body>
@@ -609,10 +633,6 @@
         <h3>Account Settings</h3>
         <form id="changePasswordForm">
             <div>
-                <label for="currentPassword">Current Password:</label>
-                <input type="password" id="currentPassword" required />
-            </div>
-            <div>
                 <label for="newPassword">New Password:</label>
                 <input type="password" id="newPassword" required />
             </div>
@@ -624,6 +644,16 @@
                 <button type="submit" class="settings-button">Change Password</button>
             </div>
         </form>
+    </div>
+
+    <!-- Add incoming call dialog -->
+    <div id="incomingCallDialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(67, 20, 128, 0.9); color: rgb(240, 250, 200); padding: 20px; border-radius: 10px; z-index: 1001; text-align: center; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+        <h3>Incoming Call</h3>
+        <p id="incomingCallText">Incoming call from...</p>
+        <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px;">
+            <button id="incomingAcceptBtn" style="background-color: green; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Accept</button>
+            <button id="incomingDeclineBtn" style="background-color: #d9534f; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Decline</button>
+        </div>
     </div>
 
     <div id="debugInfo" class="debug-info"></div>
@@ -1235,28 +1265,37 @@
             });
             
             socket.on('call-offer', (data) => {
-                const { offer, caller, sender } = data;
-                console.log(`Received call offer from ${caller}`);
+                console.log("Received call offer from:", data.caller);
                 
-                // Store the pending offer and caller
-                pendingOffer = offer;
-                callFromUsername = caller;
+                // Store the caller and offer
+                incomingCaller = data.caller;
+                incomingOffer = data.offer;
                 
-                // Show incoming call UI
-                callStatus.textContent = `Incoming call from ${caller}`;
+                // Stop any existing call sound that might be playing
+                const callSound = document.getElementById('incomingCallSound');
+                callSound.pause();
+                callSound.currentTime = 0;
+                
+                // Play the incoming call sound
+                callSound.play().catch(e => console.error("Error playing call sound:", e));
+                
+                // Update the incoming call dialog with caller information
+                const incomingCallText = document.getElementById('incomingCallText');
+                incomingCallText.textContent = `Incoming call from ${incomingCaller}`;
+                
+                // Show the incoming call dialog
+                const incomingCallDialog = document.getElementById('incomingCallDialog');
+                incomingCallDialog.style.display = 'block';
+                
+                // Update the call status UI
+                callStatus.textContent = `Incoming call from ${incomingCaller}...`;
                 callStatus.style.display = 'block';
-                
                 acceptCallBtn.style.display = 'inline-block';
                 declineCallBtn.style.display = 'inline-block';
-                endCallBtn.style.display = 'none';
-                
-                // Play incoming call sound
-                incomingCallSound.play();
                 
                 updateDebugInfo({
                     action: 'call-offer-received',
-                    from: caller,
-                    sender: sender
+                    caller: data.caller
                 });
             });
 
@@ -1427,10 +1466,14 @@
         }
         
         // Attach event listeners for call controls
-        startCallBtn.addEventListener('click', startCall);
-        endCallBtn.addEventListener('click', endCall);
-        acceptCallBtn.addEventListener('click', acceptCall);
-        declineCallBtn.addEventListener('click', declineCall);
+        document.getElementById('startCall').addEventListener('click', startCall);
+        document.getElementById('endCall').addEventListener('click', endCall);
+        document.getElementById('acceptCall').addEventListener('click', acceptCall);
+        document.getElementById('declineCall').addEventListener('click', declineCall);
+        
+        // Add event listeners for the incoming call dialog buttons
+        document.getElementById('incomingAcceptBtn').addEventListener('click', acceptCall);
+        document.getElementById('incomingDeclineBtn').addEventListener('click', declineCall);
         
         // Microphone test functionality
         document.getElementById('testMicrophone').addEventListener('click', async function() {
@@ -1469,7 +1512,7 @@
                 
                 // Connect to audio analyser
                 const source = audioContext.createMediaStreamSource(testStream);
-                source.connect(analyser);
+                source.connect(analyser); // Critical line - connect source to analyzer
                 
                 // Create data array for analysis
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -1829,7 +1872,15 @@
         // Accept call functionality
         async function acceptCall() {
             try {
+                // Get reference to the dialog element
+                const incomingCallDialog = document.getElementById('incomingCallDialog');
+                const incomingCallSound = document.getElementById('incomingCallSound');
+                
+                // Hide dialog and stop sound
                 incomingCallDialog.style.display = 'none';
+                incomingCallSound.pause();
+                incomingCallSound.currentTime = 0;
+                
                 callStatus.textContent = `In call with ${incomingCaller}`;
                 callStatus.style.display = 'block';
                 
@@ -1912,6 +1963,49 @@
                     error: error.message
                 });
             }
+        }
+        
+        // Function to end a call
+        function endCall() {
+            console.log("Ending call");
+            
+            // Get incoming call dialog and sound elements
+            const incomingCallDialog = document.getElementById('incomingCallDialog');
+            const incomingCallSound = document.getElementById('incomingCallSound');
+            
+            // Hide incoming call dialog if it's visible
+            if (incomingCallDialog) {
+                incomingCallDialog.style.display = 'none';
+            }
+            
+            // Stop any incoming call sound
+            if (incomingCallSound) {
+                incomingCallSound.pause();
+                incomingCallSound.currentTime = 0;
+            }
+            
+            // Notify the other user about call ending
+            if (callToUsername || incomingCaller) {
+                socket.emit('end-call', {
+                    target: callToUsername || incomingCaller,
+                    sender: username
+                });
+            }
+            
+            // Clean up and reset call state
+            resetCallState();
+            
+            // Update UI
+            callStatus.textContent = 'Call ended';
+            setTimeout(() => {
+                callStatus.style.display = 'none';
+                callStatus.textContent = '';
+            }, 3000);
+            
+            updateDebugInfo({
+                action: 'call-ended',
+                byUser: true
+            });
         }
         
         // Fix for initial page load - force scroll to bottom after everything else
@@ -2025,9 +2119,9 @@
                 
                 // Create audio context and analyzer
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioContext.createMediaStreamSource(audioElement.srcObject);
                 const analyser = audioContext.createAnalyser();
                 analyser.fftSize = 256;
+                const source = audioContext.createMediaStreamSource(audioElement.srcObject);
                 source.connect(analyser); // Critical line - connect source to analyzer
                 
                 // Create data array for analysis
