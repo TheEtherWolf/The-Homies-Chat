@@ -670,9 +670,13 @@
         let username = localStorage.getItem('username');
         let localStream = null;
         let peerConnection = null;
-        let callToUsername = null;
         let activeCall = false;
+        let callToUsername = null;
+        let incomingCaller = null;
         let socketInitialized = false;
+        // Store audio monitoring intervals for cleanup
+        let audioMonitoringIntervals = [];
+        let connectionMonitorInterval = null;
         
         // DOM elements
         const messagesContainer = document.getElementById('messages');
@@ -1989,6 +1993,77 @@
             });
         }
         
+        // Properly define resetCallState function
+        function resetCallState() {
+            console.log("Resetting call state...");
+            
+            // Stop all audio monitoring intervals
+            if (audioMonitoringIntervals.length > 0) {
+                audioMonitoringIntervals.forEach(interval => clearInterval(interval));
+                audioMonitoringIntervals = [];
+            }
+            
+            // Clear connection monitor interval
+            if (connectionMonitorInterval) {
+                clearInterval(connectionMonitorInterval);
+                connectionMonitorInterval = null;
+            }
+            
+            // Clean up remote audio
+            const remoteAudio = document.getElementById('remoteAudio');
+            if (remoteAudio && remoteAudio.srcObject) {
+                const tracks = remoteAudio.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+                remoteAudio.srcObject = null;
+            }
+            
+            // Clean up local stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                localStream = null;
+            }
+            
+            // Clean up peer connection
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            // Reset call state variables
+            activeCall = false;
+            callToUsername = null;
+            incomingCaller = null;
+            
+            // Reset UI
+            startCallBtn.style.display = 'inline-block';
+            endCallBtn.style.display = 'none';
+            
+            console.log("Call state reset complete");
+        }
+        
+        // Add debug helper function to periodically check connection status
+        connectionMonitorInterval = setInterval(() => {
+            // Only run checks during active calls
+            if (activeCall && peerConnection && (peerConnection.iceConnectionState === 'checking' || 
+                peerConnection.iceConnectionState === 'connecting')) {
+                
+                console.log("Connection still establishing, attempting to help...");
+                
+                // If we're stuck in checking state for too long, try refreshing the connection
+                try {
+                    // Restart ICE if possible
+                    if (peerConnection.restartIce) {
+                        peerConnection.restartIce();
+                        console.log("ICE restart triggered");
+                    }
+                } catch (error) {
+                    console.error("Error during ICE restart:", error);
+                }
+            }
+        }, 5000);  // Check every 5 seconds
+        
         // Fix for initial page load - force scroll to bottom after everything else
         window.onload = function() {
             setTimeout(function() {
@@ -2101,11 +2176,11 @@
             try {
                 console.log("Setting up audio level monitoring for", track.kind);
                 
-                // Create audio context and analyzer
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const analyser = audioContext.createAnalyser();
+                // Create audio context for analysis
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(audioElement.srcObject);
+                const analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 256;
-                const source = audioContext.createMediaStreamSource(audioElement.srcObject);
                 source.connect(analyser); // Critical line - connect source to analyzer
                 
                 // Create data array for analysis
@@ -2113,7 +2188,7 @@
                 
                 // Check audio levels every 500ms
                 const levelCheckInterval = setInterval(() => {
-                    if (!audioElement || !audioElement.srcObject || !track.enabled) {
+                    if (!audioElement || !audioElement.srcObject || !track.enabled || !activeCall) {
                         clearInterval(levelCheckInterval);
                         return;
                     }
@@ -2151,31 +2226,13 @@
                         playTestTone(50);
                     }
                 }, 500);
+                
+                // Store interval for cleanup
+                audioMonitoringIntervals.push(levelCheckInterval);
             } catch (e) {
                 console.error("Error monitoring audio levels:", e);
             }
         }
-        
-        // Add debug helper function to periodically check connection status
-        setInterval(() => {
-            // Only run checks during active calls
-            if (peerConnection && (peerConnection.iceConnectionState === 'checking' || 
-                peerConnection.iceConnectionState === 'connecting')) {
-                
-                console.log("Connection still establishing, attempting to help...");
-                
-                // If we're stuck in checking state for too long, try refreshing the connection
-                try {
-                    // Restart ICE if possible
-                    if (peerConnection.restartIce) {
-                        peerConnection.restartIce();
-                        console.log("ICE restart triggered");
-                    }
-                } catch (error) {
-                    console.error("Error during ICE restart:", error);
-                }
-            }
-        }, 5000);  // Check every 5 seconds
     </script>
 </body>
 </html>
