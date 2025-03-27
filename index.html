@@ -449,12 +449,15 @@
             bottom: 10px;
             right: 10px;
             background: rgba(0, 0, 0, 0.8);
-            color: white;
+            color: #00ff00;
             padding: 10px;
             border-radius: 5px;
             font-family: monospace;
             font-size: 12px;
+            max-height: 300px;
+            overflow: auto;
             display: none;
+            z-index: 9999;
         }
 
         .debug-toggle {
@@ -656,8 +659,8 @@
         </div>
     </div>
 
-    <div id="debugInfo" class="debug-info"></div>
-    <button id="debugToggle" class="debug-toggle">Debug</button>
+    <div id="debugInfo" class="debug-info" style="display: none; position: fixed; bottom: 10px; right: 10px; background: rgba(0, 0, 0, 0.8); color: #00ff00; padding: 10px; border-radius: 5px; max-height: 300px; overflow: auto; font-family: monospace; font-size: 12px; z-index: 9999;"></div>
+    <button id="debugToggle" class="debug-toggle" style="position: fixed; bottom: 10px; right: 10px; z-index: 10000; background: #333; color: white; border: none; border-radius: 5px; padding: 5px 10px; cursor: pointer;">Show Debug</button>
     <audio id="remoteAudio" autoplay style="display: none;"></audio>
     <audio id="testAudioOut" src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3" preload="auto" style="display: none;"></audio>
     <div id="audioFeedback" style="display: none; position: fixed; bottom: 50px; right: 10px; background-color: rgba(0,0,128,0.7); color: white; padding: 10px; border-radius: 5px; z-index: 1000;"></div>
@@ -724,24 +727,34 @@
         });
         
         // Debug information
-        const debugInfoElement = document.createElement('pre');
-        debugInfoElement.style.position = 'fixed';
-        debugInfoElement.style.bottom = '10px';
-        debugInfoElement.style.right = '10px';
-        debugInfoElement.style.background = 'rgba(0, 0, 0, 0.7)';
-        debugInfoElement.style.color = 'lime';
-        debugInfoElement.style.padding = '10px';
-        debugInfoElement.style.fontSize = '12px';
-        debugInfoElement.style.maxHeight = '300px';
-        debugInfoElement.style.overflow = 'auto';
-        debugInfoElement.style.zIndex = '9999';
-        document.body.appendChild(debugInfoElement);
+        const debugInfoElement = document.getElementById('debugInfo');
+        const debugToggleBtn = document.getElementById('debugToggle');
+        
+        debugToggleBtn.addEventListener('click', function() {
+            if (debugInfoElement.style.display === 'none') {
+                debugInfoElement.style.display = 'block';
+                debugToggleBtn.textContent = 'Hide Debug';
+                debugToggleBtn.style.bottom = (10 + debugInfoElement.offsetHeight) + 'px';
+            } else {
+                debugInfoElement.style.display = 'none';
+                debugToggleBtn.textContent = 'Show Debug';
+                debugToggleBtn.style.bottom = '10px';
+            }
+        });
         
         function updateDebugInfo(info) {
             try {
                 const currentInfo = JSON.parse(debugInfoElement.textContent || '{}');
                 const updatedInfo = { ...currentInfo, ...info, timestamp: new Date().toISOString() };
                 debugInfoElement.textContent = JSON.stringify(updatedInfo, null, 2);
+                
+                // Reposition the toggle button if debug is visible
+                if (debugInfoElement.style.display !== 'none') {
+                    debugToggleBtn.style.bottom = (10 + debugInfoElement.offsetHeight) + 'px';
+                }
+                
+                // Log to console for developer debugging
+                console.log("Debug info updated:", info);
             } catch (e) {
                 console.error("Error updating debug info:", e);
             }
@@ -1942,23 +1955,50 @@
         // Add debug helper function to periodically check connection status
         connectionMonitorInterval = setInterval(() => {
             // Only run checks during active calls
-            if (activeCall && peerConnection && (peerConnection.iceConnectionState === 'checking' || 
-                peerConnection.iceConnectionState === 'connecting')) {
+            if (activeCall && peerConnection) {
+                // Update connection status
+                updateDebugInfo({
+                    iceState: peerConnection.iceConnectionState,
+                    connState: peerConnection.connectionState
+                });
                 
-                console.log("Connection still establishing, attempting to help...");
-                
-                // If we're stuck in checking state for too long, try refreshing the connection
-                try {
-                    // Restart ICE if possible
-                    if (peerConnection.restartIce) {
-                        peerConnection.restartIce();
-                        console.log("ICE restart triggered");
+                // If stuck in checking/connecting state for too long
+                if (peerConnection.iceConnectionState === 'checking' || 
+                    peerConnection.iceConnectionState === 'connecting') {
+                    
+                    console.log("Connection still establishing, attempting to help...");
+                    
+                    // Try restarting ICE if possible
+                    try {
+                        if (peerConnection.restartIce) {
+                            peerConnection.restartIce();
+                            console.log("ICE restart triggered");
+                        }
+                    } catch (error) {
+                        console.error("Error during ICE restart:", error);
                     }
-                } catch (error) {
-                    console.error("Error during ICE restart:", error);
+                }
+                
+                // Handle failed connections
+                if (peerConnection.iceConnectionState === 'failed' || 
+                    peerConnection.iceConnectionState === 'disconnected' ||
+                    peerConnection.connectionState === 'failed' ||
+                    peerConnection.connectionState === 'disconnected') {
+                    
+                    console.log("WebRTC connection failed or disconnected, cleaning up");
+                    
+                    // Only auto-end if we haven't already started ending
+                    if (activeCall) {
+                        resetCallState();
+                        callStatus.textContent = 'Call ended due to connection issues';
+                        setTimeout(() => {
+                            callStatus.style.display = 'none';
+                            callStatus.textContent = '';
+                        }, 3000);
+                    }
                 }
             }
-        }, 5000);  // Check every 5 seconds
+        }, 2000);  // Check every 2 seconds
         
         // Fix for initial page load - force scroll to bottom after everything else
         window.onload = function() {
