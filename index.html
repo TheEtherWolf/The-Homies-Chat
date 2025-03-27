@@ -444,40 +444,6 @@
             display: none;
         }
 
-        .debug-info {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            color: #00ff00;
-            padding: 10px;
-            border-radius: 5px;
-            font-family: monospace;
-            font-size: 12px;
-            max-height: 300px;
-            overflow: auto;
-            display: none;
-            z-index: 9999;
-        }
-
-        .debug-toggle {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            background-color: rgb(67, 20, 128);
-            color: rgb(240, 250, 200);
-            border: none;
-            border-radius: 5px;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-size: 12px;
-            z-index: 1001;
-        }
-
-        .debug-toggle:hover {
-            background-color: rgb(240, 65, 129);
-        }
-
         .settings-panel {
             position: fixed;
             top: 50%;
@@ -578,6 +544,41 @@
         
         #incomingCallDialog button {
             margin-top: 15px;
+        }
+
+        /* Debug info style fix */
+        .debug-info {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow: auto;
+            display: none;
+            z-index: 9999;
+        }
+
+        .debug-toggle {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background-color: rgb(67, 20, 128);
+            color: rgb(240, 250, 200);
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 1001;
+        }
+
+        .debug-toggle:hover {
+            background-color: rgb(240, 65, 129);
         }
     </style>
 </head>
@@ -768,6 +769,7 @@
                 
                 // Fallback method for older browsers
                 try {
+                    // Create a temporary textarea and select its content
                     const textArea = document.createElement('textarea');
                     textArea.value = debugInfoElement.textContent;
                     document.body.appendChild(textArea);
@@ -1071,27 +1073,23 @@
                 document.getElementById('acceptCall').style.display = 'none';
                 document.getElementById('declineCall').style.display = 'none';
                 
-                // Use robust audio constraints
-                let constraints = {
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    },
+                // Simplify the constraints to just get basic audio first
+                const constraints = {
+                    audio: true,
                     video: false
                 };
                 
-                // Try to use preferred microphone if set
-                const preferredMic = localStorage.getItem('preferredMicrophone');
-                if (preferredMic) {
-                    constraints.audio = {
-                        ...constraints.audio,
-                        deviceId: { exact: preferredMic }
-                    };
+                try {
+                    // Get the media stream with simple constraints
+                    console.log("Attempting to get media stream");
+                    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    console.log("Media stream acquired successfully");
+                } catch (streamError) {
+                    console.error("Failed to get media stream:", streamError);
+                    alert(`Could not access your microphone: ${streamError.message}. Please check your browser permissions.`);
+                    resetCallState();
+                    return;
                 }
-                
-                // Get the media stream with constraints
-                localStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
                 console.log("Local stream tracks:", 
                     localStream.getTracks().map(t => 
@@ -1099,8 +1097,17 @@
                     ).join('\n')
                 );
                 
-                // Create peer connection
-                peerConnection = new RTCPeerConnection(rtcConfig);
+                // Create peer connection with explicit error handling
+                try {
+                    console.log("Creating peer connection");
+                    peerConnection = new RTCPeerConnection(rtcConfig);
+                } catch (peerError) {
+                    console.error("Error creating peer connection:", peerError);
+                    alert(`Failed to create connection: ${peerError.message}`);
+                    localStream.getTracks().forEach(track => track.stop());
+                    resetCallState();
+                    return;
+                }
                 
                 // Add local tracks to peer connection
                 localStream.getTracks().forEach(track => {
@@ -1217,7 +1224,7 @@
             
             // Handle incoming audio track
             peerConnection.ontrack = (event) => {
-                console.log(`Received track: ${event.track.kind}`);
+                console.log(`Received track: ${event.track.kind}, ID: ${event.track.id}`);
                 
                 const remoteAudio = document.getElementById('remoteAudio');
                 
@@ -1232,26 +1239,57 @@
                 // Apply preferred speaker if available
                 applyPreferredSpeaker();
                 
-                // Force audio to play
-                remoteAudio.play()
-                .then(() => {
-                    console.log("Remote audio playing successfully");
-                    // Unmute explicitly
-                    remoteAudio.muted = false;
-                    // Monitor audio levels
-                    monitorAudioLevels(remoteAudio, event.track);
-                })
-                .catch(error => {
-                    console.error("Failed to play remote audio:", error);
-                    updateDebugInfo({
-                        remoteAudioError: error.message
-                    });
+                // Make sure the audio element has the right properties
+                remoteAudio.muted = false;
+                remoteAudio.volume = 1.0;
+                
+                // Force audio to play with retry logic
+                let playAttempts = 0;
+                const maxPlayAttempts = 3;
+                
+                function attemptToPlay() {
+                    playAttempts++;
+                    console.log(`Attempt ${playAttempts} to play remote audio`);
                     
-                    // Try again after a moment
-                    setTimeout(() => {
-                        remoteAudio.play().catch(e => console.log("Retry play failed:", e));
-                    }, 1000);
-                });
+                    remoteAudio.play()
+                        .then(() => {
+                            console.log("Remote audio playing successfully");
+                            // Ensure we're not muted
+                            remoteAudio.muted = false;
+                            
+                            // Monitor audio levels
+                            monitorAudioLevels(remoteAudio, event.track);
+                        })
+                        .catch(error => {
+                            console.error(`Attempt ${playAttempts} failed to play remote audio:`, error);
+                            
+                            updateDebugInfo({
+                                remoteAudioError: error.message,
+                                playAttempt: playAttempts
+                            });
+                            
+                            // Try again if we haven't reached max attempts
+                            if (playAttempts < maxPlayAttempts) {
+                                setTimeout(attemptToPlay, 1000);
+                            } else {
+                                console.error("Max play attempts reached, giving up");
+                                
+                                // Try a different approach as last resort
+                                try {
+                                    // Create a temporary audio context and connect to destination
+                                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                                    const source = audioCtx.createMediaStreamSource(remoteAudio.srcObject);
+                                    source.connect(audioCtx.destination);
+                                    console.log("Connected to audio context as last resort");
+                                } catch (e) {
+                                    console.error("Last resort audio approach failed:", e);
+                                }
+                            }
+                        });
+                }
+                
+                // Start play attempts
+                attemptToPlay();
                 
                 updateDebugInfo({
                     action: 'track-received',
@@ -1381,77 +1419,101 @@
             });
 
             socket.on('call-answer', (data) => {
-                const { answer, callee, sender } = data;
-                console.log(`Received call answer from ${callee || sender}`);
-                
                 try {
-                    // Set remote description from answer
-                    peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
-                    .then(() => {
-                        console.log("Remote description set successfully from answer");
-                        
-                        // Update UI
-                        callStatus.textContent = `Connected to ${callee || sender}`;
-                        
-                        updateDebugInfo({
-                            action: 'call-answered',
-                            remoteDescription: true,
-                            from: callee || sender
+                    console.log("Received call answer");
+                    
+                    if (data.isRestartResponse) {
+                        if (peerConnection && peerConnection.signalingState !== 'closed') {
+                            peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
+                            .then(() => {
+                                console.log("Applied remote description from ICE restart response");
+                                
+                                updateDebugInfo({
+                                    action: 'ice-restart-completed'
+                                });
+                            })
+                            .catch(err => {
+                                console.error("Error applying remote description for restart:", err);
+                            });
+                        } else {
+                            console.log("Cannot process restart response - peer connection is invalid or closed");
+                        }
+                        return;
+                    }
+                    
+                    // Normal call answer processing
+                    const { answer, callee, sender } = data;
+                    console.log(`Received call answer from ${callee || sender}`);
+                    
+                    try {
+                        // Set remote description from answer
+                        peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
+                        .then(() => {
+                            console.log("Remote description set successfully from answer");
+                            
+                            // Update UI
+                            callStatus.textContent = `Connected to ${callee || sender}`;
+                            
+                            updateDebugInfo({
+                                action: 'call-answered',
+                                remoteDescription: true,
+                                from: callee || sender
+                            });
+                        })
+                        .catch(error => {
+                            console.error("Error setting remote description from answer:", error);
+                            updateDebugInfo({
+                                action: 'call-answer-error',
+                                error: error.message
+                            });
                         });
-                    })
-                    .catch(error => {
-                        console.error("Error setting remote description from answer:", error);
+                    } catch (error) {
+                        console.error("Exception in call-answer handler:", error);
                         updateDebugInfo({
-                            action: 'call-answer-error',
+                            action: 'call-answer-exception',
                             error: error.message
                         });
-                    });
+                    }
                 } catch (error) {
-                    console.error("Exception in call-answer handler:", error);
-                    updateDebugInfo({
-                        action: 'call-answer-exception',
-                        error: error.message
-                    });
+                    console.error("Error handling call answer:", error);
                 }
             });
 
             socket.on('ice-candidate', (data) => {
                 const { candidate, sender } = data;
-                console.log(`Received ICE candidate from ${sender}`);
                 
-                if (peerConnection) {
+                // Only process if we're in a call with this person
+                if ((sender === callToUsername || sender === incomingCaller) && peerConnection) {
                     try {
+                        console.log("Received ICE candidate from:", sender);
+                        
+                        // Add the ICE candidate to the peer connection
                         peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-                        .then(() => {
-                            console.log(`Added ICE candidate from ${sender}`);
-                            updateDebugInfo({
-                                action: 'ice-candidate-added',
-                                from: sender,
-                                iceState: peerConnection.iceConnectionState,
-                                connState: peerConnection.connectionState
+                            .then(() => {
+                                console.log("Successfully added ICE candidate");
+                                updateDebugInfo({
+                                    action: 'ice-candidate-added',
+                                    from: sender,
+                                    iceState: peerConnection.iceConnectionState,
+                                    connState: peerConnection.connectionState
+                                });
+                            })
+                            .catch(error => {
+                                console.error("Error adding ICE candidate:", error);
+                                updateDebugInfo({
+                                    action: 'ice-candidate-error',
+                                    error: error.message,
+                                    from: sender
+                                });
                             });
-                        })
-                        .catch(error => {
-                            console.error(`Error adding ICE candidate from ${sender}:`, error);
-                            updateDebugInfo({
-                                action: 'ice-candidate-error',
-                                error: error.message,
-                                from: sender
-                            });
-                        });
                     } catch (error) {
-                        console.error("Exception in ice-candidate handler:", error);
+                        console.error("Error processing ICE candidate:", error);
                         updateDebugInfo({
-                            action: 'ice-candidate-exception',
-                            error: error.message
+                            action: 'ice-candidate-error',
+                            error: error.message,
+                            from: sender
                         });
                     }
-                } else {
-                    console.warn("Received ICE candidate but no peer connection exists");
-                    updateDebugInfo({
-                        action: 'ice-candidate-no-peer',
-                        from: sender
-                    });
                 }
             });
             
@@ -1713,71 +1775,60 @@
                 // Set the audio output device if browser supports it
                 if (typeof testSound.setSinkId === 'function' && selectedSpeakerId) {
                     testSound.setSinkId(selectedSpeakerId)
-                    .then(() => {
-                        console.log(`Audio output device set to: ${selectedSpeakerId}`);
-                        playTestSound();
-                    })
-                    .catch(error => {
-                        console.error("Error setting audio output device:", error);
-                        feedbackDiv.textContent = "Error setting speaker: " + error.message;
-                        // Try to play on default device if there's an error
-                        setTimeout(() => playTestSound(), 500);
-                    });
-                } else {
-                    console.log("setSinkId not supported, using default audio output");
-                    // If setSinkId is not supported, just play on default device
-                    playTestSound();
+                        .then(() => console.log('Applied preferred speaker:', selectedSpeakerId))
+                        .catch(e => console.error('Error applying preferred speaker:', e));
                 }
                 
-                function playTestSound() {
-                    // Update feedback
-                    feedbackDiv.textContent = 'Playing test sound...';
-                    feedbackDiv.style.backgroundColor = 'rgba(0,0,128,0.7)';
+                // Play the test sound
+                testSound.play()
+                .then(() => {
+                    console.log("Test sound is playing");
                     
-                    // Create backup tone in case the audio file doesn't work
-                    const backupTone = () => {
-                        console.log("Playing backup test tone");
-                        playTestTone(2000); // Play a 2 second test tone
+                    // If we can't determine duration or it's invalid, use a timer
+                    const duration = testSound.duration && testSound.duration !== Infinity ? 
+                        testSound.duration * 1000 : 3000;
                         
-                        setTimeout(() => {
-                            feedbackDiv.textContent = 'Test completed (used backup tone)';
-                            setTimeout(() => {
-                                feedbackDiv.style.display = 'none';
-                            }, 1000);
-                        }, 2100);
-                    };
-                    
-                    // Play the test sound file
-                    testSound.play()
-                    .then(() => {
-                        console.log("Test sound is playing");
-                        
-                        // If we can't determine duration or it's invalid, use a timer
-                        const duration = testSound.duration && testSound.duration !== Infinity ? 
-                            testSound.duration * 1000 : 3000;
-                            
-                        // Hide feedback after sound completes
-                        setTimeout(() => {
-                            feedbackDiv.textContent = 'Test completed successfully';
-                            setTimeout(() => {
-                                feedbackDiv.style.display = 'none';
-                            }, 1000);
-                        }, duration + 500);
-                    })
-                    .catch(error => {
-                        console.error("Error playing test sound:", error);
-                        feedbackDiv.textContent = 'Error playing sound file, trying backup tone...';
-                        backupTone();
-                    });
-                    
-                    // Set a backup timeout in case the sound fails to play but doesn't trigger an error
+                    // Hide feedback after sound completes
                     setTimeout(() => {
-                        if (testSound.paused) {
-                            console.log("Audio may have failed to play, using backup tone");
-                            backupTone();
-                        }
-                    }, 1000);
-                }
+                        feedbackDiv.textContent = 'Test completed successfully';
+                        setTimeout(() => {
+                            feedbackDiv.style.display = 'none';
+                        }, 1000);
+                    }, duration + 500);
+                })
+                .catch(error => {
+                    console.error("Error playing test sound:", error);
+                    feedbackDiv.textContent = 'Error playing sound file, trying backup tone...';
+                    // Try a different approach as last resort
+                    try {
+                        // Create a temporary audio context and connect to destination
+                        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        const oscillator = audioCtx.createOscillator();
+                        const gainNode = audioCtx.createGain();
+                        
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4 note
+                        
+                        // Set volume (significantly reduced)
+                        gainNode.gain.setValueAtValue(0.05, audioCtx.currentTime); // Reduced from 0.2 to 0.05
+                        
+                        // Connect nodes
+                        oscillator.connect(gainNode);
+                        gainNode.connect(audioCtx.destination);
+                        
+                        // Schedule tone play and stop
+                        oscillator.start();
+                        oscillator.stop(audioCtx.currentTime + (duration / 1000));
+                        
+                        // Clean up
+                        oscillator.onended = () => {
+                            oscillator.disconnect();
+                            gainNode.disconnect();
+                        };
+                    } catch (e) {
+                        console.error("Last resort audio approach failed:", e);
+                    }
+                });
                 
             } catch (error) {
                 console.error("Error testing speaker:", error);
@@ -1788,10 +1839,30 @@
                 
                 // Try the test tone as a last resort
                 setTimeout(() => {
-                    playTestTone(1000);
-                    setTimeout(() => {
-                        feedbackDiv.style.display = 'none';
-                    }, 2000);
+                    // Create a temporary audio context and connect to destination
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioCtx.createOscillator();
+                    const gainNode = audioCtx.createGain();
+                    
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4 note
+                    
+                    // Set volume (significantly reduced)
+                    gainNode.gain.setValueAtValue(0.05, audioCtx.currentTime); // Reduced from 0.2 to 0.05
+                    
+                    // Connect nodes
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    
+                    // Schedule tone play and stop
+                    oscillator.start();
+                    oscillator.stop(audioCtx.currentTime + (duration / 1000));
+                    
+                    // Clean up
+                    oscillator.onended = () => {
+                        oscillator.disconnect();
+                        gainNode.disconnect();
+                    };
                 }, 1500);
             }
         });
@@ -2024,20 +2095,24 @@
                 document.getElementById('acceptCall').style.display = 'none';
                 document.getElementById('declineCall').style.display = 'none';
                 
-                // Use robust audio constraints
-                let constraints = {
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    },
+                // Simplify the constraints to just get basic audio first
+                const constraints = {
+                    audio: true,
                     video: false
                 };
                 
-                // Get media stream
-                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                try {
+                    console.log("Requesting media access");
+                    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    console.log("Media access granted");
+                } catch (error) {
+                    console.error("Error accessing media devices:", error);
+                    alert(`Could not access your microphone: ${error.message}. Please check your permissions.`);
+                    endCall();
+                    return;
+                }
                 
-                console.log("Local stream obtained for call answer with tracks:", 
+                console.log("Local stream tracks:", 
                     localStream.getTracks().map(t => 
                         `${t.kind}: enabled=${t.enabled}, muted=${t.muted}, label=${t.label}`
                     ).join('\n')
