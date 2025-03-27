@@ -2203,52 +2203,262 @@
         }
         
         // Add debug helper function to periodically check connection status
-        connectionMonitorInterval = setInterval(() => {
-            // Only run checks during active calls
-            if (activeCall && peerConnection) {
-                // Update connection status
-                updateDebugInfo({
-                    iceState: peerConnection.iceConnectionState,
-                    connState: peerConnection.connectionState
-                });
-                
-                // If stuck in checking/connecting state for too long
-                if (peerConnection.iceConnectionState === 'checking' || 
-                    peerConnection.iceConnectionState === 'connecting') {
-                    
-                    console.log("Connection still establishing, attempting to help...");
-                    
-                    // Try restarting ICE if possible
-                    try {
-                        if (peerConnection.restartIce) {
-                            peerConnection.restartIce();
-                            console.log("ICE restart triggered");
-                        }
-                    } catch (error) {
-                        console.error("Error during ICE restart:", error);
-                    }
-                }
-                
-                // Handle failed connections
-                if (peerConnection.iceConnectionState === 'failed' || 
-                    peerConnection.iceConnectionState === 'disconnected' ||
-                    peerConnection.connectionState === 'failed' ||
-                    peerConnection.connectionState === 'disconnected') {
-                    
-                    console.log("WebRTC connection failed or disconnected, cleaning up");
-                    
-                    // Only auto-end if we haven't already started ending
-                    if (activeCall) {
-                        resetCallState();
-                        callStatus.textContent = 'Call ended due to connection issues';
-                        setTimeout(() => {
-                            callStatus.style.display = 'none';
-                            callStatus.textContent = '';
-                        }, 3000);
-                    }
-                }
+        function startConnectionMonitoring() {
+            // Clear any existing monitor
+            if (connectionMonitorInterval) {
+                clearInterval(connectionMonitorInterval);
             }
-        }, 2000);  // Check every 2 seconds
+            
+            // Set the last known states
+            let lastIceState = 'new';
+            let lastConnState = 'new';
+            let stuckStateTime = null;
+            let connectionAttempts = 0;
+            const MAX_RECONNECT_ATTEMPTS = 3;
+            
+            // Set up the connection monitoring interval
+            connectionMonitorInterval = setInterval(() => {
+                if (!peerConnection) return;
+                
+                const currentIceState = peerConnection.iceConnectionState;
+                const currentConnState = peerConnection.connectionState;
+                
+                // Log state changes
+                if (currentIceState !== lastIceState || currentConnState !== lastConnState) {
+                    console.log(`Connection states changed - ICE: ${currentIceState}, Connection: ${currentConnState}`);
+                    
+                    // Reset stuck timer on any state change
+                    stuckStateTime = null;
+                    
+                    updateDebugInfo({
+                        iceStateChange: currentIceState,
+                        connStateChange: currentConnState
+                    });
+                    
+                    // If we've successfully connected, reset the reconnect counter
+                    if (currentConnState === 'connected') {
+                        connectionAttempts = 0;
+                    }
+                }
+                
+                // Check for "checking" state that might be stuck
+                if ((currentIceState === 'checking' || currentConnState === 'connecting') && 
+                    (currentIceState === lastIceState && currentConnState === lastConnState)) {
+                    
+                    // Initialize the stuck timer if not already set
+                    if (!stuckStateTime) {
+                        stuckStateTime = Date.now();
+                    } else {
+                        // Check if we've been stuck for more than 10 seconds
+                        const stuckDuration = Date.now() - stuckStateTime;
+                        if (stuckDuration > 10000) { // 10 seconds
+                            console.log(`Connection appears stuck in ${currentIceState}/${currentConnState} for ${stuckDuration}ms. Attempting recovery.`);
+                            
+                            // Increment attempts
+                            connectionAttempts++;
+                            
+                            if (connectionAttempts <= MAX_RECONNECT_ATTEMPTS) {
+                                // Try a more aggressive ICE restart
+                                tryIceRestart();
+                            } else {
+                                console.log(`Exceeded maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}). Ending call.`);
+                                alert("Could not establish a stable connection. Call will be ended.");
+                                endCall();
+                            }
+                            
+                            // Reset the stuck timer
+                            stuckStateTime = Date.now();
+                        }
+                    }
+                }
+                
+                // Check for failed state
+                if (currentConnState === 'failed' || currentIceState === 'failed') {
+                    console.log("Connection failed. Attempting ICE restart...");
+                    connectionAttempts++;
+                    
+                    if (connectionAttempts <= MAX_RECONNECT_ATTEMPTS) {
+                        tryIceRestart();
+                    } else {
+                        console.log(`Exceeded maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}). Ending call.`);
+                        alert("Connection failed. Call will be ended.");
+                        endCall();
+                    }
+                }
+                
+                // Check for disconnected state
+                if (currentIceState === 'disconnected' && lastIceState !== 'disconnected') {
+                    console.log("ICE disconnected. Waiting briefly for reconnection...");
+                    
+                    // Wait 5 seconds for reconnection before trying restart
+                    setTimeout(() => {
+                        if (peerConnection && peerConnection.iceConnectionState === 'disconnected') {
+                            console.log("Still disconnected after wait. Attempting ICE restart...");
+                            tryIceRestart();
+                        }
+                    }, 5000);
+                }
+                
+                // Update the last known states
+                lastIceState = currentIceState;
+                lastConnState = currentConnState;
+                
+            }, 2000); // Check every 2 seconds
+            
+            console.log("Connection monitoring started");
+        }
+        
+        // Function to trigger ICE restart
+        async function tryIceRestart() {
+            try {
+                if (!peerConnection) return;
+                
+                console.log("Attempting ICE restart...");
+                
+                // Attempt to create media stream if missing
+                if (!localStream || !localStream.active) {
+                    console.log("Recreating local media stream for ICE restart");
+                    // Use saved preferences if available
+                    const preferredMic = localStorage.getItem('preferredMicrophone');
+                    let audioConstraints = {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    };
+                    
+                    if (preferredMic) {
+                        audioConstraints.deviceId = { exact: preferredMic };
+                    }
+                    
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        audio: audioConstraints,
+                        video: false
+                    });
+                    
+                    // Replace tracks in peer connection
+                    const senders = peerConnection.getSenders();
+                    const audioTrack = localStream.getAudioTracks()[0];
+                    
+                    if (audioTrack && senders.length > 0) {
+                        await senders[0].replaceTrack(audioTrack);
+                        console.log("Replaced audio track in peer connection");
+                    } else if (audioTrack) {
+                        peerConnection.addTrack(audioTrack, localStream);
+                        console.log("Added new audio track to peer connection");
+                    }
+                }
+                
+                // Create and send a new offer with ICE restart
+                if (peerConnection.signalingState !== 'closed') {
+                    const offerOptions = {
+                        iceRestart: true,
+                        offerToReceiveAudio: true
+                    };
+                    
+                    const offer = await peerConnection.createOffer(offerOptions);
+                    await peerConnection.setLocalDescription(offer);
+                    
+                    console.log("Created and set local description with ICE restart");
+                    
+                    // Send the new offer to the peer
+                    socket.emit('call-offer', {
+                        target: callToUsername || incomingCaller,
+                        caller: username,
+                        offer: offer,
+                        isRestart: true
+                    });
+                    
+                    console.log("Sent new offer with ICE restart flag");
+                    
+                    updateDebugInfo({
+                        action: 'ice-restart-attempted'
+                    });
+                } else {
+                    console.log("Cannot restart ICE - peer connection is closed");
+                }
+            } catch (error) {
+                console.error("Error during ICE restart:", error);
+                updateDebugInfo({
+                    action: 'ice-restart-error',
+                    error: error.message
+                });
+            }
+        }
+        
+        // Listen for ICE restart offers
+        socket.on('call-offer', async (data) => {
+            try {
+                console.log('Received call offer from', data.caller);
+                
+                // If this is a restart offer for an existing call
+                if (data.isRestart && activeCall && (data.caller === callToUsername || data.caller === incomingCaller)) {
+                    console.log("Received ICE restart offer, applying...");
+                    
+                    if (peerConnection && peerConnection.signalingState !== 'closed') {
+                        // Set the remote description from the restart offer
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                        
+                        // Create an answer
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+                        
+                        // Send the answer back
+                        socket.emit('call-answer', {
+                            target: data.caller,
+                            answer: answer,
+                            isRestartResponse: true
+                        });
+                        
+                        console.log("Sent answer to ICE restart offer");
+                        
+                        updateDebugInfo({
+                            action: 'ice-restart-answered'
+                        });
+                    } else {
+                        console.log("Cannot process restart - peer connection is invalid or closed");
+                    }
+                    return;
+                }
+                
+                if (activeCall) {
+                    // Already in a call, send busy response
+                    socket.emit('call-declined', {
+                        caller: data.caller,
+                        target: data.caller,
+                        sender: username,
+                        reason: 'busy'
+                    });
+                    return;
+                }
+            } catch (error) {
+                console.error("Error handling call offer:", error);
+            }
+        });
+        
+        // Handle restart answers
+        socket.on('call-answer', async (data) => {
+            try {
+                console.log("Received call answer");
+                
+                if (data.isRestartResponse) {
+                    if (peerConnection && peerConnection.signalingState !== 'closed') {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                        console.log("Applied remote description from ICE restart response");
+                        
+                        updateDebugInfo({
+                            action: 'ice-restart-completed'
+                        });
+                    } else {
+                        console.log("Cannot process restart response - peer connection is invalid or closed");
+                    }
+                    return;
+                }
+                
+                // Normal call answer processing...
+            } catch (error) {
+                console.error("Error handling call answer:", error);
+            }
+        });
         
         // Fix for initial page load - force scroll to bottom after everything else
         window.onload = function() {
