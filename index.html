@@ -887,9 +887,22 @@
                     urls: 'turn:openrelay.metered.ca:80',
                     username: 'openrelayproject',
                     credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:freeturn.net:3478',
+                    username: 'free',
+                    credential: 'free'
+                },
+                {
+                    urls: 'turn:freeturn.net:5349?transport=tcp',
+                    username: 'free',
+                    credential: 'free'
                 }
             ],
-            iceCandidatePoolSize: 10
+            iceCandidatePoolSize: 10,
+            iceTransportPolicy: 'all',
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
         };
         
         // Event listeners
@@ -1008,6 +1021,10 @@
                 callStatus.textContent = `Calling ${callToUsername}...`;
                 callStatus.style.display = 'block';
                 
+                // Hide accept/decline buttons when starting a call
+                document.getElementById('acceptCall').style.display = 'none';
+                document.getElementById('declineCall').style.display = 'none';
+                
                 // Use same constraints as the caller for consistency
                 const constraints = {
                     audio: {
@@ -1061,9 +1078,8 @@
                 });
                 
                 // Update UI
-                startCallBtn.style.display = 'none';
-                endCallBtn.style.display = 'inline-block';
                 activeCall = true;
+                endCallBtn.style.display = 'inline-block';
                 
                 updateDebugInfo({
                     action: 'call-started',
@@ -1378,6 +1394,53 @@
                     updateDebugInfo({
                         action: 'ice-candidate-no-peer',
                         from: sender
+                    });
+                }
+            });
+            
+            // Add call heartbeat handler
+            socket.on('call-heartbeat', (data) => {
+                console.log('Received call heartbeat:', data);
+                
+                // If we're not in an active call but the other person thinks we are,
+                // send an end-call signal to sync up
+                if (!activeCall && data.activeCall && (data.sender === callToUsername || data.sender === incomingCaller)) {
+                    console.log('Detected call state mismatch, sending end-call signal');
+                    socket.emit('end-call', {
+                        target: data.sender,
+                        sender: username,
+                        reason: 'state_sync'
+                    });
+                }
+            });
+            
+            socket.on('end-call', (data) => {
+                console.log('Call ended by', data.sender);
+                
+                // Only process if we're in an active call with this person
+                if ((data.sender === callToUsername || data.sender === incomingCaller) && 
+                    (activeCall || document.getElementById('incomingCallDialog').style.display === 'block')) {
+                    
+                    // Hide incoming call dialog if it's open
+                    const incomingCallDialog = document.getElementById('incomingCallDialog');
+                    if (incomingCallDialog) {
+                        incomingCallDialog.style.display = 'none';
+                    }
+                    
+                    // Stop incoming call sound if playing
+                    const incomingCallSound = document.getElementById('incomingCallSound');
+                    if (incomingCallSound) {
+                        incomingCallSound.pause();
+                        incomingCallSound.currentTime = 0;
+                    }
+                    
+                    // End the call
+                    endCall(false); // Don't send end-call signal back to avoid loops
+                    
+                    updateDebugInfo({
+                        action: 'call-ended-by-peer',
+                        caller: data.sender,
+                        reason: data.reason || 'user_ended'
                     });
                 }
             });
@@ -1771,17 +1834,27 @@
         // Accept call functionality
         async function acceptCall() {
             try {
-                // Get reference to the dialog element
+                console.log("Accepting call from", incomingCaller);
+                
+                // Hide incoming call dialog
                 const incomingCallDialog = document.getElementById('incomingCallDialog');
+                if (incomingCallDialog) {
+                    incomingCallDialog.style.display = 'none';
+                }
+                
+                // Stop incoming call sound
                 const incomingCallSound = document.getElementById('incomingCallSound');
+                if (incomingCallSound) {
+                    incomingCallSound.pause();
+                    incomingCallSound.currentTime = 0;
+                }
                 
-                // Hide dialog and stop sound
-                incomingCallDialog.style.display = 'none';
-                incomingCallSound.pause();
-                incomingCallSound.currentTime = 0;
-                
-                callStatus.textContent = `In call with ${incomingCaller}`;
+                callStatus.textContent = `Connected with ${incomingCaller}`;
                 callStatus.style.display = 'block';
+                
+                // Hide accept/decline buttons when starting a call
+                document.getElementById('acceptCall').style.display = 'none';
+                document.getElementById('declineCall').style.display = 'none';
                 
                 // Use same constraints as the caller for consistency
                 const constraints = {
@@ -1860,7 +1933,7 @@
         }
         
         // Function to end a call
-        function endCall() {
+        function endCall(sendSignal = true) {
             console.log("Ending call");
             
             // Get incoming call dialog and sound elements
@@ -1879,7 +1952,7 @@
             }
             
             // Notify the other user about call ending
-            if (callToUsername || incomingCaller) {
+            if (sendSignal && (callToUsername || incomingCaller)) {
                 socket.emit('end-call', {
                     target: callToUsername || incomingCaller,
                     sender: username
@@ -1898,7 +1971,7 @@
             
             updateDebugInfo({
                 action: 'call-ended',
-                byUser: true
+                byUser: sendSignal
             });
         }
         
@@ -1924,6 +1997,7 @@
                 const tracks = remoteAudio.srcObject.getTracks();
                 tracks.forEach(track => track.stop());
                 remoteAudio.srcObject = null;
+                remoteAudio.pause();
             }
             
             // Clean up local stream
@@ -1948,6 +2022,14 @@
             // Reset UI
             startCallBtn.style.display = 'inline-block';
             endCallBtn.style.display = 'none';
+            
+            // Reset call status display
+            document.getElementById('callStatus').textContent = '';
+            document.getElementById('callStatus').style.display = 'none';
+            
+            // Hide accept/decline buttons
+            document.getElementById('acceptCall').style.display = 'none';
+            document.getElementById('declineCall').style.display = 'none';
             
             console.log("Call state reset complete");
         }
@@ -2163,6 +2245,18 @@
                 console.error("Error monitoring audio levels:", e);
             }
         }
+        
+        // Create interval to periodically check socket connection
+        setInterval(() => {
+            if (socket && activeCall) {
+                // Send a heartbeat to ensure both sides know about active calls
+                socket.emit('call-heartbeat', {
+                    target: callToUsername || incomingCaller,
+                    sender: username,
+                    activeCall: activeCall
+                });
+            }
+        }, 5000);
     </script>
 </body>
 </html>
