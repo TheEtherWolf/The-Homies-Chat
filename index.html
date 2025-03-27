@@ -861,22 +861,18 @@
         // WebRTC configuration with TURN server for better connectivity
         const rtcConfig = {
             iceServers: [
-                {urls: 'stun:stun.l.google.com:19302'},
-                {urls: 'stun:stun1.l.google.com:19302'},
-                {urls: 'stun:stun2.l.google.com:19302'},
-                {urls: 'stun:stun3.l.google.com:19302'},
-                {urls: 'stun:stun4.l.google.com:19302'},
-                // Free TURN server with better reliability than the viagenie one
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
                 {
-                    urls: 'turn:turn.offlinetoremotework.com:3478',
-                    username: 'test',
-                    credential: 'test'
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
                 }
             ],
-            iceCandidatePoolSize: 10,
-            iceTransportPolicy: 'all',
-            rtcpMuxPolicy: 'require',
-            bundlePolicy: 'max-bundle'
+            iceCandidatePoolSize: 10
         };
         
         // Event listeners
@@ -998,9 +994,9 @@
                 // Use same constraints as the caller for consistency
                 const constraints = {
                     audio: {
-                        echoCancellation: {ideal: false},
-                        noiseSuppression: {ideal: false},
-                        autoGainControl: {ideal: false}
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
                     },
                     video: false
                 };
@@ -1086,8 +1082,6 @@
                     // Try to ensure audio is played after connection
                     remoteAudio.play().catch(e => console.log("Error playing remote audio:", e));
                     
-                    // Play a test tone to check audio system
-                    playTestTone(300);
                 }
             };
             
@@ -1155,9 +1149,6 @@
                     remoteAudio.muted = false;
                     // Monitor audio levels
                     monitorAudioLevels(remoteAudio, event.track);
-                    
-                    // Test tone to verify audio system is working
-                    playTestTone(200);
                 })
                 .catch(error => {
                     console.error("Failed to play remote audio:", error);
@@ -1317,11 +1308,6 @@
                             remoteDescription: true,
                             from: callee || sender
                         });
-                        
-                        // Start playing a test tone to help debug audio
-                        setTimeout(() => {
-                            playTestTone(500);
-                        }, 1000);
                     })
                     .catch(error => {
                         console.error("Error setting remote description from answer:", error);
@@ -1887,9 +1873,9 @@
                 // Use same constraints as the caller for consistency
                 const constraints = {
                     audio: {
-                        echoCancellation: {ideal: false},
-                        noiseSuppression: {ideal: false},
-                        autoGainControl: {ideal: false}
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
                     },
                     video: false
                 };
@@ -1944,11 +1930,6 @@
                 // Update UI
                 activeCall = true;
                 endCallBtn.style.display = 'inline-block';
-                
-                // Try playing a test tone to ensure audio is active
-                setTimeout(() => {
-                    playTestTone(200);
-                }, 1000);
                 
                 updateDebugInfo({
                     action: 'call-accepted',
@@ -2085,28 +2066,31 @@
         });
         
         // Add a function to play a test tone
-        function playTestTone(duration = 200) {
+        function playTestTone(duration = 50) {
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioCtx.createOscillator();
                 const gainNode = audioCtx.createGain();
                 
                 oscillator.type = 'sine';
-                oscillator.frequency.value = 440; // A4 note
-                gainNode.gain.value = 0.1; // Low volume
+                oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4 note
                 
+                // Set volume (significantly reduced)
+                gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime); // Reduced from 0.2 to 0.05
+                
+                // Connect nodes
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
                 
+                // Schedule tone play and stop
                 oscillator.start();
+                oscillator.stop(audioCtx.currentTime + (duration / 1000));
                 
-                // Stop after duration
-                setTimeout(() => {
-                    oscillator.stop();
-                    console.log("Test tone finished");
-                }, duration);
-                
-                console.log("Playing test tone");
+                // Clean up
+                oscillator.onended = () => {
+                    oscillator.disconnect();
+                    gainNode.disconnect();
+                };
             } catch (error) {
                 console.error("Error playing test tone:", error);
             }
@@ -2171,6 +2155,27 @@
                 console.error("Error monitoring audio levels:", e);
             }
         }
+        
+        // Add debug helper function to periodically check connection status
+        setInterval(() => {
+            // Only run checks during active calls
+            if (peerConnection && (peerConnection.iceConnectionState === 'checking' || 
+                peerConnection.iceConnectionState === 'connecting')) {
+                
+                console.log("Connection still establishing, attempting to help...");
+                
+                // If we're stuck in checking state for too long, try refreshing the connection
+                try {
+                    // Restart ICE if possible
+                    if (peerConnection.restartIce) {
+                        peerConnection.restartIce();
+                        console.log("ICE restart triggered");
+                    }
+                } catch (error) {
+                    console.error("Error during ICE restart:", error);
+                }
+            }
+        }, 5000);  // Check every 5 seconds
     </script>
 </body>
 </html>
