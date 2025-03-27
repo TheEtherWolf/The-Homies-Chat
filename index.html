@@ -658,10 +658,10 @@
 
     <div id="debugInfo" class="debug-info"></div>
     <button id="debugToggle" class="debug-toggle">Debug</button>
-    <audio id="remoteAudio" autoplay controls></audio>
-    <audio id="testAudioOut" src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3" preload="auto"></audio>
+    <audio id="remoteAudio" autoplay style="display: none;"></audio>
+    <audio id="testAudioOut" src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3" preload="auto" style="display: none;"></audio>
     <div id="audioFeedback" style="display: none; position: fixed; bottom: 50px; right: 10px; background-color: rgba(0,0,128,0.7); color: white; padding: 10px; border-radius: 5px; z-index: 1000;"></div>
-    <audio id="incomingCallSound" src="https://assets.mixkit.co/active_storage/sfx/2355/2355-preview.mp3" preload="auto" loop></audio>
+    <audio id="incomingCallSound" src="https://assets.mixkit.co/active_storage/sfx/2355/2355-preview.mp3" preload="auto" loop style="display: none;"></audio>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -1663,200 +1663,96 @@
             }
         });
         
-        // Settings panel toggle
-        showSettingsBtn.addEventListener('click', () => {
-            settingsPanel.style.display = 'block';
-            settingsBackdrop.style.display = 'block';
+        // Add a function to play a test tone
+        function playTestTone(duration = 50) {
+            // Completely disable test tones to stop beeping
+            return;
             
-            // Populate audio devices when settings panel is opened
-            populateAudioDevices();
-        });
-        
-        // Function to populate audio device lists
-        async function populateAudioDevices() {
             try {
-                // Get microphone and speaker selectors
-                const audioInputSelect = document.getElementById('audioInput');
-                const audioOutputSelect = document.getElementById('audioOutput');
+                // Create audio context
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 
-                // Clear existing options
-                audioInputSelect.innerHTML = '';
-                audioOutputSelect.innerHTML = '';
+                // Create oscillator
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
                 
-                // Get a list of all media devices
-                const devices = await navigator.mediaDevices.enumerateDevices();
+                // Configure oscillator
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4 note
                 
-                // Filter audio input devices (microphones)
-                const audioInputDevices = devices.filter(device => device.kind === 'audioinput');
-                audioInputDevices.forEach(device => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    option.text = device.label || `Microphone ${audioInputSelect.length + 1}`;
-                    audioInputSelect.appendChild(option);
-                });
+                // Set volume (significantly reduced)
+                gainNode.gain.setValueAtValue(0.05, audioCtx.currentTime); // Reduced from 0.2 to 0.05
                 
-                // Filter audio output devices (speakers)
-                const audioOutputDevices = devices.filter(device => device.kind === 'audiooutput');
-                audioOutputDevices.forEach(device => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    option.text = device.label || `Speaker ${audioOutputSelect.length + 1}`;
-                    audioOutputSelect.appendChild(option);
-                });
+                // Connect nodes
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
                 
-                // If no devices were found with labels, we need to request permission
-                if (!audioInputDevices.some(device => device.label) || !audioOutputDevices.some(device => device.label)) {
-                    console.log("No labeled devices found, requesting permission...");
-                    // Request microphone permission to get device labels
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    // After getting permission, re-enumerate devices to get labels
-                    stream.getTracks().forEach(track => track.stop());
-                    populateAudioDevices(); // Recursively call to populate with labels
-                }
+                // Schedule tone play and stop
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + (duration / 1000));
+                
+                // Clean up
+                oscillator.onended = () => {
+                    oscillator.disconnect();
+                    gainNode.disconnect();
+                };
             } catch (error) {
-                console.error("Error populating audio devices:", error);
-                alert("Could not access audio devices. Please ensure you've granted microphone permissions.");
+                console.error("Error playing test tone:", error);
             }
         }
         
-        // Save audio settings
-        document.getElementById('saveSettings').addEventListener('click', () => {
-            const audioInputSelect = document.getElementById('audioInput');
-            const audioOutputSelect = document.getElementById('audioOutput');
-            
-            // Save selected devices to localStorage
-            if (audioInputSelect.value) {
-                localStorage.setItem('preferredMicrophone', audioInputSelect.value);
+        // Monitor audio levels for debugging
+        function monitorAudioLevels(audioElement, track) {
+            try {
+                console.log("Setting up audio level monitoring for", track.kind);
+                
+                // Create audio context for analysis
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioCtx.createMediaStreamSource(audioElement.srcObject);
+                const analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                
+                // Create data array for analysis
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                // Check audio levels every 500ms
+                const levelCheckInterval = setInterval(() => {
+                    if (!audioElement || !audioElement.srcObject || !track.enabled || !activeCall) {
+                        clearInterval(levelCheckInterval);
+                        return;
+                    }
+                    
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    // Calculate average volume
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        sum += dataArray[i];
+                    }
+                    const average = sum / dataArray.length;
+                    
+                    // Update debug info with audio levels
+                    updateDebugInfo({
+                        remoteAudioLevel: average.toFixed(2),
+                        audioElementState: audioElement.paused ? "paused" : "playing",
+                        audioMuted: audioElement.muted,
+                        trackEnabled: track.enabled,
+                        trackMuted: track.muted,
+                        trackState: track.readyState,
+                        iceState: peerConnection ? peerConnection.iceConnectionState : "none",
+                        connState: peerConnection ? peerConnection.connectionState : "none",
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // Removed all recovery logic that was causing beeping
+                }, 500);
+                
+                // Store interval for cleanup
+                audioMonitoringIntervals.push(levelCheckInterval);
+            } catch (e) {
+                console.error("Error monitoring audio levels:", e);
             }
-            
-            if (audioOutputSelect.value) {
-                localStorage.setItem('preferredSpeaker', audioOutputSelect.value);
-            }
-            
-            alert("Audio settings saved!");
-            
-            // Close settings panel
-            settingsPanel.style.display = 'none';
-            settingsBackdrop.style.display = 'none';
-        });
-        
-        // Close settings when clicking backdrop
-        settingsBackdrop.addEventListener('click', () => {
-            settingsPanel.style.display = 'none';
-            settingsBackdrop.style.display = 'none';
-        });
-        
-        // Debug toggle functionality
-        const debugInfo = document.getElementById('debugInfo');
-        const debugToggle = document.getElementById('debugToggle');
-        
-        // Initialize debug display based on saved preference
-        if (localStorage.getItem('debugEnabled') === 'true') {
-            debugInfo.style.display = 'block';
-            debugToggle.textContent = 'Hide Debug';
-        }
-        
-        debugToggle.addEventListener('click', () => {
-            const debugEnabled = localStorage.getItem('debugEnabled') === 'true';
-            localStorage.setItem('debugEnabled', !debugEnabled);
-            
-            if (!debugEnabled) {
-                debugInfo.style.display = 'block';
-                debugToggle.textContent = 'Hide Debug';
-            } else {
-                debugInfo.style.display = 'none';
-                debugToggle.textContent = 'Show Debug';
-            }
-        });
-        
-        // Add sign out functionality
-        const signOutBtn = document.getElementById('signOutBtn');
-        const createNewAccountBtn = document.getElementById('createNewAccountBtn');
-        
-        signOutBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to sign out?')) {
-                // Set a flag in localStorage to indicate logged out state
-                localStorage.setItem('isLoggedOut', 'true');
-                
-                // Notify server about leaving (use disconnection flow)
-                socket.disconnect();
-                
-                // Show login screen
-                usernameContainer.style.display = 'block';
-                chatContainer.style.display = 'none';
-                
-                // Pre-fill the username field if available
-                if (username) {
-                    usernameInput.value = username;
-                    // Clear password field for security
-                    passwordInput.value = '';
-                }
-                
-                // Reset any active call state
-                if (localStream) {
-                    localStream.getTracks().forEach(track => track.stop());
-                    localStream = null;
-                }
-                
-                if (peerConnection) {
-                    peerConnection.close();
-                    peerConnection = null;
-                }
-                
-                console.log('User signed out but credentials saved');
-            }
-        });
-        
-        // Add create new account functionality
-        createNewAccountBtn.addEventListener('click', function() {
-            // Clear existing form fields to start fresh
-            usernameInput.value = '';
-            passwordInput.value = '';
-            
-            // Focus on username input
-            usernameInput.focus();
-            
-            // Optional: Add visual indication that we're in "create account" mode
-            document.querySelector('#usernameContainer h2').textContent = 'Create a New Account';
-            
-            // Change the submit button text temporarily
-            const submitBtn = usernameForm.querySelector('button[type="submit"]');
-            submitBtn.textContent = 'Create & Join';
-            
-            // Add a flag to indicate we're creating a new account
-            usernameForm.dataset.mode = 'create';
-            
-            // Add a back button option if they want to go back to login
-            if (!document.getElementById('backToLoginBtn')) {
-                const backBtn = document.createElement('button');
-                backBtn.id = 'backToLoginBtn';
-                backBtn.className = 'secondary-button';
-                backBtn.textContent = 'Back to Login';
-                backBtn.style.marginLeft = '10px';
-                createNewAccountBtn.parentNode.appendChild(backBtn);
-                
-                backBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    document.querySelector('#usernameContainer h2').textContent = 'Enter your details';
-                    submitBtn.textContent = 'Join Chat';
-                    usernameForm.dataset.mode = 'login';
-                    this.remove();
-                });
-            }
-        });
-        
-        // Function to update debug info
-        function updateDebugInfo(info) {
-            const debugInfo = document.getElementById('debugInfo');
-            // Add timestamp to debug info
-            info.timestamp = new Date().toISOString();
-            
-            if (localStorage.getItem('debugEnabled') === 'true') {
-                debugInfo.innerHTML = JSON.stringify(info, null, 2);
-            }
-            
-            // Also log to console for easier debugging
-            console.log("Debug Info:", info);
         }
         
         // Accept call functionality
@@ -2142,6 +2038,9 @@
         
         // Add a function to play a test tone
         function playTestTone(duration = 50) {
+            // Completely disable test tones to stop beeping
+            return;
+            
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioCtx.createOscillator();
@@ -2151,7 +2050,7 @@
                 oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4 note
                 
                 // Set volume (significantly reduced)
-                gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime); // Reduced from 0.2 to 0.05
+                gainNode.gain.setValueAtValue(0.05, audioCtx.currentTime); // Reduced from 0.2 to 0.05
                 
                 // Connect nodes
                 oscillator.connect(gainNode);
@@ -2181,7 +2080,7 @@
                 const source = audioCtx.createMediaStreamSource(audioElement.srcObject);
                 const analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 256;
-                source.connect(analyser); // Critical line - connect source to analyzer
+                source.connect(analyser);
                 
                 // Create data array for analysis
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -2215,16 +2114,7 @@
                         timestamp: new Date().toISOString()
                     });
                     
-                    // If audio level is zero but we should be getting audio, try to restart
-                    if (average < 0.01 && audioElement.srcObject && !audioElement.paused && track.enabled) {
-                        console.log("Zero audio level detected - trying to recover");
-                        
-                        // Force play if possible
-                        audioElement.play().catch(e => console.log("Play during recovery failed:", e));
-                        
-                        // Try a test tone to "wake up" the audio system
-                        playTestTone(50);
-                    }
+                    // Removed all recovery logic that was causing beeping
                 }, 500);
                 
                 // Store interval for cleanup
