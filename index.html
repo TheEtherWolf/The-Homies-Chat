@@ -661,6 +661,7 @@
 
     <div id="debugInfo" class="debug-info" style="display: none; position: fixed; bottom: 10px; right: 10px; background: rgba(0, 0, 0, 0.8); color: #00ff00; padding: 10px; border-radius: 5px; max-height: 300px; overflow: auto; font-family: monospace; font-size: 12px; z-index: 9999;"></div>
     <button id="debugToggle" class="debug-toggle" style="position: fixed; bottom: 10px; right: 10px; z-index: 10000; background: #333; color: white; border: none; border-radius: 5px; padding: 5px 10px; cursor: pointer;">Show Debug</button>
+    <button id="debugCopy" class="debug-toggle" style="position: fixed; bottom: 10px; right: 95px; z-index: 10000; background: #333; color: white; border: none; border-radius: 5px; padding: 5px 10px; cursor: pointer; display: none;">Copy Debug</button>
     <audio id="remoteAudio" autoplay style="display: none;"></audio>
     <audio id="testAudioOut" src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3" preload="auto" style="display: none;"></audio>
     <div id="audioFeedback" style="display: none; position: fixed; bottom: 50px; right: 10px; background-color: rgba(0,0,128,0.7); color: white; padding: 10px; border-radius: 5px; z-index: 1000;"></div>
@@ -729,16 +730,60 @@
         // Debug information
         const debugInfoElement = document.getElementById('debugInfo');
         const debugToggleBtn = document.getElementById('debugToggle');
+        const debugCopyBtn = document.getElementById('debugCopy');
         
         debugToggleBtn.addEventListener('click', function() {
             if (debugInfoElement.style.display === 'none') {
                 debugInfoElement.style.display = 'block';
                 debugToggleBtn.textContent = 'Hide Debug';
                 debugToggleBtn.style.bottom = (10 + debugInfoElement.offsetHeight) + 'px';
+                debugCopyBtn.style.display = 'block';
+                debugCopyBtn.style.bottom = (10 + debugInfoElement.offsetHeight) + 'px';
             } else {
                 debugInfoElement.style.display = 'none';
                 debugToggleBtn.textContent = 'Show Debug';
                 debugToggleBtn.style.bottom = '10px';
+                debugCopyBtn.style.display = 'none';
+            }
+        });
+        
+        // Add debug copy functionality
+        debugCopyBtn.addEventListener('click', function() {
+            try {
+                const debugText = debugInfoElement.textContent;
+                navigator.clipboard.writeText(debugText)
+                    .then(() => {
+                        const originalText = debugCopyBtn.textContent;
+                        debugCopyBtn.textContent = 'Copied!';
+                        setTimeout(() => {
+                            debugCopyBtn.textContent = originalText;
+                        }, 1500);
+                    })
+                    .catch(err => {
+                        console.error('Error copying debug info:', err);
+                        alert('Failed to copy: ' + err);
+                    });
+            } catch (e) {
+                console.error('Error during copy operation:', e);
+                
+                // Fallback method for older browsers
+                try {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = debugInfoElement.textContent;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    const originalText = debugCopyBtn.textContent;
+                    debugCopyBtn.textContent = 'Copied!';
+                    setTimeout(() => {
+                        debugCopyBtn.textContent = originalText;
+                    }, 1500);
+                } catch (fallbackError) {
+                    console.error('Fallback copy method failed:', fallbackError);
+                    alert('Could not copy debug info');
+                }
             }
         });
         
@@ -751,6 +796,7 @@
                 // Reposition the toggle button if debug is visible
                 if (debugInfoElement.style.display !== 'none') {
                     debugToggleBtn.style.bottom = (10 + debugInfoElement.offsetHeight) + 'px';
+                    debugCopyBtn.style.bottom = (10 + debugInfoElement.offsetHeight) + 'px';
                 }
                 
                 // Log to console for developer debugging
@@ -1025,8 +1071,8 @@
                 document.getElementById('acceptCall').style.display = 'none';
                 document.getElementById('declineCall').style.display = 'none';
                 
-                // Use same constraints as the caller for consistency
-                const constraints = {
+                // Use robust audio constraints
+                let constraints = {
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
@@ -1035,7 +1081,16 @@
                     video: false
                 };
                 
-                // Get the media stream with simplified constraints
+                // Try to use preferred microphone if set
+                const preferredMic = localStorage.getItem('preferredMicrophone');
+                if (preferredMic) {
+                    constraints.audio = {
+                        ...constraints.audio,
+                        deviceId: { exact: preferredMic }
+                    };
+                }
+                
+                // Get the media stream with constraints
                 localStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
                 console.log("Local stream tracks:", 
@@ -1174,6 +1229,9 @@
                 // Add the track to the MediaStream
                 remoteAudio.srcObject.addTrack(event.track);
                 
+                // Apply preferred speaker if available
+                applyPreferredSpeaker();
+                
                 // Force audio to play
                 remoteAudio.play()
                 .then(() => {
@@ -1198,8 +1256,7 @@
                 updateDebugInfo({
                     action: 'track-received',
                     kind: event.track.kind,
-                    trackId: event.track.id,
-                    timestamp: new Date().toISOString()
+                    trackId: event.track.id
                 });
             };
         }
@@ -1831,6 +1888,117 @@
             }
         }
         
+        // Create interval to periodically check socket connection
+        setInterval(() => {
+            if (socket && activeCall) {
+                // Send a heartbeat to ensure both sides know about active calls
+                socket.emit('call-heartbeat', {
+                    target: callToUsername || incomingCaller,
+                    sender: username,
+                    activeCall: activeCall
+                });
+            }
+        }, 5000);
+        
+        // Settings panel toggle
+        showSettingsBtn.addEventListener('click', function() {
+            settingsPanel.style.display = 'block';
+            settingsBackdrop.style.display = 'block';
+            
+            // Populate audio devices when settings panel is opened
+            populateAudioDevices();
+        });
+        
+        // Close settings when clicking backdrop
+        settingsBackdrop.addEventListener('click', function() {
+            settingsPanel.style.display = 'none';
+            settingsBackdrop.style.display = 'none';
+        });
+        
+        // Save audio settings
+        document.getElementById('saveSettings').addEventListener('click', function() {
+            const audioInputSelect = document.getElementById('audioInput');
+            const audioOutputSelect = document.getElementById('audioOutput');
+            
+            // Save selected devices to localStorage
+            if (audioInputSelect.value) {
+                localStorage.setItem('preferredMicrophone', audioInputSelect.value);
+            }
+            
+            if (audioOutputSelect.value) {
+                localStorage.setItem('preferredSpeaker', audioOutputSelect.value);
+            }
+            
+            alert("Audio settings saved!");
+            
+            // Close settings panel
+            settingsPanel.style.display = 'none';
+            settingsBackdrop.style.display = 'none';
+        });
+        
+        // Function to populate audio device lists
+        async function populateAudioDevices() {
+            try {
+                // Get microphone and speaker selectors
+                const audioInputSelect = document.getElementById('audioInput');
+                const audioOutputSelect = document.getElementById('audioOutput');
+                
+                // Clear existing options
+                audioInputSelect.innerHTML = '';
+                audioOutputSelect.innerHTML = '';
+                
+                // Get a list of all media devices
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                
+                // Filter audio input devices (microphones)
+                const audioInputDevices = devices.filter(device => device.kind === 'audioinput');
+                audioInputDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Microphone ${audioInputSelect.length + 1}`;
+                    audioInputSelect.appendChild(option);
+                });
+                
+                // Filter audio output devices (speakers)
+                const audioOutputDevices = devices.filter(device => device.kind === 'audiooutput');
+                audioOutputDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Speaker ${audioOutputSelect.length + 1}`;
+                    audioOutputSelect.appendChild(option);
+                });
+                
+                // If no devices were found with labels, we need to request permission
+                if (!audioInputDevices.some(device => device.label) || !audioOutputDevices.some(device => device.label)) {
+                    console.log("No labeled devices found, requesting permission...");
+                    // Request microphone permission to get device labels
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    // After getting permission, re-enumerate devices to get labels
+                    stream.getTracks().forEach(track => track.stop());
+                    populateAudioDevices(); // Recursively call to populate with labels
+                }
+            } catch (error) {
+                console.error("Error populating audio devices:", error);
+                alert("Could not access audio devices. Please ensure you've granted microphone permissions.");
+            }
+        }
+        
+        // Add an explicit function to apply the preferred speaker
+        function applyPreferredSpeaker() {
+            try {
+                const remoteAudio = document.getElementById('remoteAudio');
+                const preferredSpeaker = localStorage.getItem('preferredSpeaker');
+                
+                if (remoteAudio && preferredSpeaker && typeof remoteAudio.setSinkId === 'function') {
+                    remoteAudio.setSinkId(preferredSpeaker)
+                        .then(() => console.log('Applied preferred speaker:', preferredSpeaker))
+                        .catch(e => console.error('Error applying preferred speaker:', e));
+                }
+            } catch (error) {
+                console.error('Error applying preferred speaker:', error);
+            }
+        }
+        
         // Accept call functionality
         async function acceptCall() {
             try {
@@ -1856,8 +2024,8 @@
                 document.getElementById('acceptCall').style.display = 'none';
                 document.getElementById('declineCall').style.display = 'none';
                 
-                // Use same constraints as the caller for consistency
-                const constraints = {
+                // Use robust audio constraints
+                let constraints = {
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
@@ -2245,18 +2413,6 @@
                 console.error("Error monitoring audio levels:", e);
             }
         }
-        
-        // Create interval to periodically check socket connection
-        setInterval(() => {
-            if (socket && activeCall) {
-                // Send a heartbeat to ensure both sides know about active calls
-                socket.emit('call-heartbeat', {
-                    target: callToUsername || incomingCaller,
-                    sender: username,
-                    activeCall: activeCall
-                });
-            }
-        }, 5000);
     </script>
 </body>
 </html>
