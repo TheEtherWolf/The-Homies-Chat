@@ -20,7 +20,8 @@
     "uuid": "^9.0.1",
     "megajs": "^1.1.4",
     "crypto-js": "^4.1.1",
-    "nodemailer": "^6.9.7"
+    "nodemailer": "^6.9.7",
+    "fs": "^0.0.1-security"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
@@ -28,9 +29,8 @@
   "keywords": [
     "chat",
     "messaging",
-    "homies",
-    "glitch"
+    "video",
+    "real-time"
   ],
-  "author": "TheEtherWolf",
   "license": "MIT"
 }

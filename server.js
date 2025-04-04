@@ -1,6 +1,7 @@
 // Main server file for Homies Chat App - Glitch optimized
 require('dotenv').config();
 const express = require('express');
+const https = require('https');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
@@ -13,10 +14,18 @@ const emailService = require('./email-service');
 
 // Initialize Express app and Socket.io
 const app = express();
-const server = http.createServer(app);
+const PORT = process.env.PORT || 3000;
+
+// HTTPS configuration
+const sslOptions = {
+  key: fs.readFileSync('server.key'),
+  cert: fs.readFileSync('server.cert')
+};
+
+const server = https.createServer(sslOptions, app);
 const io = socketIo(server, {
   cors: {
-    origin: "*",
+    origin: "*", // In production, replace with your actual domain
     methods: ["GET", "POST"]
   }
 });
@@ -27,7 +36,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Environment variables
-const PORT = process.env.PORT || 3000;
 const SUPABASE_URL = process.env.SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'YOUR_SUPABASE_KEY';
 
@@ -546,6 +554,7 @@ app.get('/verify', async (req, res) => {
 // Start server
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 // Save data periodically
