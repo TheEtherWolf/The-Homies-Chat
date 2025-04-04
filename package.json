@@ -13,11 +13,12 @@
     "bcryptjs": "^2.4.3",
     "express": "^4.18.2",
     "socket.io": "^4.7.2",
-    "@supabase/supabase-js": "^1.35.7",
+    "@supabase/supabase-js": "^2.38.4",
     "dotenv": "^16.3.1",
     "cors": "^2.8.5",
     "uuid": "^9.0.1",
-    "megajs": "^1.1.4"
+    "megajs": "^1.1.4",
+    "crypto-js": "^4.1.1"
   },
   "keywords": [
     "chat",
@@ -25,6 +26,6 @@
     "homies",
     "glitch"
   ],
-  "author": "",
+  "author": "TheEtherWolf",
   "license": "MIT"
 }

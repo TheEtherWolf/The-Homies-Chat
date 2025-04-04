@@ -31,7 +31,45 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'YOUR_SUPABASE_KEY';
 
 // Initialize Supabase client
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+let supabase;
+try {
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true
+    }
+  });
+  console.log('Supabase client initialized successfully');
+} catch (error) {
+  console.error('Failed to initialize Supabase client:', error);
+  // Fallback with mock data for testing if Supabase is not available
+  const mockUsers = [];
+  supabase = {
+    from: (table) => ({
+      select: () => ({
+        or: (query) => ({
+          data: mockUsers.filter(u => u.username === username || u.email === email),
+          error: null
+        }),
+        eq: (field, value) => ({
+          single: () => ({
+            data: mockUsers.find(u => u[field] === value),
+            error: null
+          }),
+          maybeSingle: () => ({
+            data: mockUsers.find(u => u[field] === value),
+            error: null
+          })
+        })
+      }),
+      insert: (records) => {
+        const newUser = records[0];
+        mockUsers.push(newUser);
+        return { data: newUser, error: null };
+      }
+    })
+  };
+}
 
 // Message storage
 let messages = [];
@@ -126,7 +164,7 @@ io.on('connection', (socket) => {
       const { data, error } = await supabase
         .from('users')
         .select()
-        .or(`username.eq.${username},email.eq.${email}`);
+        .or(`username.eq."${username}",email.eq."${email}"`);
       
       if (data && data.length > 0) {
         return callback({ 
@@ -144,9 +182,9 @@ io.on('connection', (socket) => {
         .from('users')
         .insert([{ 
           username, 
-          email, 
+          email: email.toLowerCase(), // normalize email
           password: hashedPassword,
-          created_at: new Date(),
+          created_at: new Date().toISOString(),
           user_id: uuidv4()
         }]);
       
@@ -177,12 +215,13 @@ io.on('connection', (socket) => {
     try {
       const { username, password } = userData;
       
-      // Find user
+      // Allow login with either username or email
+      let isEmail = username.includes('@');
       const { data, error } = await supabase
         .from('users')
         .select()
-        .eq('username', username)
-        .single();
+        .or(isEmail ? `email.eq."${username.toLowerCase()}"` : `username.eq."${username}"`)
+        .maybeSingle();
       
       if (error || !data) {
         return callback({ 

@@ -1,28 +1,34 @@
-/* Main Styles for The Homies App */
+/* Main Styles for The Homies App - Discord-inspired Dark Theme */
 :root {
-  --primary-color: #4a6fa5;
-  --secondary-color: #166088;
-  --accent-color: #4fc3f7;
-  --text-light: #f8f9fa;
-  --text-dark: #343a40;
-  --success: #28a745;
-  --warning: #ffc107;
-  --danger: #dc3545;
-  --info: #17a2b8;
+  --primary-color: #5865F2; /* Discord blue */
+  --secondary-color: #3A3C42; /* Discord darker gray */
+  --background-color: #202225; /* Discord dark background */
+  --light-background: #2F3136; /* Discord channel list background */
+  --very-dark: #18191C; /* Discord very dark areas */
+  --text-light: #FFFFFF;
+  --text-muted: #B9BBBE; /* Discord muted text */
+  --text-dark: #DCDDDE; /* Discord normal text */
+  --success: #3BA55C; /* Discord green */
+  --warning: #FAA61A; /* Discord yellow/orange */
+  --danger: #ED4245; /* Discord red */
+  --info: #5865F2; /* Discord blue */
+  --highlight: #5865F2; /* Discord accent blue */
 }
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f5f7fb;
-  color: var(--text-dark);
+  font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-light);
 }
 
 /* Auth Container */
 .auth-card {
   width: 100%;
   max-width: 450px;
-  border-radius: 10px;
+  border-radius: 5px;
   overflow: hidden;
+  background-color: var(--light-background);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Chat Styles */
@@ -30,29 +36,32 @@ body {
   height: calc(100vh - 170px);
   overflow-y: auto;
   padding: 15px;
-  background-color: #f8f9fa;
+  background-color: var(--light-background);
 }
 
 .message {
   margin-bottom: 15px;
   max-width: 70%;
-  border-radius: 15px;
+  border-radius: 4px;
   padding: 10px 15px;
   position: relative;
   clear: both;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .message-received {
-  background-color: #e9ecef;
-  border-top-left-radius: 5px;
+  background-color: var(--secondary-color);
+  border-top-left-radius: 0;
   float: left;
+  color: var(--text-light);
 }
 
 .message-sent {
   background-color: var(--primary-color);
   color: white;
-  border-top-right-radius: 5px;
+  border-top-right-radius: 0;
   float: right;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
 .message-info {
@@ -68,13 +77,14 @@ body {
 
 .user-item {
   padding: 10px 15px;
-  border-bottom: 1px solid #dee2e6;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   cursor: pointer;
   transition: background-color 0.2s;
+  color: var(--text-light);
 }
 
 .user-item:hover {
-  background-color: #e9ecef;
+  background-color: rgba(255, 255, 255, 0.06);
 }
 
 .user-status {
