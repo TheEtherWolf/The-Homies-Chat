@@ -143,6 +143,18 @@ function updateUserList() {
 
 // Initialize services
 loadMessages();
+
+// Check if email service is configured
+if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+  console.log('Warning: Email credentials not configured. Email features will be disabled.');
+  process.env.EMAIL_HOST = 'smtp.protonmail.ch';
+  process.env.EMAIL_PORT = '587';
+  process.env.EMAIL_USER = 'TheHomiesChatBot@proton.me';
+  process.env.EMAIL_PASS = 'your_app_specific_password';
+  process.env.EMAIL_FROM = 'TheHomiesChatBot@proton.me';
+  process.env.EMAIL_SECURE = 'true';
+}
+
 emailService.initializeEmailService();
 
 // Socket.io connections
@@ -205,26 +217,33 @@ io.on('connection', (socket) => {
           message: 'Error creating account' 
         });
       }
-      
-      // Send verification email
-      try {
-        await emailService.sendVerificationEmail(
-          email.toLowerCase(),
-          username,
-          verificationToken
-        );
-        
+
+      // Only send verification email if email service is configured
+      if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        try {
+          await emailService.sendVerificationEmail(
+            email.toLowerCase(),
+            username,
+            verificationToken
+          );
+          
+          callback({ 
+            success: true, 
+            message: 'Account created successfully! Please check your email to verify your account.'
+          });
+        } catch (emailError) {
+          console.error('Error sending verification email:', emailError);
+          
+          // Return success even if email fails, but log the error
+          callback({ 
+            success: true, 
+            message: 'Account created successfully! Email verification could not be sent.'
+          });
+        }
+      } else {
         callback({ 
           success: true, 
-          message: 'Account created successfully! Please check your email to verify your account.'
-        });
-      } catch (emailError) {
-        console.error('Error sending verification email:', emailError);
-        
-        // Return success even if email fails, but log the error
-        callback({ 
-          success: true, 
-          message: 'Account created successfully! Email verification could not be sent.'
+          message: 'Account created successfully! (Email verification disabled)'
         });
       }
       
