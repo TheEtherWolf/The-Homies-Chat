@@ -9,6 +9,7 @@ const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
+const emailService = require('./email-service');
 
 // Initialize Express app and Socket.io
 const app = express();
@@ -140,8 +141,9 @@ function updateUserList() {
   io.emit('user-status-update', userStatusList);
 }
 
-// Initialize
+// Initialize services
 loadMessages();
+emailService.initializeEmailService();
 
 // Socket.io connections
 io.on('connection', (socket) => {
@@ -177,6 +179,11 @@ io.on('connection', (socket) => {
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
       
+      // Generate verification token
+      const verificationToken = uuidv4();
+      const tokenExpires = new Date();
+      tokenExpires.setDate(tokenExpires.getDate() + 1); // 24 hours from now
+      
       // Create user in Supabase
       const { data: newUser, error: createError } = await supabase
         .from('users')
@@ -185,7 +192,10 @@ io.on('connection', (socket) => {
           email: email.toLowerCase(), // normalize email
           password: hashedPassword,
           created_at: new Date().toISOString(),
-          user_id: uuidv4()
+          user_id: uuidv4(),
+          verified: false,
+          verification_token: verificationToken,
+          token_expires: tokenExpires.toISOString()
         }]);
       
       if (createError) {
@@ -196,10 +206,27 @@ io.on('connection', (socket) => {
         });
       }
       
-      callback({ 
-        success: true, 
-        message: 'Account created successfully'
-      });
+      // Send verification email
+      try {
+        await emailService.sendVerificationEmail(
+          email.toLowerCase(),
+          username,
+          verificationToken
+        );
+        
+        callback({ 
+          success: true, 
+          message: 'Account created successfully! Please check your email to verify your account.'
+        });
+      } catch (emailError) {
+        console.error('Error sending verification email:', emailError);
+        
+        // Return success even if email fails, but log the error
+        callback({ 
+          success: true, 
+          message: 'Account created successfully! Email verification could not be sent.'
+        });
+      }
       
     } catch (error) {
       console.error('Registration error:', error);
@@ -396,6 +423,105 @@ app.get('/', (req, res) => {
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
+});
+
+// Email verification endpoint
+app.get('/verify', async (req, res) => {
+  try {
+    const { token } = req.query;
+    
+    if (!token) {
+      return res.status(400).send('Verification token is required');
+    }
+    
+    // Find user with this token
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('verification_token', token)
+      .single();
+    
+    if (error || !data) {
+      return res.status(400).send('Invalid verification token');
+    }
+    
+    // Check if token is expired
+    const tokenExpires = new Date(data.token_expires);
+    if (tokenExpires < new Date()) {
+      return res.status(400).send('Verification token has expired');
+    }
+    
+    // Mark user as verified
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ 
+        verified: true,
+        verification_token: null,
+        token_expires: null
+      })
+      .eq('user_id', data.user_id);
+    
+    if (updateError) {
+      console.error('Error updating user verification status:', updateError);
+      return res.status(500).send('Error verifying email');
+    }
+    
+    // Redirect to success page
+    res.send(`
+      <html>
+      <head>
+        <title>Email Verified - The Homies App</title>
+        <style>
+          body {
+            font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #202225;
+            color: #FFFFFF;
+            text-align: center;
+            padding-top: 50px;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #2F3136;
+            padding: 30px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+          }
+          h1 {
+            color: #5865F2;
+          }
+          .success-icon {
+            font-size: 64px;
+            color: #3BA55C;
+            margin-bottom: 20px;
+          }
+          .btn {
+            display: inline-block;
+            background-color: #5865F2;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-top: 20px;
+            font-weight: bold;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="success-icon">✓</div>
+          <h1>Email Verified Successfully!</h1>
+          <p>Your email has been verified. You can now log in to The Homies App.</p>
+          <a href="/" class="btn">Go to Login</a>
+        </div>
+      </body>
+      </html>
+    `);
+    
+  } catch (error) {
+    console.error('Verification error:', error);
+    res.status(500).send('Server error during verification');
+  }
 });
 
 // Start server
