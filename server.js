@@ -189,8 +189,8 @@ io.on('connection', (socket) => {
         .from('users')
         .insert([{ 
           username, 
-          email: email.toLowerCase(), // normalize email
-          password: hashedPassword,
+          email: email.toLowerCase(),
+          password_hash: hashedPassword,
           created_at: new Date().toISOString(),
           user_id: uuidv4(),
           verified: false,
@@ -258,7 +258,7 @@ io.on('connection', (socket) => {
       }
       
       // Verify password
-      const isMatch = await bcrypt.compare(password, data.password);
+      const isMatch = await bcrypt.compare(password, data.password_hash);
       
       if (!isMatch) {
         return callback({ 
