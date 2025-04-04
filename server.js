@@ -203,7 +203,7 @@ io.on('connection', (socket) => {
         .insert([{ 
           username, 
           email: email.toLowerCase(),
-          password_hash: hashedPassword,
+          password: hashedPassword, // Changed back to password for compatibility
           created_at: new Date().toISOString(),
           user_id: uuidv4(),
           verified: false,
