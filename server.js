@@ -1,7 +1,6 @@
 // Main server file for Homies Chat App - Glitch optimized
 require('dotenv').config();
 const express = require('express');
-const https = require('https');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
@@ -16,13 +15,7 @@ const emailService = require('./email-service');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// HTTPS configuration
-const sslOptions = {
-  key: fs.readFileSync('server.key'),
-  cert: fs.readFileSync('server.cert')
-};
-
-const server = https.createServer(sslOptions, app);
+const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: "*", // In production, replace with your actual domain
