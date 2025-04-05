@@ -201,11 +201,11 @@ io.on('connection', (socket) => {
       const { data: newUser, error: createError } = await supabase
         .from('users')
         .insert([{ 
+          id: uuidv4(), // Explicitly provide id
           username, 
           email: email.toLowerCase(),
           password: hashedPassword, // Changed back to password for compatibility
           created_at: new Date().toISOString(),
-          // Removed user_id as Supabase auto-generates the id field
           verified: false,
           verification_token: verificationToken,
           token_expires: tokenExpires.toISOString()
