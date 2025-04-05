@@ -27,7 +27,12 @@ app.use(express.json());
 const MESSAGE_FILE = "messages.json";
 
 // Serve static files (like index.html)
-app.use(express.static(__dirname));
+app.use(express.static('public'));
+
+// Serve the index.html for root path
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/public/index.html');
+});
 
 // REST API endpoints for verification
 app.post('/api/send-verification', async (req, res) => {
