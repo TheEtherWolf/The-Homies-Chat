@@ -38,6 +38,12 @@ function initializeEmailService() {
       auth: {
         user: EMAIL_USER,
         pass: EMAIL_PASS
+      },
+      tls: {
+        // Do not fail on invalid certs
+        rejectUnauthorized: false,
+        // Specify minimum TLS version
+        minVersion: 'TLSv1.2'
       }
     });
     

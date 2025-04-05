@@ -125,12 +125,68 @@ class AuthManager {
         
         socket.emit('register', { username, email, password }, (response) => {
             if (response.success) {
-                this.showMessage('Account created successfully! You can now login.');
-                this.toggleForms('login');
+                if (response.pendingVerification) {
+                    // Show verification pending screen
+                    this.showVerificationPending(email, response.message);
+                } else {
+                    // If auto-verified (email service disabled), show login
+                    this.showMessage('Account created successfully! You can now login.');
+                    this.toggleForms('login');
+                }
             } else {
                 this.showMessage(response.message || 'Registration failed. Please try again.', true);
             }
         });
+    }
+    
+    showVerificationPending(email, message) {
+        // Hide both login and register forms
+        this.loginForm.classList.add('d-none');
+        this.registerForm.classList.add('d-none');
+        
+        // Show verification pending UI
+        let pendingDiv = document.getElementById('verification-pending');
+        
+        if (!pendingDiv) {
+            // Create verification pending div if it doesn't exist
+            pendingDiv = document.createElement('div');
+            pendingDiv.id = 'verification-pending';
+            pendingDiv.className = 'mt-3';
+            
+            const cardHeader = document.querySelector('.auth-card .card-header');
+            const cardBody = document.querySelector('.auth-card .card-body');
+            
+            // Update card title
+            document.getElementById('auth-title').textContent = 'Email Verification';
+            
+            // Create and append the pending verification content
+            pendingDiv.innerHTML = `
+                <div class="text-center">
+                    <i class="bi bi-envelope-check fs-1 mb-3 text-primary"></i>
+                    <h4>Verification Email Sent</h4>
+                    <p>We've sent a verification link to <strong>${email}</strong></p>
+                    <p>Please check your inbox and click the verification link to activate your account.</p>
+                    <p class="small text-muted">Can't find the email? Check your spam folder or try again.</p>
+                    <button id="back-to-login" class="btn btn-primary mt-3">Back to Login</button>
+                </div>
+            `;
+            
+            cardBody.appendChild(pendingDiv);
+            
+            // Add event listener to the back to login button
+            document.getElementById('back-to-login').addEventListener('click', () => {
+                pendingDiv.remove();
+                this.toggleForms('login');
+            });
+        } else {
+            // Update existing verification pending div
+            pendingDiv.classList.remove('d-none');
+            const emailElement = pendingDiv.querySelector('strong');
+            if (emailElement) emailElement.textContent = email;
+        }
+        
+        // Show success message
+        this.showMessage(message || 'Verification email sent!');
     }
     
     handleLogout() {

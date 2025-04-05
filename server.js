@@ -230,7 +230,9 @@ io.on('connection', (socket) => {
           
           callback({ 
             success: true, 
-            message: 'Account created successfully! Please check your email to verify your account.'
+            message: 'Account created successfully! Please check your email to verify your account.',
+            pendingVerification: true,
+            email: email.toLowerCase()
           });
         } catch (emailError) {
           console.error('Error sending verification email:', emailError);
@@ -238,13 +240,30 @@ io.on('connection', (socket) => {
           // Return success even if email fails, but log the error
           callback({ 
             success: true, 
-            message: 'Account created successfully! Email verification could not be sent.'
+            message: 'Account created successfully! Email verification could not be sent.',
+            pendingVerification: true,
+            email: email.toLowerCase()
           });
         }
       } else {
+        // Auto-verify users if email service is disabled
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ 
+            verified: true,
+            verification_token: null,
+            token_expires: null
+          })
+          .eq('username', username);
+          
+        if (updateError) {
+          console.error('Error auto-verifying user:', updateError);
+        }
+        
         callback({ 
           success: true, 
-          message: 'Account created successfully! (Email verification disabled)'
+          message: 'Account created successfully! (Email verification disabled)',
+          pendingVerification: false
         });
       }
       
