@@ -1,7 +1,21 @@
-const fs = require("fs");
-const express = require("express");
-const http = require("http");
-const socketIo = require("socket.io");
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
+require('dotenv').config();
+
+// Import storage and email verification modules
+const storage = require('./mega-storage');
+const { 
+  sendVerificationEmail, 
+  verifyEmail, 
+  resendVerificationEmail 
+} = require('./email-verification');
+
 const { 
     registerUser, 
     signInUser, 
@@ -9,18 +23,6 @@ const {
     getCurrentUser, 
     getAllUsers 
 } = require("./supabase-client");
-const { 
-    sendVerificationEmail, 
-    verifyEmail, 
-    resendVerificationEmail 
-} = require("./email-verification");
-
-// Import storage modules
-const { 
-    connectToMega, 
-    loadMessages, 
-    saveMessages 
-} = require("./mega-storage");
 
 // Set NODE_ENV to development if not set
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
@@ -99,10 +101,10 @@ let users = {}; // Map of socket ID to username
 async function initializeStorage() {
     try {
         // Connect to MEGA
-        await connectToMega();
+        await storage.connectToMega();
         
         // Load messages from storage (Supabase first, then MEGA, then local backup)
-        const messagesData = await loadMessages();
+        const messagesData = await storage.loadMessages();
         
         if (messagesData && messagesData.channels) {
             channelMessages = messagesData.channels;
@@ -124,7 +126,7 @@ async function initializeStorage() {
             channelMessages = { general: [] };
             
             // Save empty initial structure
-            await saveMessages({ channels: channelMessages });
+            await storage.saveMessages({ channels: channelMessages });
         }
         
         console.log('Storage initialization complete');
@@ -139,7 +141,7 @@ async function initializeStorage() {
 // Save messages to storage
 async function saveAllMessages() {
     try {
-        return await saveMessages({ channels: channelMessages });
+        return await storage.saveMessages({ channels: channelMessages });
     } catch (error) {
         console.error('Error saving messages:', error);
         return false;
@@ -631,6 +633,102 @@ io.on("connection", (socket) => {
             activeUsers.delete(username);
             io.emit('user-left', username);
             updateUserList(); // Update the active user list after someone leaves
+        }
+    });
+    
+    // Handle user registration request
+    socket.on('register', async (data) => {
+        try {
+            console.log(`Registering user with ${data.email && data.email.includes('@proton') ? 'ProtonMail' : 'email'}: ${data.username} (${data.email})`);
+            
+            // In development mode, simplify registration process for testing
+            if (process.env.NODE_ENV === 'development' && !process.env.DISABLE_DEV_AUTH) {
+                console.log(`Development mode: Simplified registration for ${data.username}`);
+                
+                // Still try to send verification email, but don't require success
+                try {
+                    await sendVerificationEmail(data.email, data.username, data.password);
+                } catch (emailError) {
+                    console.warn('Email verification skipped in development mode:', emailError.message);
+                }
+                
+                // Create the user in Supabase for testing
+                try {
+                    const hashedPassword = await bcrypt.hash(data.password, 10);
+                    const userId = await registerUser(data.username, hashedPassword, data.email);
+                    
+                    socket.emit('register-success', {
+                        message: 'Development mode: Registration successful!',
+                        username: data.username,
+                        userId
+                    });
+                } catch (authError) {
+                    console.error('Dev mode - Auth error:', authError);
+                    socket.emit('register-fail', { message: 'Registration failed. User might already exist.' });
+                }
+                return;
+            }
+            
+            // Send verification email
+            const success = await sendVerificationEmail(data.email, data.username, data.password);
+            
+            if (success) {
+                socket.emit('verification-sent', {
+                    email: data.email,
+                    message: 'Verification email sent! Please check your inbox and spam folder.'
+                });
+            } else {
+                console.error(`Failed to send verification email to ${data.email}`);
+                socket.emit('register-fail', { message: 'Failed to send verification email. Please try again or use a different email address.' });
+            }
+        } catch (error) {
+            console.error('Error during registration:', error);
+            socket.emit('register-fail', { message: 'Registration failed. Please try again.' });
+        }
+    });
+
+    // Handle verification code submission
+    socket.on('verify-code', async (data) => {
+        try {
+            // Verify the code
+            const userData = verifyEmail(data.email, data.code);
+            
+            if (!userData) {
+                socket.emit('verify-fail', { message: 'Invalid or expired verification code.' });
+                return;
+            }
+            
+            // Create user in Supabase
+            const hashedPassword = await bcrypt.hash(userData.password, 10);
+            const userId = await registerUser(userData.username, hashedPassword, userData.email);
+            
+            socket.emit('register-success', {
+                message: 'Registration successful!',
+                username: userData.username,
+                userId
+            });
+        } catch (error) {
+            console.error('Error during verification:', error);
+            socket.emit('verify-fail', { message: 'Verification failed. Please try again.' });
+        }
+    });
+
+    // Handle resend verification code
+    socket.on('resend-verification', async (data) => {
+        try {
+            const success = await resendVerificationEmail(data.email);
+            
+            if (success) {
+                socket.emit('verification-sent', {
+                    email: data.email,
+                    message: 'Verification email resent! Please check your inbox and spam folder.'
+                });
+            } else {
+                socket.emit('verify-fail', { message: 'Failed to resend verification email. Please try again later.' });
+            }
+        } catch (error) {
+            console.error('Error resending verification:', error);
+            socket.emit('verify-fail', { message: 'Failed to resend verification. Please try again.' });
         }
     });
 });

@@ -1,77 +1,18 @@
 /**
- * Email Verification Module for The Homies App
- * Handles sending verification emails and verifying verification codes
+ * SendGrid Email Service for The Homies App
+ * Handles email verification and notifications
  */
 
 require('dotenv').config();
-const nodemailer = require('nodemailer');
-const crypto = require('crypto');
+const sgMail = require('@sendgrid/mail');
 const { v4: uuidv4 } = require('uuid');
 
-// Import SendGrid email service
-const sendgridService = require('./sendgrid-email');
-
-// Email credentials
-const EMAIL_USER = process.env.EMAIL_USER || '';
-const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || '';
-
-// Create email transport
-let transporter = null;
-
-// Initialize traditional nodemailer transport (fallback)
-try {
-  // Check if we should use Proton Mail SMTP
-  if (EMAIL_USER.includes('@proton.me') || EMAIL_USER.includes('@protonmail.com')) {
-    transporter = nodemailer.createTransport({
-      host: 'smtp.proton.me',
-      port: 587,
-      secure: false,
-      auth: {
-        user: EMAIL_USER,
-        pass: EMAIL_PASSWORD
-      }
-    });
-    console.log('Email transport initialized for Proton Mail');
-  } 
-  // Gmail SMTP
-  else if (EMAIL_USER.includes('@gmail.com')) {
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: EMAIL_USER,
-        pass: EMAIL_PASSWORD
-      }
-    });
-    console.log('Email transport initialized for Gmail');
-  }
-  // Yahoo Mail SMTP
-  else if (EMAIL_USER.includes('@yahoo.com')) {
-    transporter = nodemailer.createTransport({
-      service: 'yahoo',
-      auth: {
-        user: EMAIL_USER,
-        pass: EMAIL_PASSWORD
-      }
-    });
-    console.log('Email transport initialized for Yahoo Mail');
-  }
-  // Default to generic SMTP
-  else if (EMAIL_USER && EMAIL_PASSWORD) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.mail.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: EMAIL_USER,
-        pass: EMAIL_PASSWORD
-      }
-    });
-    console.log('Email transport initialized with generic SMTP');
-  } else {
-    console.log('No email credentials provided, email verification will be limited');
-  }
-} catch (error) {
-  console.error('Failed to initialize email transport:', error);
+// Initialize SendGrid with API key
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log('SendGrid initialized successfully');
+} else {
+  console.log('SendGrid API key not found, email services will be limited');
 }
 
 // Store verification codes temporarily (in production this would be in a database)
@@ -98,13 +39,8 @@ function generateVerificationCode() {
  */
 async function sendVerificationEmail(email, username, password) {
   try {
-    // Try SendGrid first (preferred method)
-    if (process.env.SENDGRID_API_KEY) {
-      return await sendgridService.sendVerificationEmail(email, username, password);
-    }
-    
-    // In development mode, auto-verify without sending email
-    if (process.env.NODE_ENV === 'development') {
+    // In development mode without SendGrid API key, auto-verify
+    if (process.env.NODE_ENV === 'development' && !process.env.SENDGRID_API_KEY) {
       console.log('Development mode: Auto-verifying without sending email');
       
       // Store user for immediate verification
@@ -128,12 +64,6 @@ async function sendVerificationEmail(email, username, password) {
       
       return true;
     }
-  
-    // Fall back to traditional nodemailer if no SendGrid and not in dev mode
-    if (!transporter) {
-      console.error('No email transport available');
-      return false;
-    }
     
     // Generate verification code
     const code = generateVerificationCode();
@@ -153,50 +83,70 @@ async function sendVerificationEmail(email, username, password) {
     // Determine email provider for customized instructions
     const parts = email.split('@');
     const domain = (parts.length > 1 && parts[1]) ? parts[1].toLowerCase() : '';
-    let providerInfo = 'your email';
-    
-    if (domain.includes('gmail')) {
-      providerInfo = 'Gmail';
-    } else if (domain.includes('yahoo')) {
-      providerInfo = 'Yahoo Mail';
-    } else if (domain.includes('proton') || domain.includes('pm.me')) {
-      providerInfo = 'Proton Mail';
-    } else if (domain.includes('outlook') || domain.includes('hotmail')) {
-      providerInfo = 'Outlook';
-    }
-    
-    // Send verification email
-    const mailOptions = {
-      from: EMAIL_USER,
-      to: email,
-      subject: 'Verify your The Homies App account',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #5865F2;">Welcome to The Homies App!</h2>
-          <p>Hello ${username},</p>
-          <p>Thank you for registering with The Homies App. To complete your registration, please use the following verification code:</p>
-          <div style="background-color: #2C2F33; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0; color: #FFFFFF;">
-            ${code}
-          </div>
-          <p>This code will expire in 30 minutes.</p>
-          <p>If you did not request this verification code, please ignore this email.</p>
-          <p>Thank you,<br>The Homies App Team</p>
-        </div>
-      `
+    let providerInfo = {
+      name: 'your email service',
+      instructions: 'Please check your inbox and spam/junk folders for the verification code.'
     };
     
-    await transporter.sendMail(mailOptions);
-    console.log(`Verification email sent to ${providerInfo} account: ${email}`);
-    return true;
-  } catch (error) {
-    console.error('Error sending verification email:', error);
-    
-    // In development mode, consider it a success for testing
-    if (process.env.NODE_ENV === 'development') {
-      return true;
+    if (domain.includes('gmail')) {
+      providerInfo.name = 'Gmail';
+      providerInfo.instructions = 'Please check your inbox and spam folders. If not found, check the "Promotions" or "Updates" tabs.';
+    } else if (domain.includes('yahoo')) {
+      providerInfo.name = 'Yahoo Mail';
+      providerInfo.instructions = 'Please check your inbox and spam folders. Yahoo may filter verification emails as spam.';
+    } else if (domain.includes('proton') || domain.includes('pm.me')) {
+      providerInfo.name = 'Proton Mail';
+      providerInfo.instructions = 'Please check your inbox and spam folders.';
+    } else if (domain.includes('outlook') || domain.includes('hotmail')) {
+      providerInfo.name = 'Outlook';
+      providerInfo.instructions = 'Please check your inbox and junk folders. Outlook may filter verification emails as junk.';
     }
     
-    return false;
+    // Try to send email with SendGrid
+    if (process.env.SENDGRID_API_KEY) {
+      const msg = {
+        to: email,
+        from: process.env.EMAIL_FROM || 'noreply@homiesapp.com',
+        subject: 'Verify your The Homies App account',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #5865F2;">Welcome to The Homies App!</h2>
+            <p>Hello ${username},</p>
+            <p>Thank you for registering with The Homies App. To complete your registration, please use the following verification code:</p>
+            <div style="background-color: #2C2F33; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0; color: #FFFFFF;">
+              ${code}
+            </div>
+            <p>This code will expire in 30 minutes.</p>
+            <p><strong>Important:</strong> ${providerInfo.instructions}</p>
+            <p>If you did not request this verification code, please ignore this email.</p>
+            <p>Thank you,<br>The Homies App Team</p>
+          </div>
+        `
+      };
+      
+      try {
+        await sgMail.send(msg);
+        console.log(`Verification email sent to ${email} (${providerInfo.name}) via SendGrid`);
+        return true;
+      } catch (sendgridError) {
+        console.error('SendGrid Error:', sendgridError);
+        
+        // For development, still consider it a success
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`Development mode: Verification code for ${email} is ${code}`);
+          return true;
+        }
+        
+        return false;
+      }
+    } else {
+      // No SendGrid API key, but still store the code for testing
+      console.log(`No SendGrid API key. Development verification code for ${email}: ${code}`);
+      return process.env.NODE_ENV === 'development';
+    }
+  } catch (error) {
+    console.error('Error sending verification email:', error);
+    return process.env.NODE_ENV === 'development'; // Allow in development
   }
 }
 
@@ -207,11 +157,6 @@ async function sendVerificationEmail(email, username, password) {
  * @returns {object|null} - User data if verification successful, null otherwise
  */
 function verifyEmail(email, code) {
-  // Try SendGrid verification first
-  if (process.env.SENDGRID_API_KEY) {
-    return sendgridService.verifyEmail(email, code);
-  }
-
   // In development mode, skip verification if needed
   if (process.env.NODE_ENV === 'development' && pendingRegistrations.has(email)) {
     const userData = pendingRegistrations.get(email);
@@ -280,11 +225,6 @@ function verifyEmail(email, code) {
  * @returns {number|null} - Milliseconds until expiration or null if no valid code
  */
 function getVerificationExpiration(email) {
-  // Try SendGrid first
-  if (process.env.SENDGRID_API_KEY) {
-    return sendgridService.getVerificationExpiration(email);
-  }
-
   if (!verificationCodes.has(email)) {
     return null;
   }
@@ -301,11 +241,6 @@ function getVerificationExpiration(email) {
  * @returns {Promise<boolean>} - Success status
  */
 async function resendVerificationEmail(email) {
-  // Try SendGrid first
-  if (process.env.SENDGRID_API_KEY) {
-    return await sendgridService.resendVerificationEmail(email);
-  }
-
   try {
     // Check if we have pending registration data
     if (!pendingRegistrations.has(email)) {
@@ -325,40 +260,44 @@ async function resendVerificationEmail(email) {
     });
     
     // In development mode, just log the code
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development' && !process.env.SENDGRID_API_KEY) {
       console.log(`Development verification code for ${email}: ${newCode}`);
       return true;
     }
     
-    // Check if we have an active transporter
-    if (!transporter) {
-      console.error('No email transport available');
-      return false;
-    }
-    
-    // Send a new verification email
-    const mailOptions = {
-      from: EMAIL_USER,
-      to: email,
-      subject: 'Your new verification code for The Homies App',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #5865F2;">The Homies App Verification</h2>
-          <p>Hello ${userData.username},</p>
-          <p>You requested a new verification code. Please use the following code to verify your account:</p>
-          <div style="background-color: #2C2F33; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0; color: #FFFFFF;">
-            ${newCode}
+    // Try to send email with SendGrid
+    if (process.env.SENDGRID_API_KEY) {
+      const msg = {
+        to: email,
+        from: process.env.EMAIL_FROM || 'noreply@homiesapp.com',
+        subject: 'Your new verification code for The Homies App',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #5865F2;">The Homies App Verification</h2>
+            <p>Hello ${userData.username},</p>
+            <p>You requested a new verification code. Please use the following code to verify your account:</p>
+            <div style="background-color: #2C2F33; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0; color: #FFFFFF;">
+              ${newCode}
+            </div>
+            <p>This code will expire in 30 minutes.</p>
+            <p>If you did not request this verification code, please ignore this email.</p>
+            <p>Thank you,<br>The Homies App Team</p>
           </div>
-          <p>This code will expire in 30 minutes.</p>
-          <p>If you did not request this verification code, please ignore this email.</p>
-          <p>Thank you,<br>The Homies App Team</p>
-        </div>
-      `
-    };
-    
-    await transporter.sendMail(mailOptions);
-    console.log(`New verification email sent to ${email}`);
-    return true;
+        `
+      };
+      
+      try {
+        await sgMail.send(msg);
+        console.log(`New verification email sent to ${email} via SendGrid`);
+        return true;
+      } catch (sendgridError) {
+        console.error('SendGrid Error:', sendgridError);
+        return process.env.NODE_ENV === 'development';
+      }
+    } else {
+      console.log(`No SendGrid API key. Development verification code for ${email}: ${newCode}`);
+      return process.env.NODE_ENV === 'development';
+    }
   } catch (error) {
     console.error('Error resending verification email:', error);
     return false;
