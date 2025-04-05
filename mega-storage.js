@@ -135,10 +135,17 @@ async function saveMessages(messages) {
     const flatMessages = [];
     for (const channelId in messages.channels) {
       if (Array.isArray(messages.channels[channelId])) {
-        const channelMessages = messages.channels[channelId].map(msg => ({
-          ...msg,
-          channelId
-        }));
+        const channelMessages = messages.channels[channelId].map(msg => {
+          return {
+            // Keep the original message properties
+            ...msg,
+            // Add/transform properties to match Supabase schema
+            channelId,
+            content: msg.message || msg.content || "",
+            "sender-id": msg.username || msg.sender || "anonymous",
+            type: msg.type || "text"
+          };
+        });
         flatMessages.push(...channelMessages);
       }
     }

@@ -3,6 +3,7 @@
  * Handles authentication and database operations
  */
 
+const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
@@ -229,7 +230,7 @@ async function loadMessagesFromSupabase() {
     const { data, error } = await supabase
       .from('messages')
       .select('*')
-      .order('timestamp', { ascending: true });
+      .order('created_at', { ascending: true });
     
     if (error) {
       console.error('Error loading messages from Supabase:', error);
@@ -260,7 +261,7 @@ async function saveMessagesToSupabase(messages) {
     const { error: deleteError } = await supabase
       .from('messages')
       .delete()
-      .neq('id', '0'); // Safety check to avoid deleting everything if no condition (using dummy condition)
+      .is('id', null); // Safe condition that won't delete anything by accident
     
     if (deleteError) {
       console.error('Error deleting old messages from Supabase:', deleteError);
@@ -269,21 +270,37 @@ async function saveMessagesToSupabase(messages) {
 
     // Then, insert all current messages
     if (messages && messages.length > 0) {
-      // Ensure each message has a unique id
-      const messagesWithIds = messages.map(msg => {
-        if (!msg.id) {
-          return { ...msg, id: Date.now() + '-' + Math.random().toString(36).substr(2, 9) };
-        }
-        return msg;
+      // Transform messages to match Supabase schema
+      const formattedMessages = messages.map(msg => {
+        // Generate UUID for message id if needed
+        const id = msg.id || uuidv4();
+        
+        return {
+          id,
+          "sender-id": msg.username || msg.sender || "anonymous",
+          content: msg.message || msg.content || "",
+          created_at: new Date(msg.timestamp || Date.now()).toISOString(),
+          type: msg.type || "text",
+          channelId: msg.channelId || "general",
+          // Include file info if available
+          file_url: msg.fileUrl || null,
+          file_type: msg.fileType || null,
+          file_size: msg.fileSize || null
+        };
       });
 
-      const { error: insertError } = await supabase
-        .from('messages')
-        .insert(messagesWithIds);
-      
-      if (insertError) {
-        console.error('Error saving messages to Supabase:', insertError);
-        return false;
+      // Insert in smaller batches if there are many messages
+      const batchSize = 100;
+      for (let i = 0; i < formattedMessages.length; i += batchSize) {
+        const batch = formattedMessages.slice(i, i + batchSize);
+        const { error: insertError } = await supabase
+          .from('messages')
+          .insert(batch);
+        
+        if (insertError) {
+          console.error(`Error saving batch ${i/batchSize + 1} to Supabase:`, insertError);
+          return false;
+        }
       }
     }
 
