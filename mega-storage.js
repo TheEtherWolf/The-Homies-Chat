@@ -4,6 +4,21 @@
  */
 
 require('dotenv').config();
+
+// Add fetch polyfill for older Node.js versions
+if (typeof globalThis.fetch !== 'function') {
+  try {
+    console.log('Adding fetch polyfill for MEGA integration');
+    globalThis.fetch = require('node-fetch');
+  } catch (error) {
+    console.warn('node-fetch module not found. Please install it with: npm install node-fetch');
+    // Create a simple mock for development
+    globalThis.fetch = async () => {
+      throw new Error('fetch is not available - install node-fetch package');
+    };
+  }
+}
+
 const { Storage } = require('megajs');
 const fs = require('fs');
 const path = require('path');
@@ -25,32 +40,51 @@ async function initializeMega() {
       return false;
     }
 
+    // Check if fetch is available
+    if (typeof globalThis.fetch !== 'function') {
+      console.error('fetch API not available. MEGA integration will not work.');
+      console.error('Please install node-fetch: npm install node-fetch');
+      return false;
+    }
+
     console.log('Connecting to MEGA...');
-    megaStorage = new Storage({
-      email: MEGA_EMAIL,
-      password: MEGA_PASSWORD
-    });
-
-    // Wait for connection to be established
-    await new Promise((resolve, reject) => {
-      megaStorage.on('ready', () => {
-        megaReady = true;
-        console.log('MEGA storage connection established successfully');
-        resolve();
+    try {
+      megaStorage = new Storage({
+        email: MEGA_EMAIL,
+        password: MEGA_PASSWORD,
+        // Use a smaller timeout to avoid hanging
+        autoload: false
       });
 
-      megaStorage.on('error', (error) => {
-        console.error('MEGA storage connection error:', error);
-        reject(error);
-      });
+      // Wait for connection to be established
+      await new Promise((resolve, reject) => {
+        megaStorage.on('ready', () => {
+          megaReady = true;
+          console.log('MEGA storage connection established successfully');
+          resolve();
+        });
 
-      // Set timeout for connection
-      setTimeout(() => {
-        if (!megaReady) {
-          reject(new Error('MEGA connection timeout'));
-        }
-      }, 20000);
-    });
+        megaStorage.on('error', (error) => {
+          console.error('MEGA storage connection error:', error);
+          reject(error);
+        });
+
+        // Try to login
+        megaStorage.login();
+
+        // Set timeout for connection
+        setTimeout(() => {
+          if (!megaReady) {
+            console.warn('MEGA connection timeout - switching to local storage only');
+            reject(new Error('MEGA connection timeout'));
+          }
+        }, 15000);
+      });
+    } catch (megaError) {
+      console.error('MEGA instantiation error:', megaError);
+      // Fall back to local storage
+      return false;
+    }
 
     return megaReady;
   } catch (error) {
@@ -67,20 +101,26 @@ async function initializeMega() {
  */
 async function saveToMega(filename, data) {
   try {
-    if (!megaReady || !megaStorage) {
-      // Save locally as fallback
-      const backupPath = filename + '.backup';
+    // Always save a local backup first to prevent data loss
+    const backupPath = filename + '.backup';
+    try {
       fs.writeFileSync(backupPath, data);
       console.log(`Saved to local backup: ${backupPath}`);
-      
-      // Attempt to initialize
-      if (!megaReady) {
-        await initializeMega();
-      }
-      
-      // If still not ready, return
-      if (!megaReady) {
-        return false;
+    } catch (backupError) {
+      console.error(`Error saving local backup: ${backupError.message}`);
+    }
+    
+    // If MEGA is not ready, try to initialize it
+    if (!megaReady || !megaStorage) {
+      try {
+        const initResult = await initializeMega();
+        if (!initResult) {
+          console.log('Using local storage only - MEGA not available');
+          return true; // Return true since we saved locally anyway
+        }
+      } catch (initError) {
+        console.error('Failed to initialize MEGA:', initError);
+        return true; // Return true since we saved locally
       }
     }
 
@@ -172,8 +212,14 @@ async function loadFromMega(filename) {
   }
 }
 
+// Function to check if MEGA is operational
+function isMegaReady() {
+  return megaReady && megaStorage !== null;
+}
+
 module.exports = {
   initializeMega,
   saveToMega,
-  loadFromMega
+  loadFromMega,
+  isMegaReady
 };
