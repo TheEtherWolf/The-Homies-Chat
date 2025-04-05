@@ -263,6 +263,49 @@ io.on("connection", (socket) => {
         console.log('Sent active users list to client on request:', Array.from(activeUsers.keys()));
     });
     
+    // Login user handler
+    socket.on('login-user', async (data, callback) => {
+        const { username, password } = data;
+        
+        console.log(`Login attempt for user: ${username}`);
+        
+        try {
+            // For development mode, allow any credentials
+            if (process.env.NODE_ENV === 'development') {
+                console.log('Development mode: auto-approving login');
+                users[socket.id] = username;
+                activeUsers.set(username, socket.id);
+                updateUserList();
+                return callback({ 
+                    success: true, 
+                    userId: 'dev-' + Date.now(),
+                    username
+                });
+            }
+            
+            // In production, verify with Supabase
+            const user = await signInUser(username, password);
+            if (user) {
+                console.log(`User authenticated successfully: ${username}`);
+                // Store user in active users list
+                users[socket.id] = username;
+                activeUsers.set(username, socket.id);
+                updateUserList();
+                callback({ 
+                    success: true, 
+                    userId: user.id || 'unknown',
+                    username
+                });
+            } else {
+                console.log(`Authentication failed for: ${username}`);
+                callback({ success: false, message: "Incorrect username or password" });
+            }
+        } catch (error) {
+            console.error(`Login error for ${username}:`, error);
+            callback({ success: false, message: "Authentication error. Please try again." });
+        }
+    });
+    
     // Verify user credentials
     socket.on('verify-user', async (data, callback) => {
         const { username, password } = data;
@@ -687,6 +730,18 @@ io.on("connection", (socket) => {
             if (targetSocketId) {
                 io.to(targetSocketId).emit('call-ended');
             }
+        }
+    });
+    
+    // Logout user handler
+    socket.on('logout-user', () => {
+        const username = users[socket.id];
+        if (username) {
+            console.log(`User logged out: ${username}`);
+            delete users[socket.id];
+            activeUsers.delete(username);
+            io.emit('user-left', username);
+            updateUserList();
         }
     });
     
