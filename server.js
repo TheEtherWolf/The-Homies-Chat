@@ -2,7 +2,6 @@ const fs = require("fs");
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
-const { saveToMega, loadFromMega, initializeMega } = require("./mega-storage");
 const { 
     registerUser, 
     signInUser, 
@@ -10,12 +9,18 @@ const {
     getCurrentUser, 
     getAllUsers 
 } = require("./supabase-client");
-const {
-    sendVerificationEmail,
-    verifyCode,
-    getVerificationExpiration,
-    resendVerificationEmail
+const { 
+    sendVerificationEmail, 
+    verifyEmail, 
+    resendVerificationEmail 
 } = require("./email-verification");
+
+// Import storage modules
+const { 
+    connectToMega, 
+    loadMessages, 
+    saveMessages 
+} = require("./mega-storage");
 
 // Set NODE_ENV to development if not set
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
@@ -27,8 +32,6 @@ const io = socketIo(server);
 
 // Add middleware for parsing JSON
 app.use(express.json());
-
-const MESSAGE_FILE = "messages.json";
 
 // Serve static files (like index.html)
 app.use(express.static('public'));
@@ -62,7 +65,7 @@ app.post('/api/verify-code', (req, res) => {
         return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
     
-    const userData = verifyCode(email, code);
+    const userData = verifyEmail(email, code);
     
     if (userData) {
         res.json({ success: true, user: userData });
@@ -88,171 +91,86 @@ app.post('/api/resend-verification', async (req, res) => {
 });
 
 // Track active users and socket connections
-const users = {};  // socket.id -> username
-const activeUsers = new Map();  // username -> socket.id
+let channelMessages = {}; // Messages for each channel
+let activeUsers = new Set(); // Set of active users
+let users = {}; // Map of socket ID to username
 
-// Messages storage by channel
-let messagesByChannel = {};
-const DEFAULT_CHANNEL = 'general';
-const BACKUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
-const MESSAGE_RETENTION = 1000; // messages per channel
-
-// Load message history from MEGA or local backup
-async function loadMessages() {
+// Initialize storage and load messages
+async function initializeStorage() {
     try {
-        // Try to load channel-specific messages file
-        const messagesData = await loadFromMega(MESSAGE_FILE);
-        if (messagesData) {
-            try {
-                const parsedData = JSON.parse(messagesData);
-                
-                // Check if the format is the new channel-based format or old format
-                if (typeof parsedData === 'object' && !Array.isArray(parsedData)) {
-                    messagesByChannel = parsedData;
-                    // Count total messages across all channels
-                    const totalMessages = Object.values(messagesByChannel)
-                        .reduce((sum, messages) => sum + (Array.isArray(messages) ? messages.length : 0), 0);
-                    console.log(`Loaded ${totalMessages} messages across ${Object.keys(messagesByChannel).length} channels`);
-                } else if (Array.isArray(parsedData)) {
-                    // Legacy format - migrate to new format
-                    console.log('Migrating from legacy message format to channel-based format');
-                    messagesByChannel[DEFAULT_CHANNEL] = parsedData.filter(msg => {
-                        // Validate each message during migration
-                        return msg && msg.username && (msg.text || msg.content) && 
-                               (typeof msg.text === 'string' || typeof msg.content === 'string');
-                    }).map(msg => ({
-                        // Normalize message format
-                        content: msg.text || msg.content,
-                        sender: msg.username,
-                        timestamp: msg.timestamp || new Date().toISOString(),
-                        channel: DEFAULT_CHANNEL
-                    }));
-                    console.log(`Migrated ${messagesByChannel[DEFAULT_CHANNEL].length} messages to '${DEFAULT_CHANNEL}' channel`);
-                    
-                    // Save in the new format immediately
-                    await saveMessages();
+        // Connect to MEGA
+        await connectToMega();
+        
+        // Load messages from storage (Supabase first, then MEGA, then local backup)
+        const messagesData = await loadMessages();
+        
+        if (messagesData && messagesData.channels) {
+            channelMessages = messagesData.channels;
+            
+            // Count messages
+            let totalMessages = 0;
+            let channelCount = 0;
+            
+            for (const channel in channelMessages) {
+                if (Array.isArray(channelMessages[channel])) {
+                    totalMessages += channelMessages[channel].length;
+                    channelCount++;
                 }
-            } catch (parseError) {
-                console.error('Error parsing messages file:', parseError);
-                initializeDefaultChannels();
             }
+            
+            console.log(`Loaded ${totalMessages} messages across ${channelCount} channels`);
         } else {
-            console.log('No message history found, initializing with empty channels');
-            initializeDefaultChannels();
+            console.log('No messages found, creating empty structure');
+            channelMessages = { general: [] };
+            
+            // Save empty initial structure
+            await saveMessages({ channels: channelMessages });
         }
+        
+        console.log('Storage initialization complete');
     } catch (error) {
-        console.error('Error loading messages:', error);
-        initializeDefaultChannels();
+        console.error('Error initializing storage:', error);
+        
+        // Create empty structure for fallback
+        channelMessages = { general: [] };
     }
 }
 
-// Initialize with default empty channels
-function initializeDefaultChannels() {
-    messagesByChannel = {
-        'general': [],
-        'random': [],
-        'welcome': []
-    };
-}
-
-// Create automatic backup of messages periodically
-function setupAutomaticBackup() {
-    setInterval(async () => {
-        try {
-            console.log('Performing automatic message backup...');
-            await saveMessages();
-        } catch (error) {
-            console.error('Automatic backup failed:', error);
-        }
-    }, BACKUP_INTERVAL);
-}
-
-// Save messages to MEGA with backup
-async function saveMessages() {
+// Save messages to storage
+async function saveAllMessages() {
     try {
-        // Create a temporary file first to avoid corruption
-        const tempFile = `${MESSAGE_FILE}.temp`;
-        const jsonData = JSON.stringify(messagesByChannel, null, 2); // Pretty format for debugging
-        
-        // Save to temp file first
-        await saveToMega(tempFile, jsonData);
-        
-        // Then rename/move to actual file
-        await saveToMega(MESSAGE_FILE, jsonData);
-        
-        console.log('Messages saved successfully');
-        return true;
+        return await saveMessages({ channels: channelMessages });
     } catch (error) {
         console.error('Error saving messages:', error);
         return false;
     }
 }
 
-// Function to add a message to a specific channel with validation
-function addMessageToChannel(message, channelName) {
-    // Ensure the channel exists
-    if (!messagesByChannel[channelName]) {
-        messagesByChannel[channelName] = [];
+// Throttled save function
+let saveTimeout = null;
+function throttledSave() {
+    if (saveTimeout) {
+        clearTimeout(saveTimeout);
     }
-    
-    // Only add if message is valid
-    if (message && (message.content || message.text) && (message.sender || message.username)) {
-        // Normalize the message format
-        const normalizedMsg = {
-            content: message.content || message.text,
-            sender: message.sender || message.username,
-            timestamp: message.timestamp || new Date().toISOString(),
-            encrypted: !!message.encrypted,
-            channel: channelName
-        };
-        
-        // Add to the channel
-        messagesByChannel[channelName].push(normalizedMsg);
-        
-        // Keep only the last N messages per channel
-        if (messagesByChannel[channelName].length > MESSAGE_RETENTION) {
-            messagesByChannel[channelName].shift();
-        }
-        
-        return true;
-    }
-    return false;
-}
-
-// Check if a message is a duplicate (to prevent double-saving)
-function isMessageDuplicate(message, channelName) {
-    if (!messagesByChannel[channelName]) return false;
-    
-    // Look for messages with same sender, content and timestamp within 2 seconds
-    return messagesByChannel[channelName].some(msg => {
-        if (msg.sender !== message.sender) return false;
-        if (msg.content !== message.content) return false;
-        
-        // Check if timestamps are within 2 seconds
-        const msgTime = new Date(msg.timestamp).getTime();
-        const newMsgTime = new Date(message.timestamp).getTime();
-        return Math.abs(msgTime - newMsgTime) < 2000; // 2 seconds tolerance
-    });
+    saveTimeout = setTimeout(async () => {
+        await saveAllMessages();
+    }, 5000); // Save every 5 seconds
 }
 
 // Initialize message history and MEGA storage
 (async function initialize() {
     try {
         console.log('Initializing storage...');
-        await initializeMega();
-        await loadMessages();
-        setupAutomaticBackup();
+        await initializeStorage();
         console.log('Storage initialization complete');
     } catch (error) {
         console.error('Storage initialization failed:', error);
-        // Initialize with empty channels as fallback
-        initializeDefaultChannels();
     }
 })();
 
 function updateUserList() {
     // Send the consistent active users list to all clients
-    const userList = Array.from(activeUsers.keys());
+    const userList = Array.from(activeUsers);
     io.emit("active-users", userList);
 }
 
@@ -263,8 +181,8 @@ io.on("connection", (socket) => {
     // Get active users list on request
     socket.on('get-active-users', () => {
         // Send the current active users list to the requesting client
-        socket.emit("active-users", Array.from(activeUsers.keys()));
-        console.log('Sent active users list to client on request:', Array.from(activeUsers.keys()));
+        socket.emit("active-users", Array.from(activeUsers));
+        console.log('Sent active users list to client on request:', Array.from(activeUsers));
     });
     
     // Login user handler
@@ -278,7 +196,7 @@ io.on("connection", (socket) => {
             if (process.env.NODE_ENV === 'development') {
                 console.log('Development mode: auto-approving login');
                 users[socket.id] = username;
-                activeUsers.set(username, socket.id);
+                activeUsers.add(username);
                 updateUserList();
                 return callback({ 
                     success: true, 
@@ -293,7 +211,7 @@ io.on("connection", (socket) => {
                 console.log(`User authenticated successfully: ${username}`);
                 // Store user in active users list
                 users[socket.id] = username;
-                activeUsers.set(username, socket.id);
+                activeUsers.add(username);
                 updateUserList();
                 callback({ 
                     success: true, 
@@ -421,7 +339,7 @@ io.on("connection", (socket) => {
             
             console.log(`Verifying ${providerName} account: ${email}`);
             
-            const userData = verifyCode(email, code);
+            const userData = verifyEmail(email, code);
             
             if (userData) {
                 // Now we can register the user with Supabase
@@ -525,7 +443,7 @@ io.on("connection", (socket) => {
         console.log(`User joined: ${username} with socket: ${socket.id}`);
         
         // If this username is already connected with a different socket, disconnect the old one
-        const existingSocketId = activeUsers.get(username);
+        const existingSocketId = Object.keys(users).find(id => users[id] === username);
         if (existingSocketId && existingSocketId !== socket.id) {
             console.log(`User ${username} already has an active connection. Replacing old socket.`);
             const oldSocket = io.sockets.sockets.get(existingSocketId);
@@ -536,7 +454,7 @@ io.on("connection", (socket) => {
         
         // Update users mapping
         users[socket.id] = username;
-        activeUsers.set(username, socket.id);
+        activeUsers.add(username);
         
         // Notify other users
         socket.broadcast.emit('user-joined', username);
@@ -545,12 +463,11 @@ io.on("connection", (socket) => {
         updateUserList();
         
         // Send chat history to the new user
-        // Send channel-specific history instead of all messages
-        for (const channel in messagesByChannel) {
-            if (messagesByChannel.hasOwnProperty(channel)) {
+        for (const channel in channelMessages) {
+            if (channelMessages.hasOwnProperty(channel)) {
                 socket.emit('message-history', {
                     channel,
-                    messages: messagesByChannel[channel] || []
+                    messages: channelMessages[channel] || []
                 });
             }
         }
@@ -560,127 +477,65 @@ io.on("connection", (socket) => {
     socket.on('set-username', (username) => {
         console.log(`Setting username: ${username} for socket: ${socket.id}`);
         users[socket.id] = username;
-        activeUsers.set(username, socket.id);
+        activeUsers.add(username);
         updateUserList();
     });
     
     // Handle channel-specific message requests
     socket.on('get-messages', (data) => {
-        const channel = data.channel || DEFAULT_CHANNEL;
+        const channel = data.channel || 'general';
         console.log(`Requested messages for channel: ${channel}`);
         
         socket.emit('message-history', {
             channel,
-            messages: messagesByChannel[channel] || []
+            messages: channelMessages[channel] || []
         });
     });
     
-    // Listen for chat messages from the client
-    socket.on("message", (data) => {
-        console.log('Legacy message received on server:', data);
-        
-        // Validate message structure
-        const hasValidMessage = data && 
-                               data.message && 
-                               typeof data.message === 'string' && 
-                               data.message.trim() !== '' && 
-                               data.username && 
-                               typeof data.username === 'string';
-        
-        if (hasValidMessage) {
-            // Save the message to the chat history with normalized structure
-            const msg = {
-                content: data.message.trim(), // Ensure content is trimmed
-                sender: data.username,
-                timestamp: new Date().toISOString(),
-                channel: DEFAULT_CHANNEL
-            };
-            
-            addMessageToChannel(msg, DEFAULT_CHANNEL);
-            
-            // Broadcast to all clients
-            io.emit('new-message', {
-                channel: DEFAULT_CHANNEL,
-                message: msg
-            });
+    // Handle message
+    socket.on('chat-message', async (data) => {
+        // Skip blank or null messages
+        if (!data.message || data.message.trim() === '') {
+            return;
         }
-    });
-    
-    // New format message handling with channel support
-    socket.on('send-message', (data) => {
-        console.log('New message received:', data);
-        
-        // Validate message structure
-        const hasValidMessage = data && 
-                               data.content && 
-                               typeof data.content === 'string' && 
-                               data.content.trim() !== '' && 
-                               users[socket.id]; // User must be authenticated
-        
-        if (hasValidMessage) {
-            const channel = data.channel || DEFAULT_CHANNEL;
-            
-            // Create normalized message object
-            const msg = {
-                content: data.content.trim(),
-                sender: users[socket.id],
-                timestamp: data.timestamp || new Date().toISOString(),
-                encrypted: !!data.encrypted,
-                channel
-            };
-            
-            // Add to channel storage
-            addMessageToChannel(msg, channel);
-            
-            // Broadcast to all clients
-            io.emit('new-message', {
-                channel,
-                message: msg
-            });
-        } else {
-            console.warn('Invalid message received:', data);
-        }
-    });
-    
-    // Handle persisting messages to MEGA
-    socket.on('persist-message', async (data) => {
-        if (!data || !data.message) return;
-        
-        const message = data.message;
-        const channel = data.channel || message.channel || DEFAULT_CHANNEL;
-        
-        // Ensure the message is valid
-        if (message && (message.content || message.text) && (message.sender || message.username)) {
-            // Normalize message format
-            const normalizedMsg = {
-                content: message.content || message.text,
-                sender: message.sender || message.username,
-                timestamp: message.timestamp || new Date().toISOString(),
-                encrypted: !!message.encrypted,
-                channel
-            };
-            
-            // Add to storage if not a duplicate
-            if (!isMessageDuplicate(normalizedMsg, channel)) {
-                addMessageToChannel(normalizedMsg, channel);
-                console.log(`Message from ${normalizedMsg.sender} persisted to channel: ${channel}`);
-                
-                // Save every 10 messages to reduce write operations
-                if (messagesByChannel[channel].length % 10 === 0) {
-                    saveMessages();
-                }
-            }
-        }
-    });
-    
-    // End of the persist-message handler
 
+        const username = users[socket.id];
+        if (!username) {
+            return;
+        }
+
+        const channel = data.channel || 'general';
+        
+        // Ensure channel exists
+        if (!channelMessages[channel]) {
+            channelMessages[channel] = [];
+        }
+
+        // Create message object with proper structure
+        const messageObj = {
+            id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            username,
+            message: data.message,
+            timestamp: Date.now(),
+            channelId: channel
+        };
+
+        // Add to channel
+        channelMessages[channel].push(messageObj);
+
+        // Broadcast to all users
+        io.emit('chat-message', {...messageObj, channel});
+
+        // Save messages (throttled to prevent excessive writes)
+        throttledSave();
+    });
+    
     // Call signaling
     socket.on('call-offer', ({offer, caller, target, sender}) => {
         console.log(`Call offer from ${caller} to ${target}`);
         
         // Find the target socket
-        const targetSocketId = activeUsers.get(target);
+        const targetSocketId = Object.keys(users).find(id => users[id] === target);
         
         if (targetSocketId) {
             console.log(`Found target socket: ${targetSocketId}`);
@@ -702,7 +557,7 @@ io.on("connection", (socket) => {
         console.log(`Call answer from ${callee || sender} to ${caller}`);
         
         // Find the caller socket
-        const callerSocketId = activeUsers.get(caller);
+        const callerSocketId = Object.keys(users).find(id => users[id] === caller);
         
         if (callerSocketId) {
             io.to(callerSocketId).emit('call-answer', {
@@ -722,7 +577,7 @@ io.on("connection", (socket) => {
         console.log(`ICE candidate from ${sender || users[socket.id]} to ${target}`);
         
         // Find the target socket
-        const targetSocketId = activeUsers.get(target);
+        const targetSocketId = Object.keys(users).find(id => users[id] === target);
         
         if (targetSocketId) {
             io.to(targetSocketId).emit('ice-candidate', {
@@ -736,7 +591,7 @@ io.on("connection", (socket) => {
         console.log(`Call declined to ${caller}, reason: ${reason}`);
         
         // Find the target socket
-        const callerSocketId = activeUsers.get(caller);
+        const callerSocketId = Object.keys(users).find(id => users[id] === caller);
         
         if (callerSocketId) {
             io.to(callerSocketId).emit('call-declined', {reason});
@@ -747,7 +602,7 @@ io.on("connection", (socket) => {
         console.log(`Call ended to ${target}`);
         
         if (target) {
-            const targetSocketId = activeUsers.get(target);
+            const targetSocketId = Object.keys(users).find(id => users[id] === target);
             
             if (targetSocketId) {
                 io.to(targetSocketId).emit('call-ended');
@@ -789,17 +644,14 @@ server.listen(PORT, () => {
 // Clean up stale connections every 5 minutes
 setInterval(() => {
     console.log("Cleaning up stale connections...");
-    for (const [username, socketId] of activeUsers.entries()) {
+    for (const username of activeUsers) {
+        const socketId = Object.keys(users).find(id => users[id] === username);
         const socket = io.sockets.sockets.get(socketId);
         if (!socket || !socket.connected) {
             console.log(`Removing stale connection for user: ${username}`);
             activeUsers.delete(username);
             // Remove from users object as well
-            for (const [id, name] of Object.entries(users)) {
-                if (name === username) {
-                    delete users[id];
-                }
-            }
+            delete users[socketId];
         }
     }
     updateUserList();

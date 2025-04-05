@@ -48,6 +48,9 @@ class ChatManager {
             'away': 'Away',
             'busy': 'Do Not Disturb'
         };
+        
+        this.messagesByChannel = {};
+        this.unreadMessagesByChannel = {};
     }
     
     initialize() {
@@ -118,29 +121,31 @@ class ChatManager {
         this.messageInput.addEventListener('input', () => this.handleTyping());
         
         // Socket events
-        socket.on('new-message', (message) => {
-            // Add message to cache for the appropriate channel
-            const channel = message.channel || 'general';
-            if (!this.messageCache[channel]) {
-                this.messageCache[channel] = [];
-            }
-            this.messageCache[channel].push(message);
-            
-            // Only display if we're in that channel
-            if (this.currentChannel === channel) {
-                this.displayMessage(message);
-            }
+        socket.on('chat-message', (data) => {
+            this.addMessageToChat(data);
         });
         
         socket.on('message-history', (data) => {
-            const { channel, messages } = data;
-            // Store messages in cache
-            this.messageCache[channel] = messages;
+            const channel = data.channel || 'general';
+            const messages = data.messages || [];
             
-            // Only display if we're in that channel
-            if (this.currentChannel === channel) {
-                this.displayMessageHistory(messages);
-            }
+            // Clear the current messages for this channel
+            this.messagesByChannel[channel] = [];
+            
+            // Add all messages to the channel
+            messages.forEach(msg => {
+                // Add to our local storage
+                this.addMessageToStorage(msg, channel);
+                
+                // If the current channel is active, display the message
+                if (this.currentChannel === channel) {
+                    // Display in UI if this is the active channel
+                    this.addMessageToUI(msg);
+                }
+            });
+            
+            // Update unread message count
+            this.updateChannelUnreadCount();
         });
         
         socket.on('user-joined', (username) => this.addSystemMessage(`${username} has joined the chat`));
@@ -163,71 +168,100 @@ class ChatManager {
     }
     
     sendMessage() {
-        const content = this.messageInput.value.trim();
-        if (!content) return;
+        const messageInput = document.getElementById('message-input');
+        const message = messageInput.value.trim();
         
-        console.log('Attempting to send message:', content);
-        
-        // Get user
-        const username = localStorage.getItem('username');
-        if (!username) {
-            console.error('No username found in localStorage');
-            return;
+        if (message) {
+            // Send to server
+            socket.emit('chat-message', {
+                message,
+                channel: this.currentChannel
+            });
+            
+            // Clear input
+            messageInput.value = '';
         }
+    }
+    
+    addMessageToChat(data) {
+        const message = data.message || data.content || data;
+        const username = data.username || data.sender;
+        const timestamp = data.timestamp || Date.now();
+        const channel = data.channel || data.channelId || this.currentChannel;
         
-        // Encrypt message for secure transmission
-        let encrypted = false;
-        let encryptedContent = content;
-        
-        if (this.encryptionKey) {
-            try {
-                encryptedContent = CryptoJS.AES.encrypt(content, this.encryptionKey).toString();
-                encrypted = true;
-            } catch (error) {
-                console.error('Encryption error:', error);
-            }
-        }
-        
-        // Create message object
-        const messageData = {
-            content: encryptedContent,
-            encrypted,
-            channel: this.currentChannel,
-            timestamp: new Date().toISOString() // Add precise timestamp
+        // Create the message object with a consistent format
+        const messageObj = {
+            username,
+            message: typeof message === 'object' ? message.message || message.content : message,
+            timestamp,
+            channelId: channel,
+            id: data.id || Date.now() + '-' + Math.random().toString(36).substr(2, 9)
         };
         
-        console.log('Emitting message to server:', messageData);
+        // Add to storage
+        this.addMessageToStorage(messageObj, channel);
         
-        // Try both new and legacy formats to ensure compatibility
-        socket.emit('send-message', messageData);
+        // Only display if this is the active channel
+        if (channel === this.currentChannel) {
+            // Add to UI
+            this.addMessageToUI(messageObj);
+        } else {
+            // Increment unread count for this channel
+            this.unreadMessagesByChannel[channel] = (this.unreadMessagesByChannel[channel] || 0) + 1;
+            // Update the UI to show unread count
+            this.updateChannelUnreadCount();
+        }
+    }
+    
+    addMessageToStorage(messageObj, channel = 'general') {
+        // Ensure channel exists
+        if (!this.messagesByChannel[channel]) {
+            this.messagesByChannel[channel] = [];
+        }
         
-        // Also try legacy format as fallback
-        socket.emit('message', {
-            message: content,
-            username: username
-        });
+        // Add message
+        this.messagesByChannel[channel].push(messageObj);
         
-        // Add message to local display immediately to improve UX
-        this.displayMessage({
-            content: content,
-            sender: username,
-            timestamp: new Date().toISOString(),
-            channel: this.currentChannel,
-            forceNewGroup: true // Always start a new message group for our own messages
-        });
+        // Limit number of messages stored (prevent memory issues)
+        if (this.messagesByChannel[channel].length > 300) {
+            this.messagesByChannel[channel].shift();
+        }
+    }
+    
+    addMessageToUI(messageObj) {
+        const chatMessages = document.getElementById('messages-container');
         
-        this.messageInput.value = '';
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('message');
         
-        // Clear typing indicator
-        this.stopTypingNotification();
+        // Check if it's the current user's message
+        if (messageObj.username === localStorage.getItem('username')) {
+            messageElement.classList.add('my-message');
+        } else {
+            messageElement.classList.add('other-message');
+        }
         
-        // Focus the input field
-        this.messageInput.focus();
+        // Format timestamp
+        const date = new Date(messageObj.timestamp);
+        const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        messageElement.innerHTML = `
+            <div class="message-header">
+                <span class="message-username">${messageObj.username}</span>
+                <span class="message-time">${timeString}</span>
+            </div>
+            <div class="message-content">${this.formatMessageContent(messageObj.message)}</div>
+        `;
+        
+        chatMessages.appendChild(messageElement);
+        
+        // Scroll to bottom
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     }
     
     displayMessageHistory(messages) {
         this.messagesContainer.innerHTML = '';
-        messages.forEach(message => this.displayMessage(message, false));
+        messages.forEach(message => this.addMessageToUI(message));
         this.scrollToBottom();
     }
     
@@ -608,6 +642,15 @@ class ChatManager {
     
     scrollToBottom() {
         this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
+    
+    updateChannelUnreadCount() {
+        // Update unread count for each channel
+        document.querySelectorAll('.channel-item').forEach(channel => {
+            const channelName = channel.textContent.trim().replace(/^[#\s]+/, '').trim();
+            const unreadCount = this.unreadMessagesByChannel[channelName] || 0;
+            channel.querySelector('.unread-count').textContent = unreadCount > 0 ? unreadCount : '';
+        });
     }
 }
 

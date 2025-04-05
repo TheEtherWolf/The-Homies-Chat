@@ -31,7 +31,14 @@ try {
       rejectUnauthorized: false
     }
   });
-  console.log('Email transport initialized for Proton Mail');
+  
+  // Test connection if credentials are provided
+  if (process.env.EMAIL_PASSWORD) {
+    // Don't wait for verification - it's sync and will block
+    console.log('Email transport initialized for Proton Mail');
+  } else {
+    console.log('Email credentials not provided, will use development mode');
+  }
 } catch (error) {
   console.error('Failed to initialize email transport:', error);
 }
@@ -157,7 +164,7 @@ async function sendVerificationEmail(email, username, password) {
  * @param {string} code - Verification code to verify
  * @returns {object|null} - User data if verification successful, null otherwise
  */
-function verifyCode(email, code) {
+async function verifyEmail(email, code) {
   // Check if code exists for this email
   if (!verificationCodes.has(email)) {
     console.log(`No verification code found for ${email}`);
@@ -237,7 +244,7 @@ async function resendVerificationEmail(email) {
 
 module.exports = {
   sendVerificationEmail,
-  verifyCode,
+  verifyEmail,
   getVerificationExpiration,
   resendVerificationEmail
 };

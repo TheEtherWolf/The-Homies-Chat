@@ -215,10 +215,92 @@ async function getAllUsers() {
   }
 }
 
+/**
+ * Load messages from Supabase
+ * @returns {Promise<Array>} Messages array
+ */
+async function loadMessagesFromSupabase() {
+  try {
+    if (process.env.NODE_ENV === 'development' && (!SUPABASE_URL || !SUPABASE_KEY)) {
+      console.log('Development mode: Using mock messages for Supabase');
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .order('timestamp', { ascending: true });
+    
+    if (error) {
+      console.error('Error loading messages from Supabase:', error);
+      return null;
+    }
+
+    console.log(`Loaded ${data.length} messages from Supabase`);
+    return data;
+  } catch (error) {
+    console.error('Error in loadMessagesFromSupabase:', error);
+    return null;
+  }
+}
+
+/**
+ * Save messages to Supabase
+ * @param {Array} messages - Messages to save
+ * @returns {Promise<boolean>} Success status
+ */
+async function saveMessagesToSupabase(messages) {
+  try {
+    if (process.env.NODE_ENV === 'development' && (!SUPABASE_URL || !SUPABASE_KEY)) {
+      console.log('Development mode: Skipping Supabase message save');
+      return true;
+    }
+
+    // First, we'll remove all existing messages
+    const { error: deleteError } = await supabase
+      .from('messages')
+      .delete()
+      .neq('id', '0'); // Safety check to avoid deleting everything if no condition (using dummy condition)
+    
+    if (deleteError) {
+      console.error('Error deleting old messages from Supabase:', deleteError);
+      return false;
+    }
+
+    // Then, insert all current messages
+    if (messages && messages.length > 0) {
+      // Ensure each message has a unique id
+      const messagesWithIds = messages.map(msg => {
+        if (!msg.id) {
+          return { ...msg, id: Date.now() + '-' + Math.random().toString(36).substr(2, 9) };
+        }
+        return msg;
+      });
+
+      const { error: insertError } = await supabase
+        .from('messages')
+        .insert(messagesWithIds);
+      
+      if (insertError) {
+        console.error('Error saving messages to Supabase:', insertError);
+        return false;
+      }
+    }
+
+    console.log(`Saved ${messages ? messages.length : 0} messages to Supabase`);
+    return true;
+  } catch (error) {
+    console.error('Error in saveMessagesToSupabase:', error);
+    return false;
+  }
+}
+
 module.exports = {
   registerUser,
   signInUser,
   signOutUser,
   getCurrentUser,
-  getAllUsers
+  getAllUsers,
+  loadMessagesFromSupabase,
+  saveMessagesToSupabase
 };
