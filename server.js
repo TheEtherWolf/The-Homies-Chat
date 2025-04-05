@@ -205,7 +205,7 @@ io.on('connection', (socket) => {
           email: email.toLowerCase(),
           password: hashedPassword, // Changed back to password for compatibility
           created_at: new Date().toISOString(),
-          user_id: uuidv4(),
+          // Removed user_id as Supabase auto-generates the id field
           verified: false,
           verification_token: verificationToken,
           token_expires: tokenExpires.toISOString()
@@ -300,7 +300,7 @@ io.on('connection', (socket) => {
         user: {
           username: data.username,
           email: data.email,
-          userId: data.user_id
+          userId: data.id // Changed from user_id to id to match Supabase schema
         }
       });
       
@@ -479,7 +479,7 @@ app.get('/verify', async (req, res) => {
         verification_token: null,
         token_expires: null
       })
-      .eq('user_id', data.user_id);
+      .eq('id', data.id); // Changed from user_id to id to match Supabase schema
     
     if (updateError) {
       console.error('Error updating user verification status:', updateError);
