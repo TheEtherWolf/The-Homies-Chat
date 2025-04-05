@@ -46,6 +46,22 @@ function generateVerificationCode() {
  */
 async function sendVerificationEmail(email, username, password) {
   try {
+    // Check if we're in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Development mode: skipping email verification');
+      
+      // Create user directly in development mode
+      const devUser = {
+        username,
+        password,
+        email,
+        id: 'dev-' + Date.now()
+      };
+      
+      console.log(`Development user created: ${username} (${email})`);
+      return true;
+    }
+    
     if (!transporter || !process.env.EMAIL_USER) {
       console.warn('Email not configured, using development mode');
       

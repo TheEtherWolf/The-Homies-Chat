@@ -12,18 +12,42 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 
 let supabase;
 
+// Set NODE_ENV to development if not set
+process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+
 // Initialize Supabase client
 try {
-  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-  console.log('Supabase client initialized successfully');
+  if (process.env.NODE_ENV === 'development' && (!SUPABASE_URL || !SUPABASE_KEY)) {
+    console.log('Development mode: Using mock Supabase client');
+    // Create dummy client for development mode
+    supabase = {
+      auth: {
+        signUp: () => ({ user: { id: 'dev-' + Date.now() }, error: null }),
+        signInWithPassword: (credentials) => ({ 
+          user: { id: 'dev-' + Date.now(), email: credentials.email }, 
+          error: null 
+        }),
+        signOut: () => ({ error: null })
+      },
+      from: (table) => ({
+        select: () => ({ data: [], error: null }),
+        insert: () => ({ data: { id: 'dev-' + Date.now() }, error: null }),
+        update: () => ({ data: null, error: null }),
+        delete: () => ({ data: null, error: null })
+      })
+    };
+  } else {
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    console.log('Supabase client initialized successfully');
+  }
 } catch (error) {
   console.error('Failed to initialize Supabase client:', error);
   
-  // Create dummy client for development when Supabase is not configured
+  // Create dummy client when there's an error
   supabase = {
     auth: {
       signUp: () => ({ user: null, error: new Error('Supabase not configured') }),
-      signIn: () => ({ user: null, error: new Error('Supabase not configured') }),
+      signInWithPassword: () => ({ user: null, error: new Error('Supabase not configured') }),
       signOut: () => ({ error: null })
     },
     from: () => ({
@@ -44,6 +68,12 @@ try {
  */
 async function registerUser(username, password, email) {
   try {
+    // Use development mode when appropriate
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Development mode: Auto-registering user', username);
+      return { id: 'dev-' + Date.now(), username, email };
+    }
+    
     if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
       console.warn('Supabase not configured, using development mode');
       return { id: 'dev-' + Date.now(), username, email };
@@ -78,10 +108,10 @@ async function registerUser(username, password, email) {
  */
 async function signInUser(username, password) {
   try {
-    // Use development mode when Supabase is not configured
-    if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
-      console.warn('Supabase not configured, using development mode');
-      return { id: 'dev-user', username };
+    // Use development mode when appropriate
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Development mode: Auto-approving sign in for', username);
+      return { id: 'dev-user', username, email: `${username}@homies.app` };
     }
     
     // Check if username is an email
