@@ -15,6 +15,8 @@ class ChatManager {
         this.typingTimeout = null;
         this.encryptionKey = localStorage.getItem('messageEncryptionKey');
         this.currentStatus = 'online';
+        this.currentChannel = 'general';
+        this.messageCache = {}; // Cache for messages by channel
         
         this.statusIcons = {
             'online': 'bi-circle-fill text-success',
@@ -31,6 +33,7 @@ class ChatManager {
     
     initialize() {
         this.initEventListeners();
+        this.initChannelListeners();
         this.loadMessageHistory();
         
         // Update status options handlers
@@ -41,6 +44,45 @@ class ChatManager {
                 this.updateUserStatus(status);
             });
         });
+    }
+    
+    initChannelListeners() {
+        // Set up channel switching
+        document.querySelectorAll('.channel-item').forEach(channel => {
+            channel.addEventListener('click', (e) => {
+                // Remove active class from all channels
+                document.querySelectorAll('.channel-item').forEach(c => {
+                    c.classList.remove('active');
+                });
+                
+                // Add active class to clicked channel
+                e.currentTarget.classList.add('active');
+                
+                // Get channel name from text content (remove the # and spaces)
+                const channelText = e.currentTarget.textContent.trim();
+                const channelName = channelText.replace(/^[#\s]+/, '').trim();
+                
+                this.switchChannel(channelName);
+            });
+        });
+    }
+    
+    switchChannel(channelName) {
+        this.currentChannel = channelName;
+        
+        // Update chat title
+        this.chatTitle.textContent = `# ${channelName}`;
+        
+        // Update message input placeholder
+        this.messageInput.placeholder = `Message #${channelName}`;
+        
+        // Load channel messages if available in cache
+        if (this.messageCache[channelName]) {
+            this.displayMessageHistory(this.messageCache[channelName]);
+        } else {
+            // Otherwise request from server
+            this.loadChannelMessages(channelName);
+        }
     }
     
     initEventListeners() {
@@ -57,8 +99,31 @@ class ChatManager {
         this.messageInput.addEventListener('input', () => this.handleTyping());
         
         // Socket events
-        socket.on('new-message', (message) => this.displayMessage(message));
-        socket.on('message-history', (messages) => this.displayMessageHistory(messages));
+        socket.on('new-message', (message) => {
+            // Add message to cache for the appropriate channel
+            const channel = message.channel || 'general';
+            if (!this.messageCache[channel]) {
+                this.messageCache[channel] = [];
+            }
+            this.messageCache[channel].push(message);
+            
+            // Only display if we're in that channel
+            if (this.currentChannel === channel) {
+                this.displayMessage(message);
+            }
+        });
+        
+        socket.on('message-history', (data) => {
+            const { channel, messages } = data;
+            // Store messages in cache
+            this.messageCache[channel] = messages;
+            
+            // Only display if we're in that channel
+            if (this.currentChannel === channel) {
+                this.displayMessageHistory(messages);
+            }
+        });
+        
         socket.on('user-joined', (username) => this.addSystemMessage(`${username} has joined the chat`));
         socket.on('user-left', (username) => this.addSystemMessage(`${username} has left the chat`));
         socket.on('user-status-update', (users) => this.updateUsersList(users));
@@ -71,7 +136,11 @@ class ChatManager {
     }
     
     loadMessageHistory() {
-        socket.emit('get-messages');
+        this.loadChannelMessages(this.currentChannel);
+    }
+    
+    loadChannelMessages(channel) {
+        socket.emit('get-messages', { channel });
     }
     
     sendMessage() {
@@ -95,15 +164,21 @@ class ChatManager {
             }
         }
         
+        // Include current channel with message
         socket.emit('send-message', {
             content: encryptedContent,
-            encrypted
+            encrypted,
+            channel: this.currentChannel,
+            timestamp: new Date().toISOString() // Add precise timestamp
         });
         
         this.messageInput.value = '';
         
         // Clear typing indicator
         this.stopTypingNotification();
+        
+        // Focus the input field
+        this.messageInput.focus();
     }
     
     displayMessageHistory(messages) {
@@ -113,7 +188,50 @@ class ChatManager {
     }
     
     displayMessage(message, scroll = true) {
-        const isCurrentUser = message.sender === localStorage.getItem('username');
+        // Check if we need to start a new message group
+        const shouldStartNewGroup = this.shouldStartNewMessageGroup(message);
+        let messageElement;
+        
+        // Normalize username field (some may use sender, some username)
+        const username = message.username || message.sender;
+        const isCurrentUser = username === localStorage.getItem('username');
+        
+        if (shouldStartNewGroup) {
+            // Create a new message group
+            messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            messageElement.dataset.username = username;
+            messageElement.dataset.timestamp = message.timestamp || new Date().toISOString();
+            
+            let avatarLetter = username ? username.charAt(0).toUpperCase() : 'U';
+            
+            // Add avatar, sender and message
+            messageElement.innerHTML = `
+                <div class="message-avatar" style="background-color: ${this.getUserColor(username)}">
+                    ${avatarLetter}
+                </div>
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="message-sender">${isCurrentUser ? 'You' : username}</span>
+                        <span class="message-time">${this.formatMessageTime(message.timestamp)}</span>
+                        ${message.encrypted ? '<i class="bi bi-lock-fill ms-2" title="End-to-End Encrypted"></i>' : ''}
+                    </div>
+                    <div class="message-text"></div>
+                </div>
+            `;
+        } else {
+            // Find last message in the same group
+            const lastMessage = Array.from(this.messagesContainer.children)
+                .filter(el => el.dataset.username === username)
+                .pop();
+                
+            if (lastMessage) {
+                messageElement = lastMessage;
+            } else {
+                // Fallback to creating a new message
+                return this.displayMessage({...message, forceNewGroup: true}, scroll);
+            }
+        }
         
         // Decrypt if encrypted
         let content = message.content;
@@ -122,29 +240,124 @@ class ChatManager {
                 content = CryptoJS.AES.decrypt(content, this.encryptionKey).toString(CryptoJS.enc.Utf8);
             } catch (error) {
                 console.error('Decryption error:', error);
-                content = '[Encrypted message - Cannot decrypt]';
+                content = '🔒 [Encrypted message - Cannot decrypt]';
             }
         }
         
-        const messageElement = document.createElement('div');
-        messageElement.classList.add('message', isCurrentUser ? 'message-sent' : 'message-received');
+        // Process content for display
+        content = this.formatMessageContent(content);
         
-        const timestamp = new Date(message.timestamp).toLocaleTimeString();
+        if (shouldStartNewGroup) {
+            // Set the content in the new message
+            messageElement.querySelector('.message-text').innerHTML = content;
+            this.messagesContainer.appendChild(messageElement);
+        } else {
+            // Add new paragraph to existing message
+            const messageText = messageElement.querySelector('.message-text');
+            
+            // Update message with new content
+            messageText.innerHTML += `<br>${content}`;
+            
+            // Update timestamp
+            const timeElement = messageElement.querySelector('.message-time');
+            if (timeElement) {
+                timeElement.textContent = this.formatMessageTime(message.timestamp);
+            }
+            
+            // Update the message timestamp
+            messageElement.dataset.timestamp = message.timestamp || new Date().toISOString();
+        }
         
-        messageElement.innerHTML = `
-            <div class="message-content">${this.formatMessageContent(content)}</div>
-            <div class="message-info">
-                <span class="message-sender">${isCurrentUser ? 'You' : message.sender}</span>
-                <span class="message-time">${timestamp}</span>
-                ${message.encrypted ? '<i class="bi bi-lock-fill" title="End-to-End Encrypted"></i>' : ''}
-            </div>
-            <div class="message-reactions"></div>
-        `;
-        
-        this.messagesContainer.appendChild(messageElement);
+        // Store the message in MEGA after displaying
+        this.persistMessageToMEGA(message);
         
         if (scroll) {
             this.scrollToBottom();
+        }
+    }
+    
+    persistMessageToMEGA(message) {
+        // Make sure we don't try to persist the same message multiple times
+        if (message._persisted) return;
+        
+        // Mark as persisted to avoid duplicates
+        message._persisted = true;
+        
+        // Queue the message for MEGA storage
+        socket.emit('persist-message', {
+            message,
+            channel: message.channel || this.currentChannel
+        });
+    }
+    
+    shouldStartNewMessageGroup(message) {
+        if (message.forceNewGroup) return true;
+        
+        // Get all existing messages
+        const messages = Array.from(this.messagesContainer.children);
+        
+        // If no messages yet, start a new group
+        if (messages.length === 0) return true;
+        
+        // Get the last message in the container
+        const lastMessage = messages[messages.length - 1];
+        
+        // Normalize username
+        const username = message.username || message.sender;
+        
+        // If the last message is from a different user, start a new group
+        if (lastMessage.dataset.username !== username) return true;
+        
+        // If the last message is more than 5 minutes older, start a new group
+        const lastTimestamp = new Date(lastMessage.dataset.timestamp);
+        const currentTimestamp = new Date(message.timestamp || new Date());
+        const timeDifference = (currentTimestamp - lastTimestamp) / (1000 * 60); // diff in minutes
+        
+        return timeDifference > 5;
+    }
+    
+    getUserColor(username) {
+        // Generate a consistent color for a username
+        let hash = 0;
+        for (let i = 0; i < username.length; i++) {
+            hash = username.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        
+        // Use Discord-like colors
+        const colors = [
+            '#5865F2', // Discord blue
+            '#3BA55C', // Discord green
+            '#ED4245', // Discord red
+            '#FAA61A', // Discord yellow/orange
+            '#9B59B6', // Purple
+            '#2ECC71', // Green
+            '#E74C3C', // Red
+            '#3498DB'  // Blue
+        ];
+        
+        return colors[Math.abs(hash) % colors.length];
+    }
+    
+    formatMessageTime(timestamp) {
+        const messageDate = timestamp ? new Date(timestamp) : new Date();
+        
+        // Today's date for comparison
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        // Check if same day
+        if (messageDate.toDateString() === today.toDateString()) {
+            return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } 
+        // Check if yesterday
+        else if (messageDate.toDateString() === yesterday.toDateString()) {
+            return `Yesterday at ${messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        } 
+        // Otherwise show full date
+        else {
+            return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + 
+                   ` at ${messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
         }
     }
     
@@ -193,22 +406,69 @@ class ChatManager {
     updateUsersList(users) {
         this.usersList.innerHTML = '';
         
+        // Group users by status
+        const onlineUsers = [];
+        const awayUsers = [];
+        const busyUsers = [];
+        
         users.forEach(user => {
             const username = typeof user === 'string' ? user : user.username;
             const status = user.status || 'online';
             
             if (username === localStorage.getItem('username')) return;
             
+            switch(status) {
+                case 'online':
+                    onlineUsers.push({ username, status });
+                    break;
+                case 'away':
+                    awayUsers.push({ username, status });
+                    break;
+                case 'busy':
+                    busyUsers.push({ username, status });
+                    break;
+                default:
+                    onlineUsers.push({ username, status: 'online' });
+            }
+        });
+        
+        // Create status group headers and user items
+        if (onlineUsers.length > 0) {
+            this.createUserStatusGroup('ONLINE', onlineUsers.length, onlineUsers);
+        }
+        
+        if (awayUsers.length > 0) {
+            this.createUserStatusGroup('AWAY', awayUsers.length, awayUsers);
+        }
+        
+        if (busyUsers.length > 0) {
+            this.createUserStatusGroup('DO NOT DISTURB', busyUsers.length, busyUsers);
+        }
+    }
+    
+    createUserStatusGroup(statusLabel, count, users) {
+        // Create header
+        const header = document.createElement('div');
+        header.classList.add('members-header');
+        header.textContent = `${statusLabel} — ${count}`;
+        this.usersList.appendChild(header);
+        
+        // Create users
+        users.forEach(user => {
             const userElement = document.createElement('div');
             userElement.classList.add('user-item');
-            userElement.setAttribute('data-username', username);
+            userElement.setAttribute('data-username', user.username);
             
-            const statusClass = this.statusIcons[status] || this.statusIcons.online;
+            const statusClass = this.statusIcons[user.status] || this.statusIcons.online;
+            const userInitial = user.username.charAt(0).toUpperCase();
             
             userElement.innerHTML = `
-                <i class="bi ${statusClass}"></i>
-                <span class="user-name">${username}</span>
-                <button class="btn btn-sm btn-outline-primary float-end call-btn" data-username="${username}">
+                <div class="user-item-avatar" style="background-color: ${this.getUserColor(user.username)}">
+                    ${userInitial}
+                    <span class="user-status-indicator ${statusClass}"></span>
+                </div>
+                <span class="user-name">${user.username}</span>
+                <button class="btn btn-sm btn-outline-primary float-end call-btn" data-username="${user.username}">
                     <i class="bi bi-camera-video"></i>
                 </button>
             `;
@@ -251,9 +511,8 @@ class ChatManager {
     updateUserStatus(status) {
         this.currentStatus = status;
         
-        // Update UI
-        const statusDisplay = document.getElementById('user-status-display');
-        const statusIcon = statusDisplay.querySelector('i');
+        // Update UI - for our new Discord-like UI
+        const statusIcon = document.getElementById('user-status-display');
         const statusText = document.getElementById('status-text');
         
         // Remove all classes and add the new one
