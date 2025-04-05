@@ -3,6 +3,25 @@
  * Handles messaging, user status, and UI updates
  */
 
+// Make sure socket is properly initialized
+if (typeof socket === 'undefined') {
+    console.log('Initializing socket connection...');
+    var socket = io();
+    
+    // Add connection logging
+    socket.on('connect', () => {
+        console.log('Socket connected successfully with ID:', socket.id);
+    });
+    
+    socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+    });
+    
+    socket.on('error', (error) => {
+        console.error('Socket error:', error);
+    });
+}
+
 class ChatManager {
     constructor() {
         this.messagesContainer = document.getElementById('messages-container');
@@ -147,9 +166,14 @@ class ChatManager {
         const content = this.messageInput.value.trim();
         if (!content) return;
         
+        console.log('Attempting to send message:', content);
+        
         // Get user
         const username = localStorage.getItem('username');
-        if (!username) return;
+        if (!username) {
+            console.error('No username found in localStorage');
+            return;
+        }
         
         // Encrypt message for secure transmission
         let encrypted = false;
@@ -164,12 +188,32 @@ class ChatManager {
             }
         }
         
-        // Include current channel with message
-        socket.emit('send-message', {
+        // Create message object
+        const messageData = {
             content: encryptedContent,
             encrypted,
             channel: this.currentChannel,
             timestamp: new Date().toISOString() // Add precise timestamp
+        };
+        
+        console.log('Emitting message to server:', messageData);
+        
+        // Try both new and legacy formats to ensure compatibility
+        socket.emit('send-message', messageData);
+        
+        // Also try legacy format as fallback
+        socket.emit('message', {
+            message: content,
+            username: username
+        });
+        
+        // Add message to local display immediately to improve UX
+        this.displayMessage({
+            content: content,
+            sender: username,
+            timestamp: new Date().toISOString(),
+            channel: this.currentChannel,
+            forceNewGroup: true // Always start a new message group for our own messages
         });
         
         this.messageInput.value = '';

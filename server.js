@@ -603,19 +603,7 @@ io.on("connection", (socket) => {
         }
     });
     
-    // Save the updated messages to the file safely
-            saveMessages().catch(err => {
-                console.error("Failed to save messages:", err);
-            });
-            console.log('Messages saved to file successfully');
-            
-            // Broadcast the message to all connected clients with consistent format
-            io.emit("chat-message", msg);
-            console.log('Message broadcast to all clients');
-        } else {
-            console.log("Rejected invalid message format or empty message:", data);
-        }
-    });
+    // End of the persist-message handler
 
     // Call signaling
     socket.on('call-offer', ({offer, caller, target, sender}) => {
