@@ -297,7 +297,7 @@ io.on('connection', (socket) => {
       }
       
       // Verify password
-      const isMatch = await bcrypt.compare(password, data.password_hash);
+      const isMatch = await bcrypt.compare(password, data.password);
       
       if (!isMatch) {
         return callback({ 
