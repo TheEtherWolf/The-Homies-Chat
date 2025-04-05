@@ -3,6 +3,13 @@
  * This version minimizes MEGA usage and focuses on Supabase for main message storage
  */
 
+// Add node-fetch polyfill for MEGA
+const fetch = require('node-fetch');
+// Set fetch as global for MEGA to use
+if (!globalThis.fetch) {
+  globalThis.fetch = fetch;
+}
+
 const { Storage } = require('megajs');
 const fs = require('fs');
 const path = require('path');
