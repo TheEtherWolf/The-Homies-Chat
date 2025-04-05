@@ -1,15 +1,12 @@
 /**
- * MEGA Storage Integration for The Homies App
- * Provides secure file storage capabilities
+ * MEGA Storage Integration - Simplified version that primarily uses Supabase
+ * This version minimizes MEGA usage and focuses on Supabase for main message storage
  */
 
-require('dotenv').config();
-
-// Polyfill for fetch in Node.js environments
-const fetch = require('node-fetch');
 const { Storage } = require('megajs');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
 
 // Import Supabase client functions
 const { loadMessagesFromSupabase, saveMessagesToSupabase } = require('./supabase-client');
@@ -20,25 +17,17 @@ const MEGA_PASSWORD = process.env.MEGA_PASSWORD || '';
 
 // Storage variables
 let storage = null;
-let messagesFile = null;
 let connected = false;
 
-// Initialize connection to MEGA
+// Initialize connection to MEGA - only for future file sharing, not for messages
 async function connectToMega() {
   try {
     if (!MEGA_EMAIL || !MEGA_PASSWORD) {
-      console.warn('MEGA credentials not provided. Secure storage features will be disabled.');
+      console.warn('MEGA credentials not provided. Only Supabase storage will be used.');
       return false;
     }
 
-    // Check if fetch is available
-    if (typeof globalThis.fetch !== 'function') {
-      console.error('fetch API not available. MEGA integration will not work.');
-      console.error('Please install node-fetch: npm install node-fetch');
-      return false;
-    }
-
-    console.log('Connecting to MEGA...');
+    console.log('Connecting to MEGA for future file sharing capabilities...');
     try {
       storage = new Storage({
         email: MEGA_EMAIL,
@@ -47,39 +36,40 @@ async function connectToMega() {
         autoload: false
       });
 
-      // Wait for connection to be established
-      await new Promise((resolve, reject) => {
+      // Set timeout for connection
+      const connectionPromise = new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          console.warn('MEGA connection timeout - using Supabase only');
+          reject(new Error('MEGA connection timeout'));
+        }, 10000); // 10 seconds timeout
+
         storage.on('ready', () => {
           connected = true;
+          clearTimeout(timeoutId);
           console.log('MEGA storage connection established successfully');
-          resolve();
+          resolve(true);
         });
 
         storage.on('error', (error) => {
+          clearTimeout(timeoutId);
           console.error('MEGA storage connection error:', error);
           reject(error);
         });
-
-        // Try to login
-        storage.login();
-
-        // Set timeout for connection
-        setTimeout(() => {
-          if (!connected) {
-            console.warn('MEGA connection timeout - switching to local storage only');
-            reject(new Error('MEGA connection timeout'));
-          }
-        }, 15000);
       });
-    } catch (megaError) {
-      console.error('MEGA instantiation error:', megaError);
-      // Fall back to local storage
+
+      // Try to login but don't block if it fails
+      storage.login();
+      
+      // Wait for connection but with timeout
+      await connectionPromise.catch(err => {
+        console.log('Using Supabase only for messages storage');
+        return false;
+      });
+      
+    } catch (error) {
+      console.error('MEGA connection error, using Supabase only:', error);
       return false;
     }
-
-    // Create a file for storing messages
-    const folder = storage.root;
-    messagesFile = await folder.file('messages.json');
 
     return connected;
   } catch (error) {
@@ -94,7 +84,7 @@ async function connectToMega() {
  */
 async function loadMessages() {
   try {
-    // First attempt to load from Supabase
+    // Get messages from Supabase
     const supabaseMessages = await loadMessagesFromSupabase();
     if (supabaseMessages && supabaseMessages.length > 0) {
       console.log(`Loaded ${supabaseMessages.length} messages from Supabase`);
@@ -112,23 +102,8 @@ async function loadMessages() {
       return { channels };
     }
     
-    // Fallback to MEGA storage
-    if (connected && messagesFile) {
-      try {
-        const data = await messagesFile.downloadBuffer();
-        const json = JSON.parse(data.toString());
-        console.log(`Loaded messages from MEGA storage`);
-        return json;
-      } catch (error) {
-        console.error(`Error loading from MEGA storage: ${error}`);
-        
-        // Try loading from backup
-        return loadFromBackup();
-      }
-    } else {
-      // Try loading from backup
-      return loadFromBackup();
-    }
+    // If no messages in Supabase, check local backup
+    return loadFromBackup();
   } catch (error) {
     console.error(`Error loading messages: ${error}`);
     
@@ -170,26 +145,7 @@ async function saveMessages(messages) {
     // Always create a local backup
     await createBackup(messages);
     
-    // Try saving to MEGA as well
-    if (connected && messagesFile) {
-      // Convert to JSON string
-      const data = JSON.stringify(messages, null, 2);
-      
-      try {
-        // Upload to MEGA
-        await messagesFile.upload(data);
-        console.log('Messages saved to MEGA storage successfully');
-      } catch (error) {
-        console.error(`Error saving to MEGA storage: ${error}`);
-        return supabaseSaved; // If Supabase save was successful, we can still return true
-      }
-    } else {
-      if (!supabaseSaved) {
-        console.warn('Not connected to MEGA and Supabase save failed, using local backup only');
-      }
-    }
-    
-    return true;
+    return supabaseSaved;
   } catch (error) {
     console.error(`Error saving messages: ${error}`);
     
@@ -221,7 +177,7 @@ async function loadFromBackup() {
     console.error(`Error loading backup: ${backupError.message}`);
   }
   
-  return null;
+  return { channels: { general: [] } };
 }
 
 /**
