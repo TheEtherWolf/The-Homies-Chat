@@ -21,7 +21,8 @@ const {
     signInUser, 
     signOutUser, 
     getCurrentUser, 
-    getAllUsers 
+    getAllUsers,
+    saveMessageToSupabase
 } = require("./supabase-client");
 
 // Set NODE_ENV to development if not set
@@ -528,6 +529,11 @@ io.on("connection", (socket) => {
         // Broadcast to all users
         io.emit('chat-message', {...messageObj, channel});
 
+        // Save to Supabase immediately and then throttle for batch saves
+        saveMessageToSupabase(messageObj).catch(err => {
+            console.error('Error saving message to Supabase:', err);
+        });
+
         // Save messages (throttled to prevent excessive writes)
         throttledSave();
     });
@@ -641,8 +647,8 @@ io.on("connection", (socket) => {
         try {
             console.log(`Registering user with ${data.email && data.email.includes('@proton') ? 'ProtonMail' : 'email'}: ${data.username} (${data.email})`);
             
-            // In development mode, simplify registration process for testing
-            if (process.env.NODE_ENV === 'development' && !process.env.DISABLE_DEV_AUTH) {
+            // Only use simplified registration in strict development mode
+            if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
                 console.log(`Development mode: Simplified registration for ${data.username}`);
                 
                 // Still try to send verification email, but don't require success

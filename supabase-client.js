@@ -18,7 +18,9 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Initialize Supabase client
 try {
-  if (process.env.NODE_ENV === 'development' && (!SUPABASE_URL || !SUPABASE_KEY)) {
+  // Only allow mock client in strict development mode
+  if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
+      (!SUPABASE_URL || !SUPABASE_KEY)) {
     console.log('Development mode: Using mock Supabase client');
     // Create dummy client for development mode
     supabase = {
@@ -38,6 +40,11 @@ try {
       })
     };
   } else {
+    // Enforce Supabase credentials in production
+    if (process.env.NODE_ENV === 'production' && (!SUPABASE_URL || !SUPABASE_KEY)) {
+      throw new Error('Supabase credentials are required in production mode');
+    }
+    
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     console.log('Supabase client initialized successfully');
   }
@@ -69,15 +76,15 @@ try {
  */
 async function registerUser(username, password, email) {
   try {
-    // Use development mode when appropriate
-    if (process.env.NODE_ENV === 'development') {
+    // Only use development mode when explicitly allowed
+    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
       console.log('Development mode: Auto-registering user', username);
       return { id: 'dev-' + Date.now(), username, email };
     }
     
     if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
-      console.warn('Supabase not configured, using development mode');
-      return { id: 'dev-' + Date.now(), username, email };
+      console.error('Supabase not configured, rejecting registration');
+      return null;
     }
     
     const { data, error } = await supabase.auth.signUp({
@@ -109,10 +116,15 @@ async function registerUser(username, password, email) {
  */
 async function signInUser(username, password) {
   try {
-    // Use development mode when appropriate
-    if (process.env.NODE_ENV === 'development') {
+    // Only use development mode when explicitly allowed
+    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
       console.log('Development mode: Auto-approving sign in for', username);
       return { id: 'dev-user', username, email: `${username}@homies.app` };
+    }
+    
+    if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
+      console.error('Supabase not configured, rejecting login');
+      return null;
     }
     
     // Check if username is an email
@@ -222,9 +234,16 @@ async function getAllUsers() {
  */
 async function loadMessagesFromSupabase() {
   try {
-    if (process.env.NODE_ENV === 'development' && (!SUPABASE_URL || !SUPABASE_KEY)) {
+    // Only use development mode when explicitly allowed
+    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
+        (!SUPABASE_URL || !SUPABASE_KEY)) {
       console.log('Development mode: Using mock messages for Supabase');
       return [];
+    }
+
+    if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
+      console.error('Supabase not configured, cannot load messages');
+      return null;
     }
 
     const { data, error } = await supabase
@@ -252,25 +271,21 @@ async function loadMessagesFromSupabase() {
  */
 async function saveMessagesToSupabase(messages) {
   try {
-    if (process.env.NODE_ENV === 'development' && (!SUPABASE_URL || !SUPABASE_KEY)) {
+    // Only use development mode when explicitly allowed
+    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
+        (!SUPABASE_URL || !SUPABASE_KEY)) {
       console.log('Development mode: Skipping Supabase message save');
       return true;
     }
 
-    // First, we'll remove all existing messages
-    const { error: deleteError } = await supabase
-      .from('messages')
-      .delete()
-      .is('id', null); // Safe condition that won't delete anything by accident
-    
-    if (deleteError) {
-      console.error('Error deleting old messages from Supabase:', deleteError);
+    if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
+      console.error('Supabase not configured, cannot save messages');
       return false;
     }
 
-    // Then, insert all current messages
+    // No need to delete all messages first, we'll just upsert
+    // Transform messages to match Supabase schema
     if (messages && messages.length > 0) {
-      // Transform messages to match Supabase schema
       const formattedMessages = messages.map(msg => {
         // Generate UUID for message id if needed
         const id = msg.id || uuidv4();
@@ -295,7 +310,7 @@ async function saveMessagesToSupabase(messages) {
         const batch = formattedMessages.slice(i, i + batchSize);
         const { error: insertError } = await supabase
           .from('messages')
-          .insert(batch);
+          .upsert(batch, { onConflict: 'id' }); // Use upsert to avoid duplicates
         
         if (insertError) {
           console.error(`Error saving batch ${i/batchSize + 1} to Supabase:`, insertError);
@@ -312,6 +327,61 @@ async function saveMessagesToSupabase(messages) {
   }
 }
 
+/**
+ * Save a single message to Supabase
+ * @param {Object} message - The message to save
+ * @returns {Promise<boolean>} Success status
+ */
+async function saveMessageToSupabase(message) {
+  try {
+    // Only use development mode when explicitly allowed
+    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
+        (!SUPABASE_URL || !SUPABASE_KEY)) {
+      console.log('Development mode: Skipping Supabase single message save');
+      return true;
+    }
+
+    if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
+      console.error('Supabase not configured, cannot save message');
+      return false;
+    }
+
+    if (!message) {
+      console.error('No message provided to save');
+      return false;
+    }
+
+    // Format message to match Supabase schema
+    const formattedMessage = {
+      id: message.id || uuidv4(),
+      "sender-id": message.username || message.sender || "anonymous",
+      content: message.message || message.content || "",
+      created_at: new Date(message.timestamp || Date.now()).toISOString(),
+      type: message.type || "text",
+      channelId: message.channelId || "general",
+      // Include file info if available
+      file_url: message.fileUrl || null,
+      file_type: message.fileType || null,
+      file_size: message.fileSize || null
+    };
+
+    const { error } = await supabase
+      .from('messages')
+      .upsert(formattedMessage);
+    
+    if (error) {
+      console.error('Error saving message to Supabase:', error);
+      return false;
+    }
+
+    console.log(`Saved message to Supabase: ${formattedMessage.id}`);
+    return true;
+  } catch (error) {
+    console.error('Error in saveMessageToSupabase:', error);
+    return false;
+  }
+}
+
 module.exports = {
   registerUser,
   signInUser,
@@ -319,5 +389,6 @@ module.exports = {
   getCurrentUser,
   getAllUsers,
   loadMessagesFromSupabase,
-  saveMessagesToSupabase
+  saveMessagesToSupabase,
+  saveMessageToSupabase
 };
