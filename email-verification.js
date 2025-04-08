@@ -8,9 +8,6 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
-// Import SendGrid email service
-const sendgridService = require('./sendgrid-email');
-
 // Email credentials
 const EMAIL_USER = process.env.EMAIL_USER || '';
 const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || '';
@@ -18,7 +15,7 @@ const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || '';
 // Create email transport
 let transporter = null;
 
-// Initialize traditional nodemailer transport (fallback)
+// Initialize email transport
 try {
   // Check if we should use Proton Mail SMTP
   if (EMAIL_USER.includes('@proton.me') || EMAIL_USER.includes('@protonmail.com')) {
@@ -98,11 +95,6 @@ function generateVerificationCode() {
  */
 async function sendVerificationEmail(email, username, password) {
   try {
-    // Try SendGrid first (preferred method)
-    if (process.env.SENDGRID_API_KEY) {
-      return await sendgridService.sendVerificationEmail(email, username, password);
-    }
-    
     // In development mode, auto-verify without sending email
     if (process.env.NODE_ENV === 'development') {
       console.log('Development mode: Auto-verifying without sending email');
@@ -129,7 +121,7 @@ async function sendVerificationEmail(email, username, password) {
       return true;
     }
   
-    // Fall back to traditional nodemailer if no SendGrid and not in dev mode
+    // Check if we have a valid email transport
     if (!transporter) {
       console.error('No email transport available');
       return false;
@@ -207,11 +199,6 @@ async function sendVerificationEmail(email, username, password) {
  * @returns {object|null} - User data if verification successful, null otherwise
  */
 function verifyEmail(email, code) {
-  // Try SendGrid verification first
-  if (process.env.SENDGRID_API_KEY) {
-    return sendgridService.verifyEmail(email, code);
-  }
-
   // In development mode, skip verification if needed
   if (process.env.NODE_ENV === 'development' && pendingRegistrations.has(email)) {
     const userData = pendingRegistrations.get(email);
@@ -280,11 +267,6 @@ function verifyEmail(email, code) {
  * @returns {number|null} - Milliseconds until expiration or null if no valid code
  */
 function getVerificationExpiration(email) {
-  // Try SendGrid first
-  if (process.env.SENDGRID_API_KEY) {
-    return sendgridService.getVerificationExpiration(email);
-  }
-
   if (!verificationCodes.has(email)) {
     return null;
   }
@@ -301,11 +283,6 @@ function getVerificationExpiration(email) {
  * @returns {Promise<boolean>} - Success status
  */
 async function resendVerificationEmail(email) {
-  // Try SendGrid first
-  if (process.env.SENDGRID_API_KEY) {
-    return await sendgridService.resendVerificationEmail(email);
-  }
-
   try {
     // Check if we have pending registration data
     if (!pendingRegistrations.has(email)) {
