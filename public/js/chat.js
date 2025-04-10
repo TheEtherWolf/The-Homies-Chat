@@ -5,7 +5,7 @@
 
 // Make sure socket is properly initialized
 if (typeof socket === 'undefined') {
-    console.log('Initializing socket connection...');
+    console.log('Socket not found, initializing local socket connection...');
     var socket = io();
     
     // Add connection logging
