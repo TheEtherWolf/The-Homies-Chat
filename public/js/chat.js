@@ -141,8 +141,12 @@ class ChatManager {
     }
     
     initEventListeners() {
-        // Message sending
-        this.sendButton.addEventListener('click', () => this.sendMessage());
+        // Message sending with click AND enter key
+        this.sendButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.sendMessage();
+        });
+        
         this.messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -150,11 +154,43 @@ class ChatManager {
             }
         });
         
+        // Direct click handlers for all channel items
+        document.querySelectorAll('.channel-item').forEach(channel => {
+            channel.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                // Remove active class from all channels
+                document.querySelectorAll('.channel-item').forEach(c => {
+                    c.classList.remove('active');
+                });
+                
+                // Add active class to clicked channel
+                e.currentTarget.classList.add('active');
+                
+                // Get channel name from text content (remove the # and spaces)
+                const channelText = e.currentTarget.textContent.trim();
+                const channelName = channelText.replace(/^[#\s]+/, '').trim();
+                
+                this.switchChannel(channelName);
+            });
+        });
+        
+        // Direct click handlers for status options
+        document.querySelectorAll('.status-option').forEach(option => {
+            option.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log("Status option clicked:", e.currentTarget.getAttribute('data-status'));
+                const status = e.currentTarget.getAttribute('data-status');
+                this.updateUserStatus(status);
+            });
+        });
+        
         // Typing indicator
         this.messageInput.addEventListener('input', () => this.handleTyping());
         
         // Socket events
         socket.on('chat-message', (data) => {
+            console.log("Received message from server:", data);
             this.addMessageToChat(data);
         });
         
@@ -205,11 +241,28 @@ class ChatManager {
         const message = messageInput.value.trim();
         
         if (message) {
-            // Send to server
-            socket.emit('chat-message', {
-                message,
+            console.log("Sending message:", message); // Debug log
+            
+            // Get user info from sessionStorage
+            const userData = JSON.parse(sessionStorage.getItem('user') || '{}');
+            const username = userData.username || 'Anonymous';
+            
+            // Store username in localStorage for UI consistency
+            localStorage.setItem('username', username);
+            
+            // Construct message object
+            const messageObj = {
+                message: message,
+                username: username,
+                timestamp: Date.now(),
                 channel: this.currentChannel
-            });
+            };
+            
+            // Send to server directly
+            socket.emit('chat-message', messageObj);
+            
+            // Add to UI immediately for better responsiveness
+            this.addMessageToUI(messageObj);
             
             // Clear input
             messageInput.value = '';
