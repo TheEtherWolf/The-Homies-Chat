@@ -26,8 +26,9 @@ const {
 } = require("./supabase-client");
 
 // Set NODE_ENV to development if not set
-process.env.NODE_ENV = process.env.NODE_ENV || 'development';
-console.log(`Running in ${process.env.NODE_ENV} mode`);
+process.env.NODE_ENV = 'development';
+process.env.ALLOW_DEV_AUTH = 'true';
+console.log(`Running in ${process.env.NODE_ENV} mode with dev auth enabled`);
 
 const app = express();
 const server = http.createServer(app);
@@ -195,8 +196,8 @@ io.on("connection", (socket) => {
         console.log(`Login attempt for user: ${username}`);
         
         try {
-            // For development mode, allow any credentials
-            if (process.env.NODE_ENV === 'development') {
+            // Only use development mode when explicitly allowed
+            if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
                 console.log('Development mode: auto-approving login');
                 users[socket.id] = username;
                 activeUsers.add(username);
@@ -274,8 +275,8 @@ io.on("connection", (socket) => {
             
             console.log(`Registering user with ${providerName}: ${username} (${email})`);
             
-            // Check if in development mode
-            if (process.env.NODE_ENV === 'development') {
+            // Check if in development mode with the proper flag
+            if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
                 console.log('Development mode: skipping email verification and Supabase registration');
                 
                 // Store user directly for development
