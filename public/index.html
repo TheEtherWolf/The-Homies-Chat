@@ -109,18 +109,18 @@
                     <h5>The Homies Server</h5>
                 </div>
                 <div class="channel-list">
-                    <div class="channel-item active">
+                    <button class="channel-item active" data-channel="general">
                         <i class="bi bi-hash me-2"></i> general
-                    </div>
-                    <div class="channel-item">
+                    </button>
+                    <button class="channel-item" data-channel="random">
                         <i class="bi bi-hash me-2"></i> random
-                    </div>
-                    <div class="channel-item">
+                    </button>
+                    <button class="channel-item" data-channel="memes">
                         <i class="bi bi-hash me-2"></i> memes
-                    </div>
-                    <div class="channel-item">
+                    </button>
+                    <button class="channel-item" data-channel="voice-chat">
                         <i class="bi bi-volume-up-fill me-2"></i> voice-chat
-                    </div>
+                    </button>
                 </div>
                 <div class="user-area">
                     <div class="user-avatar"></div>
@@ -136,11 +136,11 @@
                             <i class="bi bi-gear"></i>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="user-menu">
-                            <li><a class="dropdown-item status-option" data-status="online" href="#"><i class="bi bi-circle-fill text-success"></i> Online</a></li>
-                            <li><a class="dropdown-item status-option" data-status="away" href="#"><i class="bi bi-circle-fill text-warning"></i> Away</a></li>
-                            <li><a class="dropdown-item status-option" data-status="busy" href="#"><i class="bi bi-circle-fill text-danger"></i> Do Not Disturb</a></li>
+                            <li><button class="dropdown-item status-option" data-status="online"><i class="bi bi-circle-fill text-success"></i> Online</button></li>
+                            <li><button class="dropdown-item status-option" data-status="away"><i class="bi bi-circle-fill text-warning"></i> Away</button></li>
+                            <li><button class="dropdown-item status-option" data-status="busy"><i class="bi bi-circle-fill text-danger"></i> Do Not Disturb</button></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" id="logout-btn" href="#"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
+                            <li><button class="dropdown-item" id="logout-btn"><i class="bi bi-box-arrow-right"></i> Logout</button></li>
                         </ul>
                     </div>
                 </div>
