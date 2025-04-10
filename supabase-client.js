@@ -292,11 +292,10 @@ async function saveMessagesToSupabase(messages) {
         
         return {
           id,
-          "sender-id": msg.username || msg.sender || "anonymous",
+          sender_id: msg.username || msg.sender || "anonymous",
           content: msg.message || msg.content || "",
           created_at: new Date(msg.timestamp || Date.now()).toISOString(),
           type: msg.type || "text",
-          channelId: msg.channelId || "general",
           // Include file info if available
           file_url: msg.fileUrl || null,
           file_type: msg.fileType || null,
@@ -354,11 +353,10 @@ async function saveMessageToSupabase(message) {
     // Format message to match Supabase schema
     const formattedMessage = {
       id: message.id || uuidv4(),
-      "sender-id": message.username || message.sender || "anonymous",
+      sender_id: message.username || message.sender || "anonymous",
       content: message.message || message.content || "",
       created_at: new Date(message.timestamp || Date.now()).toISOString(),
       type: message.type || "text",
-      channelId: message.channelId || "general",
       // Include file info if available
       file_url: message.fileUrl || null,
       file_type: message.fileType || null,

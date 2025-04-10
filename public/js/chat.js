@@ -20,6 +20,7 @@ class ChatManager {
         this.currentStatus = 'online';
         this.currentChannel = 'general';
         this.messageCache = {}; // Cache for messages by channel
+        this.initialized = false; // Flag to prevent multiple event handler attachment
         
         this.statusIcons = {
             'online': 'bi-circle-fill text-success',
@@ -47,8 +48,14 @@ class ChatManager {
             console.log('Set username in localStorage:', userData.username);
         }
         
-        // Set up all event listeners
-        this.setupEventListeners();
+        // Set up all event listeners - only do this once
+        if (!this.initialized) {
+            this.setupEventListeners();
+            this.initialized = true;
+            console.log('Event listeners set up for first time');
+        } else {
+            console.log('Skipping event listener setup - already initialized');
+        }
         
         // Load message history
         this.loadMessageHistory();
@@ -184,19 +191,30 @@ class ChatManager {
     }
     
     switchChannel(channelName) {
+        console.log(`Switching to channel: ${channelName}`);
+        
+        // Update the current channel
         this.currentChannel = channelName;
         
-        // Update chat title
-        this.chatTitle.textContent = `# ${channelName}`;
+        // Update channel title
+        if (this.chatTitle) {
+            const channelDisplay = channelName.charAt(0).toUpperCase() + channelName.slice(1);
+            this.chatTitle.textContent = `#${channelDisplay}`;
+        }
         
-        // Update message input placeholder
-        this.messageInput.placeholder = `Message #${channelName}`;
+        // Clear messages for the new channel
+        if (this.messagesContainer) {
+            // Don't clear all messages, we'll load from cache or fetch new ones
+            console.log('Preparing to display messages for channel:', channelName);
+        }
         
-        // Load channel messages if available in cache
-        if (this.messageCache[channelName]) {
+        // Check if we have cached messages for this channel
+        if (this.messageCache[channelName] && this.messageCache[channelName].length > 0) {
+            console.log(`Using ${this.messageCache[channelName].length} cached messages for channel:`, channelName);
             this.displayMessageHistory(this.messageCache[channelName]);
         } else {
-            // Otherwise request from server
+            // If no cached messages, request them from the server
+            console.log('No cached messages found, requesting from server for channel:', channelName);
             this.loadChannelMessages(channelName);
         }
     }
