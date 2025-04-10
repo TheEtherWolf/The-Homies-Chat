@@ -4,7 +4,13 @@
  */
 
 // Socket.io connection - declare as window.socket to ensure global availability
-window.socket = io();
+window.socket = io({
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: 5,
+    forceNew: true // Force a new connection every time to prevent duplicates
+});
 
 // Global variables for our managers
 let authManager;
@@ -13,11 +19,21 @@ let videoCallManager;
 
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', () => {
+    // Clean up any existing socket connections to prevent duplicates
+    if (window.previousSocket) {
+        console.log('Cleaning up previous socket connection');
+        window.previousSocket.disconnect();
+    }
+    
+    // Store current socket for potential cleanup
+    window.previousSocket = window.socket;
+    
+    // Initialize the app
     initializeApp();
     
     // Setup connection event handlers
     window.socket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('Connected to server with socket ID:', window.socket.id);
     });
     
     window.socket.on('disconnect', () => {

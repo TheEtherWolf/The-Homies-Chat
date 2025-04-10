@@ -517,11 +517,11 @@ io.on("connection", (socket) => {
 
         // Create message object with proper structure
         const messageObj = {
-            id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-            username,
+            id: uuidv4(), // Use proper UUID
+            username,     // Keep username as string - this won't go directly to Supabase
             message: data.message,
             timestamp: Date.now(),
-            channelId: channel
+            channel: channel // Changed from channelId to channel for consistency
         };
 
         // Add to channel
@@ -531,9 +531,14 @@ io.on("connection", (socket) => {
         io.emit('chat-message', {...messageObj, channel});
 
         // Save to Supabase immediately and then throttle for batch saves
-        saveMessageToSupabase(messageObj).catch(err => {
-            console.error('Error saving message to Supabase:', err);
-        });
+        // We're wrapping this in try/catch to prevent any errors from disrupting the app
+        try {
+            saveMessageToSupabase(messageObj).catch(err => {
+                console.error('Error saving message to Supabase:', err);
+            });
+        } catch (error) {
+            console.error('Failed to save message to Supabase:', error);
+        }
 
         // Save messages (throttled to prevent excessive writes)
         throttledSave();
