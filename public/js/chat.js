@@ -280,6 +280,16 @@ class ChatManager {
         const username = data.username || data.sender;
         const timestamp = data.timestamp || Date.now();
         const channel = data.channel || data.channelId || this.currentChannel;
+        const messageId = data.id || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+        
+        // Check if this message already exists in the UI to prevent duplicates
+        if (this.messagesContainer) {
+            const existingMsg = this.messagesContainer.querySelector(`[data-message-id="${messageId}"]`);
+            if (existingMsg) {
+                console.log('Message already exists in UI, not adding duplicate:', messageId);
+                return;
+            }
+        }
         
         // Create the message object with a consistent format
         const messageObj = {
@@ -287,7 +297,7 @@ class ChatManager {
             message: typeof message === 'object' ? message.message || message.content : message,
             timestamp,
             channelId: channel,
-            id: data.id || Date.now() + '-' + Math.random().toString(36).substr(2, 9)
+            id: messageId
         };
         
         // Add to storage
@@ -298,11 +308,25 @@ class ChatManager {
             // Add to UI
             this.addMessageToUI(messageObj);
         } else {
-            // Increment unread count for this channel
-            this.unreadMessagesByChannel[channel] = (this.unreadMessagesByChannel[channel] || 0) + 1;
-            // Update the UI to show unread count
-            this.updateChannelUnreadCount();
+            // Update unread message count for this channel
+            this.updateChannelUnreadCount(channel);
         }
+    }
+    
+    addMessageToUI(messageObj) {
+        const { username, message, timestamp, id } = messageObj;
+        
+        // Check if this message already exists in the UI to prevent duplicates
+        if (this.messagesContainer) {
+            const existingMsg = this.messagesContainer.querySelector(`[data-message-id="${id}"]`);
+            if (existingMsg) {
+                console.log('Message already exists in UI, not adding duplicate:', id);
+                return;
+            }
+        }
+        
+        this.displayMessage(messageObj);
+        this.scrollToBottom();
     }
     
     addMessageToStorage(messageObj, channel = 'general') {
@@ -685,25 +709,33 @@ class ChatManager {
     }
     
     updateUserStatus(status) {
-        if (!this.statusIcons[status]) return;
-        
-        // Update UI
-        const statusDisplay = document.getElementById('user-status-display');
-        const statusText = document.getElementById('status-text');
-        
-        // Remove all existing classes
-        statusDisplay.className = '';
-        // Add the new status icon class
-        statusDisplay.classList.add('bi', 'bi-circle-fill', this.statusIcons[status].split(' ')[1]);
-        
-        // Update status text
-        statusText.textContent = this.statusText[status];
-        
-        // Store current status
+        // Update the user's status
         this.currentStatus = status;
         
         // Inform the server
         window.socket.emit('status-update', { status });
+        
+        // Update the local display immediately
+        const statusDisplay = document.getElementById('user-status-display');
+        const statusText = document.getElementById('status-text');
+        
+        if (statusDisplay) {
+            // Remove all status classes
+            statusDisplay.classList.remove('text-success', 'text-warning', 'text-danger');
+            
+            // Add the appropriate class for this status
+            if (status === 'online') {
+                statusDisplay.classList.add('text-success');
+            } else if (status === 'away') {
+                statusDisplay.classList.add('text-warning');
+            } else if (status === 'busy') {
+                statusDisplay.classList.add('text-danger');
+            }
+        }
+        
+        if (statusText) {
+            statusText.textContent = this.statusText[status] || 'Online';
+        }
         
         console.log(`Status updated to: ${status}`);
     }
@@ -744,7 +776,7 @@ class ChatManager {
         this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
     }
     
-    updateChannelUnreadCount() {
+    updateChannelUnreadCount(channel) {
         // Update unread count for each channel
         document.querySelectorAll('.channel-item').forEach(channel => {
             const channelName = channel.textContent.trim().replace(/^[#\s]+/, '').trim();
