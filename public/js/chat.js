@@ -58,6 +58,12 @@ class ChatManager {
         this.initChannelListeners();
         this.loadMessageHistory();
         
+        // Ensure username is in localStorage for proper message display
+        const userData = JSON.parse(sessionStorage.getItem('user') || '{}');
+        if (userData && userData.username) {
+            localStorage.setItem('username', userData.username);
+        }
+        
         // Update status options handlers
         document.querySelectorAll('.status-option').forEach(option => {
             option.addEventListener('click', (e) => {
@@ -65,6 +71,33 @@ class ChatManager {
                 const status = e.currentTarget.getAttribute('data-status');
                 this.updateUserStatus(status);
             });
+        });
+
+        // Ensure send button works
+        if (this.sendButton) {
+            this.sendButton.onclick = (e) => {
+                e.preventDefault();
+                this.sendMessage();
+            };
+        }
+
+        // Ensure channel items are clickable
+        document.querySelectorAll('.channel-item').forEach(channel => {
+            channel.onclick = (e) => {
+                // Remove active class from all channels
+                document.querySelectorAll('.channel-item').forEach(c => {
+                    c.classList.remove('active');
+                });
+                
+                // Add active class to clicked channel
+                e.currentTarget.classList.add('active');
+                
+                // Get channel name from text content (remove the # and spaces)
+                const channelText = e.currentTarget.textContent.trim();
+                const channelName = channelText.replace(/^[#\s]+/, '').trim();
+                
+                this.switchChannel(channelName);
+            };
         });
     }
     
@@ -522,6 +555,12 @@ class ChatManager {
         if (busyUsers.length > 0) {
             this.createUserStatusGroup('DO NOT DISTURB', busyUsers.length, busyUsers);
         }
+
+        // Update header in the DOM to show actual count
+        const membersHeader = document.querySelector('.members-header');
+        if (membersHeader) {
+            membersHeader.textContent = `ONLINE — ${onlineUsers.length}`;
+        }
     }
     
     createUserStatusGroup(statusLabel, count, users) {
@@ -587,25 +626,27 @@ class ChatManager {
     }
     
     updateUserStatus(status) {
-        this.currentStatus = status;
+        if (!this.statusIcons[status]) return;
         
-        // Update UI - for our new Discord-like UI
-        const statusIcon = document.getElementById('user-status-display');
+        // Update UI
+        const statusDisplay = document.getElementById('user-status-display');
         const statusText = document.getElementById('status-text');
         
-        // Remove all classes and add the new one
-        Object.values(this.statusIcons).forEach(cls => {
-            const classes = cls.split(' ');
-            classes.forEach(c => statusIcon.classList.remove(c));
-        });
+        // Remove all existing classes
+        statusDisplay.className = '';
+        // Add the new status icon class
+        statusDisplay.classList.add('bi', 'bi-circle-fill', this.statusIcons[status].split(' ')[1]);
         
-        const newClasses = this.statusIcons[status].split(' ');
-        newClasses.forEach(c => statusIcon.classList.add(c));
-        
+        // Update status text
         statusText.textContent = this.statusText[status];
         
-        // Send to server
-        socket.emit('status-update', status);
+        // Store current status
+        this.currentStatus = status;
+        
+        // Inform the server
+        socket.emit('status-update', { status });
+        
+        console.log(`Status updated to: ${status}`);
     }
     
     handleTyping() {
