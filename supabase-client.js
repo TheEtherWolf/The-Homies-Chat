@@ -287,8 +287,8 @@ async function saveMessagesToSupabase(messages) {
     // Transform messages to match Supabase schema
     if (messages && messages.length > 0) {
       const formattedMessages = messages.map(msg => {
-        // Generate UUID for message id if needed
-        const id = msg.id || uuidv4();
+        // Generate a unique ID for each message if it doesn't have one
+        const id = uuidv4(); // Always use proper UUID format
         
         return {
           id,
@@ -352,7 +352,7 @@ async function saveMessageToSupabase(message) {
 
     // Format message to match Supabase schema
     const formattedMessage = {
-      id: message.id || uuidv4(),
+      id: uuidv4(), // Always use proper UUID format for Supabase
       sender_id: message.username || message.sender || "anonymous",
       content: message.message || message.content || "",
       created_at: new Date(message.timestamp || Date.now()).toISOString(),

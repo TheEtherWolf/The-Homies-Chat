@@ -244,6 +244,7 @@ class ChatManager {
             
             // Create message object
             const messageObj = {
+                id: Date.now() + '-' + Math.random().toString(36).substr(2, 9), // Local ID for UI only
                 message: message,
                 username: username,
                 timestamp: Date.now(),
@@ -252,7 +253,15 @@ class ChatManager {
             
             console.log('Sending message to server:', messageObj);
             
-            // Send to server
+            // Disable send button to prevent double-sends
+            if (this.sendButton) {
+                this.sendButton.disabled = true;
+                setTimeout(() => {
+                    this.sendButton.disabled = false;
+                }, 1000); // Re-enable after 1 second
+            }
+            
+            // Send to server (only once)
             window.socket.emit('chat-message', messageObj);
             
             // Add to UI immediately for faster feedback
