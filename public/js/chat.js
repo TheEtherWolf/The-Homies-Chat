@@ -3,24 +3,8 @@
  * Handles messaging, user status, and UI updates
  */
 
-// Make sure socket is properly initialized
-if (typeof socket === 'undefined') {
-    console.log('Socket not found, initializing local socket connection...');
-    var socket = io();
-    
-    // Add connection logging
-    socket.on('connect', () => {
-        console.log('Socket connected successfully with ID:', socket.id);
-    });
-    
-    socket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
-    });
-    
-    socket.on('error', (error) => {
-        console.error('Socket error:', error);
-    });
-}
+// Use the global socket from app.js directly
+console.log('Chat module initialized, using global socket connection');
 
 class ChatManager {
     constructor() {
@@ -146,12 +130,12 @@ class ChatManager {
         console.log('Status option handlers attached');
         
         // Socket events
-        socket.on('chat-message', (data) => {
+        window.socket.on('chat-message', (data) => {
             console.log('Received chat message from server:', data);
             this.addMessageToChat(data);
         });
         
-        socket.on('message-history', (data) => {
+        window.socket.on('message-history', (data) => {
             console.log('Received message history:', data);
             const channel = data.channel || 'general';
             const messages = data.messages || [];
@@ -165,27 +149,27 @@ class ChatManager {
             }
         });
         
-        socket.on('active-users', (users) => {
+        window.socket.on('active-users', (users) => {
             console.log('Received active users list:', users);
             this.updateUsersList(users);
         });
         
-        socket.on('user-joined', (username) => {
+        window.socket.on('user-joined', (username) => {
             console.log('User joined:', username);
             this.addSystemMessage(`${username} has joined the chat`);
             // Request updated users list
-            socket.emit('get-active-users');
+            window.socket.emit('get-active-users');
         });
         
-        socket.on('user-left', (username) => {
+        window.socket.on('user-left', (username) => {
             console.log('User left:', username);
             this.addSystemMessage(`${username} has left the chat`);
             // Request updated users list
-            socket.emit('get-active-users');
+            window.socket.emit('get-active-users');
         });
         
         // Request users list
-        socket.emit('get-active-users');
+        window.socket.emit('get-active-users');
         console.log('Socket event handlers attached');
     }
     
@@ -222,7 +206,7 @@ class ChatManager {
     }
     
     loadChannelMessages(channel) {
-        socket.emit('get-messages', { channel });
+        window.socket.emit('get-messages', { channel });
     }
     
     sendMessage() {
@@ -251,7 +235,7 @@ class ChatManager {
             console.log('Sending message to server:', messageObj);
             
             // Send to server
-            socket.emit('chat-message', messageObj);
+            window.socket.emit('chat-message', messageObj);
             
             // Add to UI immediately for faster feedback
             this.addMessageToUI(messageObj);
@@ -443,7 +427,7 @@ class ChatManager {
         message._persisted = true;
         
         // Queue the message for MEGA storage
-        socket.emit('persist-message', {
+        window.socket.emit('persist-message', {
             message,
             channel: message.channel || this.currentChannel
         });
@@ -692,13 +676,13 @@ class ChatManager {
         this.currentStatus = status;
         
         // Inform the server
-        socket.emit('status-update', { status });
+        window.socket.emit('status-update', { status });
         
         console.log(`Status updated to: ${status}`);
     }
     
     handleTyping() {
-        socket.emit('typing');
+        window.socket.emit('typing');
         
         // Clear previous timeout
         if (this.typingTimeout) {
@@ -712,7 +696,7 @@ class ChatManager {
     }
     
     stopTypingNotification() {
-        socket.emit('stop-typing');
+        window.socket.emit('stop-typing');
         
         if (this.typingTimeout) {
             clearTimeout(this.typingTimeout);

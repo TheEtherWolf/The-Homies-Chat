@@ -3,8 +3,8 @@
  * Initializes all modules and sets up Socket.io
  */
 
-// Socket.io connection
-const socket = io();
+// Socket.io connection - declare as window.socket to ensure global availability
+window.socket = io();
 
 // Global variables for our managers
 let authManager;
@@ -16,15 +16,15 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
     
     // Setup connection event handlers
-    socket.on('connect', () => {
+    window.socket.on('connect', () => {
         console.log('Connected to server');
     });
     
-    socket.on('disconnect', () => {
+    window.socket.on('disconnect', () => {
         console.log('Disconnected from server');
     });
     
-    socket.on('error', (error) => {
+    window.socket.on('error', (error) => {
         console.error('Socket error:', error);
     });
 });
