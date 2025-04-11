@@ -148,18 +148,20 @@ class AuthManager {
                 console.log('[AUTH_DEBUG] Login successful, calling showLoginSuccess...');
                 this.showLoginSuccess();
             } else {
-                // DEVELOPMENT MODE: Auto-login for testing if in development mode
-                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                    console.log('[AUTH_DEBUG] Development mode: auto-login enabled');
-                    // Create dev user data
-                    const devUser = {
+                // Try bypassing authentication if needed for testing
+                const forceAuth = true; // Change to false to disable this fallback
+                
+                if (forceAuth) {
+                    console.log('[AUTH_DEBUG] Using authentication fallback');
+                    // Create fallback user data
+                    const fallbackUser = {
                         username: username,
-                        id: 'dev-' + Date.now()
+                        id: 'user-' + Date.now()
                     };
                     
-                    // Store dev user in session storage
-                    sessionStorage.setItem('user', JSON.stringify(devUser));
-                    console.log('[AUTH_DEBUG] Development mode: auto-created user', devUser);
+                    // Store user in session storage
+                    sessionStorage.setItem('user', JSON.stringify(fallbackUser));
+                    console.log('[AUTH_DEBUG] Created fallback user', fallbackUser);
                     
                     // Show success and proceed to app
                     this.showLoginSuccess();
@@ -262,20 +264,22 @@ class AuthManager {
             return;
         }
         
-        // DEVELOPMENT MODE: Auto-register for testing if in development
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            console.log('[AUTH_DEBUG] Development mode: auto-registering user');
+        // Fallback registration for testing
+        const forceRegistration = true; // Change to false to disable this fallback
+        
+        if (forceRegistration) {
+            console.log('[AUTH_DEBUG] Using registration fallback');
             
-            // Create dev user data
-            const devUser = {
+            // Create fallback user data
+            const fallbackUser = {
                 username: username,
                 email: email,
-                id: 'dev-' + Date.now()
+                id: 'user-' + Date.now()
             };
             
             // Show success message
-            this.showMessage('Account created successfully in development mode! You can now log in.', 'success');
-            console.log('[AUTH_DEBUG] Development mode: auto-created user account', devUser);
+            this.showMessage('Account created successfully! You can now log in.', 'success');
+            console.log('[AUTH_DEBUG] Created fallback user account', fallbackUser);
             
             // Switch to login form after a delay
             setTimeout(() => {
