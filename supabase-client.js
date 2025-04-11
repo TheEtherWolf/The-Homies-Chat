@@ -119,7 +119,35 @@ async function registerUser(username, password, email) {
     // Only use development mode when explicitly allowed
     if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
       console.log('Development mode: Auto-registering user', username);
-      return { id: 'dev-' + Date.now(), username, email };
+      // Generate a valid UUID for dev mode instead of 'dev-' prefix
+      const devUserId = uuidv4();
+      
+      // Create a record in the users table when in dev mode
+      // This ensures the UUID exists in the users table for foreign key constraints
+      try {
+        if (serviceSupabase) {
+          const { error } = await serviceSupabase
+            .from('users')
+            .upsert({
+              id: devUserId,
+              username: username,
+              email: email || `${username}@homies.app`,
+              password: 'dev-password', // Not using real passwords in dev mode
+              created_at: new Date().toISOString(),
+              verified: true // Auto-verify in dev mode
+            }, { onConflict: 'username' });
+            
+          if (error) {
+            console.warn('Development mode: Error creating user record:', error);
+          } else {
+            console.log('Development mode: Created user record with ID:', devUserId);
+          }
+        }
+      } catch (devError) {
+        console.warn('Development mode: Failed to create user record:', devError);
+      }
+      
+      return { id: devUserId, username, email: email || `${username}@homies.app` };
     }
     
     if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
@@ -159,7 +187,55 @@ async function signInUser(username, password) {
     // Only use development mode when explicitly allowed
     if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
       console.log('Development mode: Auto-approving sign in for', username);
-      return { id: 'dev-user', username, email: `${username}@homies.app` };
+      
+      // Check if this user already exists in the users table
+      try {
+        if (serviceSupabase) {
+          const { data, error } = await serviceSupabase
+            .from('users')
+            .select('id')
+            .eq('username', username)
+            .limit(1);
+            
+          if (error) {
+            console.warn('Development mode: Error looking up user:', error);
+          } else if (data && data.length > 0) {
+            // User exists, return the actual user ID
+            console.log('Development mode: Found existing user ID:', data[0].id);
+            return { id: data[0].id, username, email: `${username}@homies.app` };
+          }
+        }
+      } catch (lookupError) {
+        console.warn('Development mode: Error during user lookup:', lookupError);
+      }
+      
+      // User doesn't exist, create a new one with valid UUID
+      const devUserId = uuidv4();
+      
+      try {
+        if (serviceSupabase) {
+          const { error } = await serviceSupabase
+            .from('users')
+            .insert({
+              id: devUserId,
+              username: username,
+              email: `${username}@homies.app`,
+              password: 'dev-password', // Not using real passwords in dev mode
+              created_at: new Date().toISOString(),
+              verified: true
+            });
+            
+          if (error) {
+            console.warn('Development mode: Error creating user for login:', error);
+          } else {
+            console.log('Development mode: Created user with ID:', devUserId);
+          }
+        }
+      } catch (insertError) {
+        console.warn('Development mode: Failed to create user for login:', insertError);
+      }
+      
+      return { id: devUserId, username, email: `${username}@homies.app` };
     }
     
     if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {

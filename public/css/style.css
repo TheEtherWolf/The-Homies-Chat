@@ -1,23 +1,23 @@
 /* Main Styles for The Homies App - DM Focused Layout */
 :root {
-  --primary-color: rgb(140, 223, 214); /* Light teal - accent color */
-  --secondary-color: #2a2d31; /* Very dark gray */
-  --background-color: #1a1c1e; /* Almost black */
-  --light-background: #2F3136; /* Discord-style dark background */
-  --content-background: #202225; /* Discord-style very dark background */
-  --very-dark: #18191C; /* Even darker option */
-  --text-light: #FFFFFF;
-  --text-muted: #B9BBBE; /* Muted text, placeholders */
-  --text-dark: #DCDDDE; /* Normal text */
+  --primary-color: rgb(70, 143, 135); /* Darker teal - accent color */
+  --secondary-color: #1a1d21; /* Extremely dark gray */
+  --background-color: #0a0c0e; /* Almost black */
+  --light-background: #1F2126; /* Darker background */
+  --content-background: #121416; /* Very dark background */
+  --very-dark: #0a0b0d; /* Even darker option */
+  --text-light: #DCDDDE; /* Slightly dimmed white */
+  --text-muted: #8e9093; /* More muted text */
+  --text-dark: #b9bbbe; /* Dimmer text */
   --success: #3BA55C; /* Green */
   --warning: #FAA61A; /* Yellow/orange */
   --danger: #ED4245; /* Red */
-  --info: rgb(140, 223, 214); /* Light teal - was Blue */
-  --highlight: rgb(140, 223, 214); /* Light teal - was Accent blue */
-  --hover-bg: rgba(255, 255, 255, 0.04);
-  --active-bg: rgba(255, 255, 255, 0.08);
+  --info: rgb(70, 143, 135); /* Darker teal */
+  --highlight: rgb(70, 143, 135); /* Darker teal */
+  --hover-bg: rgba(255, 255, 255, 0.03);
+  --active-bg: rgba(255, 255, 255, 0.05);
   --border-radius: 8px;
-  --border-color: #3a3c42;
+  --border-color: #2a2c32;
   --sidebar-width: 280px;
 }
 
