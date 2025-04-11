@@ -148,6 +148,24 @@ class AuthManager {
                 console.log('[AUTH_DEBUG] Login successful, calling showLoginSuccess...');
                 this.showLoginSuccess();
             } else {
+                // DEVELOPMENT MODE: Auto-login for testing if in development mode
+                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                    console.log('[AUTH_DEBUG] Development mode: auto-login enabled');
+                    // Create dev user data
+                    const devUser = {
+                        username: username,
+                        id: 'dev-' + Date.now()
+                    };
+                    
+                    // Store dev user in session storage
+                    sessionStorage.setItem('user', JSON.stringify(devUser));
+                    console.log('[AUTH_DEBUG] Development mode: auto-created user', devUser);
+                    
+                    // Show success and proceed to app
+                    this.showLoginSuccess();
+                    return;
+                }
+                
                 this.showMessage(response.message || 'Login failed. Please check your credentials.', 'danger');
                 console.error('Login failed:', response.message);
             }
@@ -235,18 +253,43 @@ class AuthManager {
         this.showMessage('Creating your account...', 'info');
         
         // Debug log
-        console.log(`Attempting to register user: ${username} with email: ${email}`);
+        console.log(`[AUTH_DEBUG] Attempting to register user: ${username} with email: ${email}`);
         
         // Check if socket is available
         if (!window.socket) {
-            console.error('Socket connection not available');
+            console.error('[AUTH_DEBUG] Socket connection not available');
             this.showMessage('Connection error. Please refresh the page.', 'danger');
+            return;
+        }
+        
+        // DEVELOPMENT MODE: Auto-register for testing if in development
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            console.log('[AUTH_DEBUG] Development mode: auto-registering user');
+            
+            // Create dev user data
+            const devUser = {
+                username: username,
+                email: email,
+                id: 'dev-' + Date.now()
+            };
+            
+            // Show success message
+            this.showMessage('Account created successfully in development mode! You can now log in.', 'success');
+            console.log('[AUTH_DEBUG] Development mode: auto-created user account', devUser);
+            
+            // Switch to login form after a delay
+            setTimeout(() => {
+                this.toggleForms('login');
+                // Pre-fill the login form for convenience
+                this.loginUsername.value = username;
+            }, 2000);
+            
             return;
         }
         
         // Emit registration event to server
         window.socket.emit('register-user', { username, email, password }, (response) => {
-            console.log('Registration response:', response);
+            console.log('[AUTH_DEBUG] Registration response:', response);
             
             if (response.success) {
                 if (response.requireVerification) {
@@ -269,7 +312,7 @@ class AuthManager {
                 this.registerForm.reset();
             } else {
                 this.showMessage(response.message || 'Registration failed. Please try again.', 'danger');
-                console.error('Registration failed:', response.message);
+                console.error('[AUTH_DEBUG] Registration failed:', response.message);
             }
         });
     }
