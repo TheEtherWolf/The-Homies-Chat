@@ -36,10 +36,10 @@
     </style>
 </head>
 <body class="dark-theme">
-    <div class="container-fluid vh-100 d-flex flex-column p-0 overflow-hidden">
+    <div class="container-fluid">
         <!-- Authentication screens -->
         <div id="auth-container" class="d-flex flex-column justify-content-center align-items-center h-100">
-            <div class="card auth-card shadow">
+            <div class="auth-card shadow">
                 <div class="card-header text-center bg-primary text-white">
                     <h2 id="auth-title">Welcome to The Homies App</h2>
                 </div>
@@ -88,97 +88,198 @@
             </div>
         </div>
 
-        <!-- Main App - New DM Layout -->
-        <div id="app-container" class="d-none h-100 d-flex flex-row">
+        <!-- Main App - Discord Layout -->
+        <div id="app-container" class="d-none">
             
-            <!-- Sidebar -->
-            <div id="sidebar" class="d-flex flex-column bg-dark text-white p-3" style="width: 280px;">
-                <!-- User Profile Area -->
-                <div class="user-profile-area mb-3 border-bottom pb-3">
-                    <div class="d-flex align-items-center">
-                        <img src="assets/default-avatar.png" alt="Avatar" class="rounded-circle me-2" width="40" height="40">
-                        <div class="flex-grow-1">
-                            <span id="current-user" class="fw-bold">Username</span>
-                            <!-- Status can be added here later -->
-                        </div>
-                        <div class="dropdown">
-                            <button class="btn btn-sm text-white" type="button" id="user-menu-trigger" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="bi bi-gear"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end" aria-labelledby="user-menu-trigger">
-                                <li><button class="dropdown-item" id="settings-button"><i class="bi bi-person-circle me-2"></i>Profile Settings</button></li>
-                                <!-- Add status options later if needed -->
-                                <li><hr class="dropdown-divider"></li>
-                                <li><button class="dropdown-item" id="logout-btn"><i class="bi bi-box-arrow-right me-2"></i>Logout</button></li>
-                            </ul>
-                        </div>
-                    </div>
+            <!-- Server Column (Left) -->
+            <div id="server-column">
+                <div class="server-icon home">
+                    <i class="bi bi-discord"></i>
                 </div>
-
-                <!-- Search/Navigation -->
-                <div class="mb-3">
-                    <input type="text" class="form-control form-control-sm bg-secondary border-0 text-white" placeholder="Find or start a conversation">
-                    <!-- Add nav buttons for DMs/Settings toggle if needed -->
+                <div class="server-sep"></div>
+                <!-- Server icons will be dynamically added here -->
+                <div class="server-icon active">
+                    <i class="bi bi-people-fill"></i>
                 </div>
-
-                <!-- DM List -->
-                <div id="dm-list" class="flex-grow-1 overflow-auto">
-                    <h6 class="text-muted small text-uppercase mb-2">Direct Messages</h6>
-                    <!-- DM list items will be populated here by JS -->
-                    <!-- Example DM item structure: -->
-                    <!-- 
-                    <a href="#" class="d-flex align-items-center text-white text-decoration-none p-2 rounded mb-1 dm-item" data-user-id="user123">
-                        <img src="assets/default-avatar.png" alt="User Avatar" class="rounded-circle me-2" width="32" height="32">
-                        <span>OtherUser</span>
-                    </a> 
-                    -->
+                <div class="server-icon">
+                    <i class="bi bi-chat-square-text-fill"></i>
+                </div>
+                <div class="server-icon">
+                    <i class="bi bi-headset"></i>
+                </div>
+                <!-- Add server button -->
+                <div class="server-icon">
+                    <i class="bi bi-plus-lg"></i>
                 </div>
             </div>
 
-            <!-- Main Content Area -->
-            <div id="main-content" class="flex-grow-1 d-flex flex-column bg-light">
-                <!-- Chat Header -->
-                <div id="chat-header" class="d-flex align-items-center p-3 border-bottom bg-white">
-                    <img src="assets/default-avatar.png" alt="DM Partner Avatar" class="rounded-circle me-2" width="32" height="32" id="dm-partner-avatar">
-                    <span class="fw-bold" id="dm-partner-name">Select a conversation</span>
-                    <!-- Add call buttons etc. here later -->
+            <!-- Channels Column (Middle) -->
+            <div id="sidebar">
+                <div class="sidebar-header">
+                    <span>The Homies</span>
                 </div>
-
-                <!-- Messages Container -->
-                <div id="messages-container" class="flex-grow-1 overflow-auto p-3">
-                    <!-- Messages will be added here by JS -->
-                    <!-- Placeholder text -->
-                    <div class="text-center text-muted mt-5">Select a conversation from the left to start chatting.</div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-section-header">
+                        <span>Text Channels</span>
+                        <i class="bi bi-plus-lg"></i>
+                    </div>
+                    
+                    <div class="channel-item active">
+                        <div class="channel-icon">
+                            <i class="bi bi-hash"></i>
+                        </div>
+                        <span>general</span>
+                    </div>
+                    
+                    <div class="channel-item">
+                        <div class="channel-icon">
+                            <i class="bi bi-hash"></i>
+                        </div>
+                        <span>announcements</span>
+                    </div>
+                    
+                    <div class="channel-item">
+                        <div class="channel-icon">
+                            <i class="bi bi-hash"></i>
+                        </div>
+                        <span>memes</span>
+                    </div>
                 </div>
-
-                <!-- Message Input Area -->
-                <div id="message-input-area" class="p-3 bg-white border-top">
-                    <div class="input-group">
-                        <!-- Emoji button placeholder -->
-                        <button class="btn btn-outline-secondary" type="button" id="emoji-button" title="Emojis (Coming Soon)"><i class="bi bi-emoji-smile"></i></button>
-                        <input type="text" id="message-input" class="form-control border-0" placeholder="Type your message...">
-                        <!-- File upload button placeholder -->
-                        <button class="btn btn-outline-secondary" type="button" id="attach-file-button" title="Attach File (Coming Soon)"><i class="bi bi-paperclip"></i></button>
-                        <button class="btn btn-primary" type="button" id="send-button">
-                            <i class="bi bi-send"></i> Send
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-section-header">
+                        <span>Voice Channels</span>
+                        <i class="bi bi-plus-lg"></i>
+                    </div>
+                    
+                    <div class="channel-item">
+                        <div class="channel-icon">
+                            <i class="bi bi-volume-up"></i>
+                        </div>
+                        <span>Lounge</span>
+                    </div>
+                    
+                    <div class="channel-item">
+                        <div class="channel-icon">
+                            <i class="bi bi-volume-up"></i>
+                        </div>
+                        <span>Gaming</span>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-section-header">
+                        <span>Direct Messages</span>
+                    </div>
+                    
+                    <!-- DM list will be populated here -->
+                    <div id="dm-list">
+                        <!-- Example DM item -->
+                        <div class="dm-item">
+                            <div class="dm-avatar">
+                                <img src="assets/default-avatar.png" alt="User Avatar">
+                                <div class="dm-status"></div>
+                            </div>
+                            <span>User1</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- User Profile Area -->
+                <div class="user-profile-area">
+                    <div class="user-avatar">
+                        <img src="assets/default-avatar.png" alt="Your Avatar" width="32" height="32">
+                        <div class="user-status"></div>
+                    </div>
+                    <div class="user-details">
+                        <div class="user-name" id="current-user">Username</div>
+                        <div class="user-id">@username</div>
+                    </div>
+                    <div class="user-controls">
+                        <button class="user-control-button" id="settings-button">
+                            <i class="bi bi-gear"></i>
+                        </button>
+                        <button class="user-control-button" id="logout-btn">
+                            <i class="bi bi-box-arrow-right"></i>
                         </button>
                     </div>
                 </div>
             </div>
-            
-            <!-- Settings Pane (Initially hidden, shown when settings are clicked) -->
-            <div id="settings-pane" class="d-none flex-grow-1 d-flex flex-column bg-light p-4">
-                 <h2>Settings</h2>
-                 <p>Settings content will go here...</p>
-                 <button id="close-settings-button" class="btn btn-secondary mt-auto">Close Settings</button>
-            </div>
 
+            <!-- Main Content Area (Right) -->
+            <div id="main-content">
+                <!-- Chat Header -->
+                <div id="chat-header">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-hash me-2"></i>
+                        <span class="fw-bold" id="chat-title">general</span>
+                    </div>
+                </div>
+
+                <!-- Messages Container -->
+                <div id="messages-container">
+                    <!-- Messages will be added here by JS -->
+                    <!-- Example message -->
+                    <div class="message">
+                        <img src="assets/default-avatar.png" alt="User Avatar" class="message-avatar">
+                        <div class="message-content">
+                            <div class="message-header">
+                                <span class="message-author">User1</span>
+                                <span class="message-timestamp">Today at 10:55 AM</span>
+                            </div>
+                            <div class="message-text">
+                                Welcome to The Homies App! This is a group chat for all homies.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="system-message">
+                        Welcome to the beginning of #general
+                    </div>
+                </div>
+
+                <!-- Message Input Area -->
+                <div id="message-input-area">
+                    <div class="message-input-container">
+                        <div class="d-flex align-items-center">
+                            <textarea id="message-input" placeholder="Message #general" rows="1"></textarea>
+                        </div>
+                        <div class="message-controls">
+                            <button class="message-control-button" id="emoji-button">
+                                <i class="bi bi-emoji-smile"></i>
+                            </button>
+                            <button class="message-control-button" id="attach-file-button">
+                                <i class="bi bi-paperclip"></i>
+                            </button>
+                            <button id="send-button">
+                                <i class="bi bi-send"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- Emoji Picker (hidden by default) -->
+        <div class="emoji-picker d-none position-absolute">
+            <button class="emoji-btn">😀</button>
+            <button class="emoji-btn">😂</button>
+            <button class="emoji-btn">❤️</button>
+            <button class="emoji-btn">👍</button>
+            <button class="emoji-btn">👌</button>
+            <button class="emoji-btn">🔥</button>
+            <button class="emoji-btn">🎉</button>
+            <button class="emoji-btn">😊</button>
+            <button class="emoji-btn">🙏</button>
+            <button class="emoji-btn">😎</button>
         </div>
 
         <!-- Call Interface -->
         <div id="call-container" class="position-absolute top-0 start-0 w-100 h-100 bg-dark bg-opacity-75 d-none flex-column justify-content-center align-items-center">
             <div class="card call-card">
-                <div class="card-header text-center bg-primary text-white">
+                <div class="card-header text-center">
                     <h3 id="call-status">Video Call</h3>
                 </div>
                 <div class="card-body text-center">
@@ -199,43 +300,24 @@
                         <button id="toggle-video" class="btn btn-outline-secondary mx-1">
                             <i class="bi bi-camera-video-fill"></i>
                         </button>
+                        <button id="share-screen" class="btn btn-outline-secondary mx-1">
+                            <i class="bi bi-display"></i>
+                        </button>
                         <button id="end-call" class="btn btn-danger mx-1">
-                            <i class="bi bi-telephone-x-fill"></i> End Call
+                            <i class="bi bi-telephone-x-fill"></i>
                         </button>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Incoming Call Modal -->
-        <div class="modal fade" id="incoming-call-modal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header bg-primary text-white">
-                        <h5 class="modal-title">Incoming Call</h5>
-                    </div>
-                    <div class="modal-body text-center">
-                        <p><span id="caller-name">Someone</span> is calling you</p>
-                    </div>
-                    <div class="modal-footer justify-content-center">
-                        <button id="accept-call" class="btn btn-success">
-                            <i class="bi bi-telephone-fill"></i> Accept
-                        </button>
-                        <button id="decline-call" class="btn btn-danger">
-                            <i class="bi bi-telephone-x-fill"></i> Decline
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Scripts -->
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.js"></script>
-        <script src="js/auth.js"></script>
-        <script src="js/chat.js"></script>
-        <script src="js/video-call.js"></script>
-        <script src="js/app.js"></script>
-    </body>
+    <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/chat.js"></script>
+    <script src="js/video-call.js"></script>
+</body>
 </html>
