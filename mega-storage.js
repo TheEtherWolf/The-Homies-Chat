@@ -29,17 +29,19 @@ let connected = false;
 // Initialize connection to MEGA - only for future file sharing, not for messages
 async function connectToMega() {
   try {
-    if (!MEGA_EMAIL || !MEGA_PASSWORD) {
-      console.warn('MEGA credentials not provided. Only Supabase storage will be used.');
+    // Enhanced validation of MEGA credentials
+    if (!MEGA_EMAIL || !MEGA_PASSWORD || MEGA_EMAIL.trim() === '' || MEGA_PASSWORD.trim() === '') {
+      console.warn('MEGA credentials not provided or invalid. Only Supabase storage will be used.');
+      connected = false;
       return false;
     }
 
     console.log('Connecting to MEGA for future file sharing capabilities...');
     try {
+      // Create storage instance with error handling
       storage = new Storage({
-        email: MEGA_EMAIL,
-        password: MEGA_PASSWORD,
-        // Use a smaller timeout to avoid hanging
+        email: MEGA_EMAIL.trim(),
+        password: MEGA_PASSWORD.trim(),
         autoload: false
       });
 
@@ -65,22 +67,31 @@ async function connectToMega() {
       });
 
       // Try to login but don't block if it fails
-      storage.login();
+      try {
+        storage.login();
+      } catch (loginError) {
+        console.error('MEGA login error:', loginError);
+        connected = false;
+        return false;
+      }
       
       // Wait for connection but with timeout
       await connectionPromise.catch(err => {
         console.log('Using Supabase only for messages storage');
+        connected = false;
         return false;
       });
       
     } catch (error) {
       console.error('MEGA connection error, using Supabase only:', error);
+      connected = false;
       return false;
     }
 
     return connected;
   } catch (error) {
     console.error('Failed to initialize MEGA storage:', error);
+    connected = false;
     return false;
   }
 }
