@@ -34,6 +34,7 @@ class AuthManager {
         // User display
         this.currentUserDisplay = document.getElementById('current-user');
         
+        console.log('[AUTH_DEBUG] Initializing AuthManager...');
         this.initialize();
     }
     
@@ -69,10 +70,10 @@ class AuthManager {
             this.handleLogout();
         });
         
-        // Check if user is already logged in
+        console.log('[AUTH_DEBUG] Calling checkSession from initialize...');
         this.checkSession();
         
-        console.log('Authentication manager initialized');
+        console.log('[AUTH_DEBUG] Authentication manager initialization complete.');
     }
     
     /**
@@ -125,19 +126,18 @@ class AuthManager {
         // Show loading message
         this.showMessage('Signing in...', 'info');
         
-        // Debug log
-        console.log(`Attempting to sign in user: ${username}`);
+        console.log('[AUTH_DEBUG] Attempting to sign in user:', username);
         
         // Check if socket is available
-        if (!socket) {
-            console.error('Socket connection not available');
+        if (!window.socket) {
+            console.error('[AUTH_DEBUG] Socket connection not available');
             this.showMessage('Connection error. Please refresh the page.', 'danger');
             return;
         }
         
-        // Emit login event to server
-        socket.emit('login-user', { username, password }, (response) => {
-            console.log('Login response:', response);
+        console.log('[AUTH_DEBUG] Emitting login-user event...');
+        window.socket.emit('login-user', { username, password }, (response) => {
+            console.log('[AUTH_DEBUG] Login response received:', response);
             if (response.success) {
                 // Store user data in session storage
                 sessionStorage.setItem('user', JSON.stringify({
@@ -145,6 +145,7 @@ class AuthManager {
                     id: response.userId || response.id || 'unknown'
                 }));
                 
+                console.log('[AUTH_DEBUG] Login successful, calling showLoginSuccess...');
                 this.showLoginSuccess();
             } else {
                 this.showMessage(response.message || 'Login failed. Please check your credentials.', 'danger');
@@ -157,10 +158,30 @@ class AuthManager {
      * Handle successful login
      */
     showLoginSuccess() {
-        const user = JSON.parse(sessionStorage.getItem('user'));
+        console.log('[AUTH_DEBUG] Inside showLoginSuccess...');
+        let user = null;
+        try {
+            user = JSON.parse(sessionStorage.getItem('user'));
+        } catch (e) {
+            console.error('[AUTH_DEBUG] Error parsing user from sessionStorage in showLoginSuccess:', e);
+            this.showMessage('An error occurred retrieving user data after login.', 'danger');
+            return;
+        }
         
+        if (!user || !user.username) {
+            console.error('[AUTH_DEBUG] Login success called but user data is invalid in sessionStorage.');
+            this.showMessage('An error occurred after login. Please try again.', 'danger');
+            return;
+        }
+
         // Update UI
+        console.log('[AUTH_DEBUG] Updating UI with username:', user.username);
         this.currentUserDisplay.textContent = user.username;
+
+        // ** Dispatch the userLoggedIn event for app.js **
+        console.log('[AUTH_DEBUG] Dispatching userLoggedIn event from showLoginSuccess with user:', user);
+        const event = new CustomEvent('userLoggedIn', { detail: { user } });
+        document.dispatchEvent(event);
         
         // Show success message briefly
         this.showMessage('Login successful! Redirecting...', 'success');
@@ -169,11 +190,6 @@ class AuthManager {
         setTimeout(() => {
             this.authContainer.classList.add('d-none');
             this.appContainer.classList.remove('d-none');
-            
-            // Trigger chat initialization if needed
-            if (typeof chatManager !== 'undefined' && chatManager.initialize) {
-                chatManager.initialize();
-            }
             
             // Reset forms
             this.loginForm.reset();
@@ -222,14 +238,14 @@ class AuthManager {
         console.log(`Attempting to register user: ${username} with email: ${email}`);
         
         // Check if socket is available
-        if (!socket) {
+        if (!window.socket) {
             console.error('Socket connection not available');
             this.showMessage('Connection error. Please refresh the page.', 'danger');
             return;
         }
         
         // Emit registration event to server
-        socket.emit('register-user', { username, email, password }, (response) => {
+        window.socket.emit('register-user', { username, email, password }, (response) => {
             console.log('Registration response:', response);
             
             if (response.success) {
@@ -266,8 +282,8 @@ class AuthManager {
         sessionStorage.removeItem('user');
         
         // Emit logout event to server
-        if (socket) {
-            socket.emit('logout-user');
+        if (window.socket) {
+            window.socket.emit('logout-user');
         }
         
         // Show auth container and hide app
@@ -286,29 +302,48 @@ class AuthManager {
      * Check if user is already logged in from session storage
      */
     checkSession() {
+        console.log('[AUTH_DEBUG] Checking session...');
         const userData = sessionStorage.getItem('user');
         
         if (userData) {
+            console.log('[AUTH_DEBUG] Found user data in sessionStorage:', userData);
             try {
                 const user = JSON.parse(userData);
                 if (user && user.username) {
+                    console.log('[AUTH_DEBUG] Valid user found in session:', user.username);
                     // Update user display
                     this.currentUserDisplay.textContent = user.username;
                     
                     // Hide auth container and show app
+                    console.log('[AUTH_DEBUG] Hiding auth container, showing app container.');
                     this.authContainer.classList.add('d-none');
                     this.appContainer.classList.remove('d-none');
                     
-                    console.log('User already logged in:', user.username);
-                    return true;
+                    // ** Dispatch the userLoggedIn event for app.js **
+                    console.log('[AUTH_DEBUG] Dispatching userLoggedIn event from checkSession with user:', user);
+                    const event = new CustomEvent('userLoggedIn', { detail: { user } });
+                    document.dispatchEvent(event);
+                    
+                    console.log('[AUTH_DEBUG] Session restored for user:', user.username);
+                } else {
+                    console.warn('[AUTH_DEBUG] Invalid user data structure found in session storage.');
+                    sessionStorage.removeItem('user'); // Clear invalid data
+                    console.log('[AUTH_DEBUG] Cleared invalid user data from sessionStorage.');
+                    // Ensure login form is visible if session check fails
+                    this.toggleForms('login'); 
                 }
             } catch (e) {
-                console.error('Error parsing user data from session:', e);
+                console.error('[AUTH_DEBUG] Error parsing user data from session:', e);
+                sessionStorage.removeItem('user'); // Clear corrupted data
+                console.log('[AUTH_DEBUG] Cleared corrupted user data from sessionStorage.');
+                // Ensure login form is visible if session check fails
+                 this.toggleForms('login');
             }
+        } else {
+            console.log('[AUTH_DEBUG] No user data found in sessionStorage. Showing login form.');
+             // Ensure login form is visible if no session data
+            this.toggleForms('login');
         }
-        
-        // No valid session found
-        return false;
     }
 }
 

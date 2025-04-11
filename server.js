@@ -97,7 +97,7 @@ app.post('/api/resend-verification', async (req, res) => {
 // Track active users and socket connections
 let channelMessages = {}; // Messages for each channel
 let activeUsers = new Set(); // Set of active users
-let users = {}; // Map of socket ID to username
+let users = {}; // Map of socket ID to { username, userId }
 
 // Initialize storage and load messages
 async function initializeStorage() {
@@ -199,12 +199,13 @@ io.on("connection", (socket) => {
             // Only use development mode when explicitly allowed
             if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
                 console.log('Development mode: auto-approving login');
-                users[socket.id] = username;
+                const devUserId = 'dev-' + uuidv4(); // Use uuid for dev users too
+                users[socket.id] = { username, userId: devUserId }; // Store username and dev userId
                 activeUsers.add(username);
                 updateUserList();
                 return callback({ 
                     success: true, 
-                    userId: 'dev-' + Date.now(),
+                    userId: devUserId, // Return dev userId
                     username
                 });
             }
@@ -212,14 +213,14 @@ io.on("connection", (socket) => {
             // In production, verify with Supabase
             const user = await signInUser(username, password);
             if (user) {
-                console.log(`User authenticated successfully: ${username}`);
+                console.log(`User authenticated successfully: ${username} with ID: ${user.id}`);
                 // Store user in active users list
-                users[socket.id] = username;
+                users[socket.id] = { username, userId: user.id }; // Store username and actual userId (UUID)
                 activeUsers.add(username);
                 updateUserList();
                 callback({ 
                     success: true, 
-                    userId: user.id || 'unknown',
+                    userId: user.id, // Return actual userId
                     username
                 });
             } else {
@@ -447,7 +448,7 @@ io.on("connection", (socket) => {
         console.log(`User joined: ${username} with socket: ${socket.id}`);
         
         // If this username is already connected with a different socket, disconnect the old one
-        const existingSocketId = Object.keys(users).find(id => users[id] === username);
+        const existingSocketId = Object.keys(users).find(id => users[id] && users[id].username === username);
         if (existingSocketId && existingSocketId !== socket.id) {
             console.log(`User ${username} already has an active connection. Replacing old socket.`);
             const oldSocket = io.sockets.sockets.get(existingSocketId);
@@ -457,7 +458,7 @@ io.on("connection", (socket) => {
         }
         
         // Update users mapping
-        users[socket.id] = username;
+        users[socket.id] = { username, userId: null }; // Initialize with null userId
         activeUsers.add(username);
         
         // Notify other users
@@ -480,7 +481,7 @@ io.on("connection", (socket) => {
     // For backward compatibility
     socket.on('set-username', (username) => {
         console.log(`Setting username: ${username} for socket: ${socket.id}`);
-        users[socket.id] = username;
+        users[socket.id] = { username, userId: null }; // Initialize with null userId
         activeUsers.add(username);
         updateUserList();
     });
@@ -503,10 +504,14 @@ io.on("connection", (socket) => {
             return;
         }
 
-        const username = users[socket.id];
-        if (!username) {
-            return;
+        const userInfo = users[socket.id]; // Get user info object { username, userId }
+        if (!userInfo || !userInfo.username || !userInfo.userId) {
+            console.error('User not found or missing userId for socket:', socket.id);
+            return; // Don't process if user info is incomplete
         }
+        
+        const username = userInfo.username;
+        const userId = userInfo.userId; // Get the actual user ID (UUID)
 
         const channel = data.channel || 'general';
         
@@ -517,8 +522,9 @@ io.on("connection", (socket) => {
 
         // Create message object with proper structure
         const messageObj = {
-            id: uuidv4(), // Use proper UUID
-            username,     // Keep username as string - this won't go directly to Supabase
+            id: uuidv4(), // Use proper UUID for the message ID
+            senderId: userId, // <--- Use the actual sender's UUID
+            username,     // Keep username for broadcasting to clients
             message: data.message,
             timestamp: Date.now(),
             channel: channel // Changed from channelId to channel for consistency
@@ -527,13 +533,16 @@ io.on("connection", (socket) => {
         // Add to channel
         channelMessages[channel].push(messageObj);
 
-        // Broadcast to all users
-        io.emit('chat-message', {...messageObj, channel});
+        // Broadcast to all users (still include username for display)
+        // Pass the original messageObj plus the channel info
+        io.emit('chat-message', {...messageObj, channel}); 
 
         // Save to Supabase immediately and then throttle for batch saves
         // We're wrapping this in try/catch to prevent any errors from disrupting the app
         try {
+            // Pass the complete messageObj which now includes senderId
             saveMessageToSupabase(messageObj).catch(err => {
+                // Log the specific error from Supabase
                 console.error('Error saving message to Supabase:', err);
             });
         } catch (error) {
@@ -541,15 +550,15 @@ io.on("connection", (socket) => {
         }
 
         // Save messages (throttled to prevent excessive writes)
-        throttledSave();
+        throttledSave(); // Consider calling saveAllMessages directly if critical
     });
     
     // Call signaling
     socket.on('call-offer', ({offer, caller, target, sender}) => {
         console.log(`Call offer from ${caller} to ${target}`);
         
-        // Find the target socket
-        const targetSocketId = Object.keys(users).find(id => users[id] === target);
+        // Find the target socket by username in the users map
+        const targetSocketId = Object.keys(users).find(id => users[id] && users[id].username === target);
         
         if (targetSocketId) {
             console.log(`Found target socket: ${targetSocketId}`);
@@ -570,14 +579,14 @@ io.on("connection", (socket) => {
     socket.on('call-answer', ({answer, caller, callee, sender}) => {
         console.log(`Call answer from ${callee || sender} to ${caller}`);
         
-        // Find the caller socket
-        const callerSocketId = Object.keys(users).find(id => users[id] === caller);
+        // Find the caller socket by username
+        const callerSocketId = Object.keys(users).find(id => users[id] && users[id].username === caller);
         
         if (callerSocketId) {
             io.to(callerSocketId).emit('call-answer', {
                 answer,
-                callee: callee || sender || users[socket.id],
-                sender: sender || callee || users[socket.id]
+                callee: callee || sender || (users[socket.id] ? users[socket.id].username : 'unknown'),
+                sender: sender || callee || (users[socket.id] ? users[socket.id].username : 'unknown')
             });
         } else {
             socket.emit('call-error', {
@@ -588,64 +597,53 @@ io.on("connection", (socket) => {
     });
     
     socket.on('ice-candidate', ({candidate, target, sender}) => {
-        console.log(`ICE candidate from ${sender || users[socket.id]} to ${target}`);
+        const senderUsername = sender || (users[socket.id] ? users[socket.id].username : 'unknown');
+        console.log(`ICE candidate from ${senderUsername} to ${target}`);
         
-        // Find the target socket
-        const targetSocketId = Object.keys(users).find(id => users[id] === target);
+        // Find the target socket by username
+        const targetSocketId = Object.keys(users).find(id => users[id] && users[id].username === target);
         
         if (targetSocketId) {
             io.to(targetSocketId).emit('ice-candidate', {
                 candidate,
-                sender: sender || users[socket.id] // Always include who sent this candidate
+                sender: senderUsername // Always include who sent this candidate
             });
         }
     });
-    
-    socket.on('call-declined', ({caller, reason}) => {
-        console.log(`Call declined to ${caller}, reason: ${reason}`);
+
+    socket.on('end-call', ({target, sender}) => {
+        const senderUsername = sender || (users[socket.id] ? users[socket.id].username : 'unknown');
+        console.log(`Call ended by ${senderUsername} for ${target}`);
         
-        // Find the target socket
-        const callerSocketId = Object.keys(users).find(id => users[id] === caller);
+        // Find the target socket by username
+        const targetSocketId = Object.keys(users).find(id => users[id] && users[id].username === target);
         
-        if (callerSocketId) {
-            io.to(callerSocketId).emit('call-declined', {reason});
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('call-end', {
+                sender: senderUsername
+            });
         }
     });
-    
-    socket.on('end-call', ({target}) => {
-        console.log(`Call ended to ${target}`);
-        
-        if (target) {
-            const targetSocketId = Object.keys(users).find(id => users[id] === target);
-            
-            if (targetSocketId) {
-                io.to(targetSocketId).emit('call-ended');
-            }
-        }
-    });
-    
-    // Logout user handler
-    socket.on('logout-user', () => {
-        const username = users[socket.id];
-        if (username) {
-            console.log(`User logged out: ${username}`);
-            delete users[socket.id];
-            activeUsers.delete(username);
-            io.emit('user-left', username);
-            updateUserList();
-        }
-    });
-    
-    // Handle disconnection
+
+    // Handle disconnect
     socket.on('disconnect', () => {
-        const username = users[socket.id];
-        if (username) {
-            console.log(`User disconnected: ${username}`);
-            delete users[socket.id];
-            activeUsers.delete(username);
-            io.emit('user-left', username);
-            updateUserList(); // Update the active user list after someone leaves
+        const userInfo = users[socket.id];
+        if (userInfo && userInfo.username) {
+            console.log(`User disconnected: ${userInfo.username} (${socket.id})`);
+            
+            // Remove from active users and update list
+            activeUsers.delete(userInfo.username);
+            delete users[socket.id]; // Remove the user entry using socket.id
+            updateUserList();
+            
+            // Notify others
+            socket.broadcast.emit('user-left', userInfo.username);
+        } else {
+            console.log(`User disconnected: ${socket.id} (no username associated)`);
         }
+        
+        // Save messages on disconnect to ensure data is persisted
+        throttledSave(); // Consider calling saveAllMessages directly if critical
     });
     
     // Handle user registration request
@@ -755,7 +753,7 @@ server.listen(PORT, () => {
 setInterval(() => {
     console.log("Cleaning up stale connections...");
     for (const username of activeUsers) {
-        const socketId = Object.keys(users).find(id => users[id] === username);
+        const socketId = Object.keys(users).find(id => users[id] && users[id].username === username);
         const socket = io.sockets.sockets.get(socketId);
         if (!socket || !socket.connected) {
             console.log(`Removing stale connection for user: ${username}`);

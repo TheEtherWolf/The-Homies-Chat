@@ -292,7 +292,7 @@ async function saveMessagesToSupabase(messages) {
         
         return {
           id,
-          sender_id: msg.username || msg.sender || "anonymous",
+          sender_id: uuidv4(), // Use a generated UUID for sender_id as well
           content: msg.message || msg.content || "",
           created_at: new Date(msg.timestamp || Date.now()).toISOString(),
           type: msg.type || "text",
@@ -349,11 +349,17 @@ async function saveMessageToSupabase(message) {
       console.error('No message provided to save');
       return false;
     }
+    
+    // Validate senderId is present and looks like a UUID or dev ID
+    if (!message.senderId || typeof message.senderId !== 'string') {
+        console.error('Invalid or missing senderId in message object:', message);
+        return false; // Stop if senderId is missing or not a string
+    }
 
     // Format message to match Supabase schema
     const formattedMessage = {
-      id: uuidv4(), // Always use proper UUID format for Supabase
-      sender_id: message.username || message.sender || "anonymous",
+      id: message.id || uuidv4(), // Use message ID if provided, otherwise generate one
+      sender_id: message.senderId, // Use the senderId from the message object
       content: message.message || message.content || "",
       created_at: new Date(message.timestamp || Date.now()).toISOString(),
       type: message.type || "text",

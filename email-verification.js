@@ -18,15 +18,19 @@ let transporter = null;
 // Initialize email transport
 try {
   // Check if we should use Proton Mail SMTP
-  if (EMAIL_USER.includes('@proton.me') || EMAIL_USER.includes('@protonmail.com')) {
+  if (EMAIL_USER.includes('@proton.me') || EMAIL_USER.includes('@protonmail.com') || EMAIL_USER.includes('@pm.me')) {
     transporter = nodemailer.createTransport({
-      host: 'smtp.proton.me',
+      host: 'smtp.protonmail.ch',
       port: 587,
       secure: false,
       auth: {
         user: EMAIL_USER,
         pass: EMAIL_PASSWORD
-      }
+      },
+      tls: {
+        rejectUnauthorized: false
+      },
+      debug: true
     });
     console.log('Email transport initialized for Proton Mail');
   } 

@@ -1,93 +1,60 @@
-/* Main Styles for The Homies App - Discord-inspired Dark Theme */
+/* Main Styles for The Homies App - DM Focused Layout */
 :root {
   --primary-color: #5865F2; /* Discord blue */
   --secondary-color: #3A3C42; /* Discord darker gray */
   --background-color: #202225; /* Discord dark background */
-  --light-background: #2F3136; /* Discord channel list background */
-  --channels-background: #2F3136; /* Discord channels area */
-  --chat-background: #36393F; /* Discord chat area */
-  --very-dark: #18191C; /* Discord very dark areas */
+  --light-background: #2F3136; /* Sidebar, user list background */
+  --content-background: #36393F; /* Main chat area background */
+  --very-dark: #18191C; /* Not currently used, kept for potential */
   --text-light: #FFFFFF;
-  --text-muted: #B9BBBE; /* Discord muted text */
-  --text-dark: #DCDDDE; /* Discord normal text */
-  --success: #3BA55C; /* Discord green */
-  --warning: #FAA61A; /* Discord yellow/orange */
-  --danger: #ED4245; /* Discord red */
-  --info: #5865F2; /* Discord blue */
-  --highlight: #5865F2; /* Discord accent blue */
-  --server-item: #36393F; /* Discord server list item */
+  --text-muted: #B9BBBE; /* Muted text, placeholders */
+  --text-dark: #DCDDDE; /* Normal text */
+  --success: #3BA55C; /* Green */
+  --warning: #FAA61A; /* Yellow/orange */
+  --danger: #ED4245; /* Red */
+  --info: #5865F2; /* Blue */
+  --highlight: #5865F2; /* Accent blue */
+  --hover-bg: rgba(255, 255, 255, 0.04);
+  --active-bg: rgba(255, 255, 255, 0.08);
   --border-radius: 8px;
-  --border-color: #36393F;
-  --sidebar-width: 70px; /* Discord server list width */
-  --user-list-width: 240px; /* Discord user list width */
+  --border-color: #3a3c42;
+  --sidebar-width: 280px;
 }
 
 body {
   font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  background-color: var(--background-color);
+  background-color: var(--content-background); /* Use chat background as default */
   color: var(--text-light);
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  overflow: hidden;
+  overflow: hidden; /* Prevent body scroll */
 }
 
-/* Main layout */
-.container-fluid {
-  max-width: 100%;
-  overflow: hidden;
-  position: relative;
-}
-
-.main-content {
-  display: flex;
-  height: 100%;
-  overflow: hidden;
-}
-
-.sidebar {
-  width: var(--sidebar-width);
-  min-width: var(--sidebar-width);
-  background-color: #202225;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px 0;
-  border-right: 1px solid #2d2f32;
-}
-
-.channels-area {
-  width: var(--user-list-width);
-  min-width: var(--user-list-width);
-  background-color: #2f3136;
-  height: 100%;
+/* Utility */
+.overflow-auto {
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
 }
 
-.chat-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background-color: #36393f;
-  min-width: 400px;
-  overflow: hidden;
+/* Scrollbar Styling (Optional, for better look) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--light-background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--secondary-color);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-color);
 }
 
-.members-list {
-  width: var(--user-list-width);
-  min-width: var(--user-list-width);
-  background-color: #2f3136;
-  height: 100%;
-  overflow-y: auto;
-  padding: 20px 10px;
-  display: flex;
-  flex-direction: column;
+/* Auth Container - Keep existing style */
+#auth-container {
+  background-color: var(--background-color); /* Use the darkest background */
 }
-
-/* Auth Container */
 .auth-card {
   width: 100%;
   max-width: 450px;
@@ -95,486 +62,292 @@ body {
   overflow: hidden;
   background-color: var(--light-background);
   border: 1px solid var(--border-color);
+  color: var(--text-light); /* Ensure text is visible */
+}
+.auth-card .form-label {
+  color: var(--text-muted);
+}
+.auth-card .form-control {
+  background-color: var(--secondary-color);
+  border-color: var(--border-color);
+  color: var(--text-light);
+}
+.auth-card .form-control:focus {
+  background-color: var(--secondary-color);
+  border-color: var(--primary-color);
+  color: var(--text-light);
+  box-shadow: 0 0 0 0.25rem rgba(var(--primary-color), 0.25);
+}
+.auth-card #show-register,
+.auth-card #show-login {
+  color: var(--primary-color);
+}
+.auth-card .btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
 }
 
-/* Discord Layout */
-.discord-layout {
-  display: flex;
+/* App Container - Main Flex Layout */
+#app-container {
+  /* display: flex; is set inline */
   height: 100vh;
   width: 100vw;
-  overflow: hidden;
 }
 
-.server-list {
+/* Sidebar */
+#sidebar {
   width: var(--sidebar-width);
-  background-color: var(--background-color);
-  padding: 12px 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  min-width: var(--sidebar-width); /* Prevent shrinking */
+  background-color: var(--light-background);
+  border-right: 1px solid var(--border-color);
+  /* d-flex flex-column set inline */
 }
 
-.server-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background-color: var(--server-item);
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.user-profile-area {
+  border-bottom-color: var(--border-color) !important;
+}
+
+.user-profile-area #current-user {
   color: var(--text-light);
-  transition: border-radius 0.2s;
-  cursor: pointer;
 }
 
-.server-icon:hover {
-  border-radius: 16px;
-  background-color: var(--primary-color);
+#sidebar input[type="text"] {
+  background-color: var(--secondary-color);
+  border-color: var(--secondary-color);
+  color: var(--text-muted);
 }
-
-.server-icon.active {
-  border-radius: 16px;
-  background-color: var(--primary-color);
+#sidebar input[type="text"]::placeholder {
+  color: var(--text-muted);
 }
-
-.channels-area {
-  width: 240px;
-  background-color: var(--channels-background);
-  display: flex;
-  flex-direction: column;
-}
-
-.server-header {
-  padding: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+#sidebar input[type="text"]:focus {
+  background-color: var(--secondary-color);
   color: var(--text-light);
-  font-weight: bold;
+  box-shadow: none;
 }
 
-.channel-list {
+#dm-list h6 {
+  color: var(--text-muted);
   padding: 0 8px;
-  overflow-y: auto;
-  flex-grow: 1;
 }
 
-.channel-item {
-  padding: 6px 8px;
-  margin: 2px 0;
+.dm-item {
+  padding: 8px 12px !important; /* Override bootstrap padding */
+  margin: 1px 8px;
   border-radius: 4px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  cursor: pointer;
+  color: var(--text-muted) !important;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
 }
 
-.channel-item:hover {
-  background-color: rgba(255, 255, 255, 0.04);
+.dm-item:hover {
+  background-color: var(--hover-bg);
+  color: var(--text-light) !important;
+}
+
+.dm-item.active {
+  background-color: var(--active-bg);
+  color: var(--text-light) !important;
+}
+
+/* Main Content Area */
+#main-content {
+  background-color: var(--content-background);
+  /* d-flex flex-column set inline */
+  overflow: hidden; /* Prevent content overflow issues */
+}
+
+#chat-header {
+  background-color: var(--content-background); /* Match main area */
+  border-bottom-color: var(--border-color) !important;
   color: var(--text-light);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.2), 0 1.5px 0 rgba(0,0,0,0.06), 0 2px 0 rgba(0,0,0,0.06); /* Subtle shadow like Discord */
+  z-index: 1; /* Ensure header is above messages */
 }
 
-.channel-item.active {
-  background-color: rgba(255, 255, 255, 0.08);
-  color: var(--text-light);
-}
-
-.user-area {
-  padding: 8px;
-  background-color: rgba(0, 0, 0, 0.15);
-  display: flex;
-  align-items: center;
-}
-
-.user-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background-color: var(--server-item);
-  margin-right: 8px;
-}
-
-.user-details {
-  flex-grow: 1;
-}
-
-.username {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-light);
-}
-
-.user-status {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-/* Chat Area */
-.chat-area {
-  flex-grow: 1;
-  background-color: var(--chat-background);
-  display: flex;
-  flex-direction: column;
-}
-
-.chat-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  align-items: center;
-}
-
-.chat-title {
-  font-weight: bold;
-  font-size: 16px;
-  margin: 0;
-}
-
-/* Chat Styles */
 #messages-container {
-  flex-grow: 1;
-  overflow-y: auto;
-  padding: 16px;
-  background-color: var(--chat-background);
+  /* flex-grow, overflow-auto set inline */
+  color: var(--text-dark);
 }
 
+/* Message Styling */
 .message {
-  margin-bottom: 16px;
   display: flex;
+  padding: 8px 16px;
+  margin-bottom: 4px; /* Reduced margin */
   word-wrap: break-word;
-  color: var(--text-light);
+  position: relative;
+  transition: background-color 0.1s ease-out;
+}
+
+.message:hover {
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .message-avatar {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-color: var(--server-item);
   margin-right: 16px;
-  flex-shrink: 0;
+  flex-shrink: 0; /* Prevent avatar shrinking */
 }
 
-.message-content {
-  flex-grow: 1;
+.message-content-wrapper {
+  display: flex;
+  flex-direction: column;
 }
 
 .message-header {
   display: flex;
   align-items: baseline;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .message-sender {
-  font-weight: bold;
-  color: var(--text-light);
+  font-weight: 500;
+  color: var(--text-light); /* Make sender name brighter */
   margin-right: 8px;
+  font-size: 0.95rem;
 }
 
-.message-time {
-  font-size: 0.7rem;
+.message-timestamp {
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 
-.message-text {
-  color: var(--text-dark);
+.message-content {
+  line-height: 1.375;
+  white-space: pre-wrap; /* Preserve line breaks */
 }
 
-.message:hover {
-  background-color: rgba(255, 255, 255, 0.02);
+/* Message Input Area */
+#message-input-area {
+  background-color: var(--content-background);
+  border-top-color: var(--border-color) !important;
+  padding: 12px 16px !important;
 }
 
-.message-group {
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-  padding-top: 16px;
+#message-input-area .input-group {
+  background-color: var(--light-background); /* Use sidebar bg for input */
+  border-radius: var(--border-radius);
+  padding: 5px;
 }
 
-.message-info {
-  font-size: 0.8em;
-  margin-top: 5px;
-  color: rgba(0, 0, 0, 0.5);
+#message-input {
+  background: transparent !important;
+  color: var(--text-dark) !important;
+  border: none !important;
+  box-shadow: none !important;
+  resize: none; /* If we change to textarea later */
+  height: auto; /* Adjust height automatically */
+  padding: 8px;
 }
 
-.message-sent .message-info {
-  color: rgba(255, 255, 255, 0.7);
-  text-align: right;
-}
-
-/* Discord User List */
-.members-list {
-  width: var(--user-list-width);
-  background-color: var(--channels-background);
-  border-left: 1px solid rgba(255, 255, 255, 0.06);
-  overflow-y: auto;
-}
-
-.members-header {
-  padding: 16px;
+#message-input::placeholder {
   color: var(--text-muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.02em;
 }
 
-.user-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 16px;
+#message-input-area .btn {
+  background: transparent;
+  border: none;
   color: var(--text-muted);
-  cursor: pointer;
-  transition: background-color 0.2s;
+  box-shadow: none !important;
+  padding: 6px 10px;
 }
 
-.user-item:hover {
-  background-color: rgba(255, 255, 255, 0.04);
+#message-input-area .btn:hover {
   color: var(--text-light);
 }
 
-.user-item-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background-color: var(--server-item);
-  margin-right: 12px;
-  flex-shrink: 0;
-  position: relative;
+#message-input-area #send-button {
+  color: var(--primary-color);
 }
 
-.user-status-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  border: 2px solid var(--channels-background);
+#message-input-area #send-button:hover {
+  color: var(--text-light);
+  background-color: var(--primary-color); /* Add bg on hover for send */
 }
 
-.status-online {
-  background-color: var(--success);
+/* Settings Pane */
+#settings-pane {
+  background-color: var(--content-background);
+  color: var(--text-light);
 }
 
-.status-away {
-  background-color: var(--warning);
+#settings-pane h2 {
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 10px;
+  margin-bottom: 20px;
 }
 
-.status-busy {
-  background-color: var(--danger);
-}
 
-/* Navigation menu items */
-.navbar {
-  padding: 0;
-  background-color: #202225;
-  margin-bottom: 0;
-}
-
-.navbar-nav {
-  width: 100%;
-  padding: 8px 16px;
-}
-
-.nav-item {
-  margin: 5px 0;
-  width: 100%;
-}
-
-.nav-link {
-  color: #dcddde !important;
-  border-radius: 4px;
-  padding: 8px 16px !important;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  font-size: 16px;
-}
-
-.nav-link i {
-  margin-right: 12px;
-  font-size: 18px;
-}
-
-.nav-link:hover {
-  background-color: rgba(79, 84, 92, 0.32);
-  color: #fff !important;
-}
-
-.nav-link.active {
-  background-color: rgba(79, 84, 92, 0.6);
-  color: #fff !important;
-}
-
-/* Typing indicator */
-.typing-indicator {
-  color: var(--text-dark);
-  font-style: italic;
-  margin-bottom: 10px;
-}
-
-/* Video Call */
+/* Call Interface - Keep existing */
 .call-card {
-  width: 90%;
-  max-width: 900px;
-  border-radius: var(--border-radius);
-  overflow: hidden;
+  width: 80%;
+  max-width: 800px;
+  background-color: var(--light-background);
+  border: none;
+  color: var(--text-light);
 }
 
 .video-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  justify-content: center;
   gap: 10px;
-}
-
-@media (max-width: 768px) {
-  .video-grid {
-    grid-template-columns: 1fr;
-  }
+  flex-wrap: wrap;
 }
 
 .video-container {
   position: relative;
-  width: 100%;
-  background-color: #000;
-  border-radius: 8px;
+  width: calc(50% - 10px); /* Adjust as needed */
+  max-width: 350px;
+  background-color: black;
+  border-radius: var(--border-radius);
   overflow: hidden;
 }
 
 .video-container video {
   width: 100%;
-  height: auto;
-  max-height: 50vh;
-  object-fit: cover;
+  height: 100%;
+  display: block;
 }
 
 .video-label {
   position: absolute;
-  bottom: 10px;
-  left: 10px;
-  background-color: rgba(0, 0, 0, 0.6);
+  bottom: 5px;
+  left: 5px;
+  background: rgba(0, 0, 0, 0.5);
   color: white;
-  padding: 5px 10px;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-
-/* Messages */
-.system-message {
-  text-align: center;
-  margin: 15px 0;
-  color: #6c757d;
-  font-style: italic;
-}
-
-/* Emoji and Reactions */
-.emoji-button {
-  background: none;
-  border: none;
-  font-size: 1.2em;
-  cursor: pointer;
-  margin-right: 5px;
-}
-
-.message-reactions {
-  display: flex;
-  flex-wrap: wrap;
-  margin-top: 5px;
-}
-
-.reaction {
-  background-color: rgba(0, 0, 0, 0.05);
-  border-radius: 10px;
   padding: 2px 5px;
-  margin-right: 5px;
-  font-size: 0.9em;
-  display: flex;
-  align-items: center;
+  font-size: 0.8em;
+  border-radius: 3px;
 }
 
-.reaction-count {
-  margin-left: 3px;
+.call-controls button {
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .auth-card {
-    width: 90%;
-  }
-  
-  .server-list {
-    width: 60px;
-  }
-  
-  .channels-area {
-    width: 200px;
-  }
-  
-  .members-list {
-    width: 200px;
-  }
+.call-controls button i {
+  font-size: 1.2em;
 }
 
-@media (max-width: 576px) {
-  .members-list {
-    display: none;
-  }
-  
-  .server-list {
-    width: 50px;
-  }
-  
-  .channels-area {
-    width: 160px;
-  }
+/* Modal Styling */
+.modal-content {
+    background-color: var(--light-background);
+    color: var(--text-light);
+    border: 1px solid var(--border-color);
+}
+.modal-header {
+    border-bottom: 1px solid var(--border-color);
+}
+.modal-footer {
+    border-top: 1px solid var(--border-color);
+}
+.btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%); /* Make close button visible on dark bg */
 }
 
-/* Message input area */
-.message-input-container {
-  padding: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.message-input-wrapper {
-  background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  padding: 12px;
-  display: flex;
-  align-items: center;
-}
-
-#message-input {
-  background: transparent;
-  border: none;
-  color: var(--text-light);
-  flex-grow: 1;
-  outline: none;
-}
-
-#send-button {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  padding: 0 8px;
-  font-size: 20px;
-  cursor: pointer;
-  transition: color 0.2s;
-}
-
-#send-button:hover {
-  color: var(--primary-color);
-}
-
-/* Fix potential overflow issues */
-.app-container {
-  width: 100%;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* Make sure content doesn't overflow */
-.content-area {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
+/* Button focus outline for accessibility */
+.btn:focus {
+    box-shadow: 0 0 0 0.25rem rgba(var(--primary-color), 0.5) !important;
 }

@@ -4,63 +4,99 @@
  */
 
 // Socket.io connection - declare as window.socket to ensure global availability
-window.socket = io({
-    reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    reconnectionAttempts: 5,
-    forceNew: true // Force a new connection every time to prevent duplicates
-});
+window.socket = io(); 
 
 // Global variables for our managers
 let authManager;
 let chatManager;
 let videoCallManager;
 
+// Flag to prevent multiple initializations if DOMContentLoaded fires unexpectedly
+let appInitialized = false; 
+
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', () => {
-    // Clean up any existing socket connections to prevent duplicates
-    if (window.previousSocket) {
-        console.log('Cleaning up previous socket connection');
-        window.previousSocket.disconnect();
+    if (appInitialized) { 
+        console.warn('[APP_DEBUG] App already initialized. Skipping DOMContentLoaded handler.');
+        return;
     }
+    appInitialized = true; // Set flag immediately
+    console.log('[APP_DEBUG] DOMContentLoaded event fired. Initializing app...');
     
-    // Store current socket for potential cleanup
-    window.previousSocket = window.socket;
-    
-    // Initialize the app
     initializeApp();
     
-    // Setup connection event handlers
+    // Basic socket connection logging
     window.socket.on('connect', () => {
-        console.log('Connected to server with socket ID:', window.socket.id);
+        console.log('[APP_DEBUG] Socket connected with ID:', window.socket.id);
+        // If ChatManager is already initialized, let it handle reconnection
+        if (chatManager && chatManager.isInitialized) {
+            console.log('[APP_DEBUG] Socket connected, telling ChatManager to handle reconnect.');
+            chatManager.handleReconnect();
+        }
     });
     
-    window.socket.on('disconnect', () => {
-        console.log('Disconnected from server');
+    window.socket.on('disconnect', (reason) => {
+        console.log('[APP_DEBUG] Socket disconnected:', reason);
+        if (chatManager) chatManager.addSystemMessage('Disconnected from server...');
     });
     
-    window.socket.on('error', (error) => {
-        console.error('Socket error:', error);
+    window.socket.on('connect_error', (error) => {
+        console.error('[APP_DEBUG] Socket connection error:', error);
+         if (chatManager) chatManager.addSystemMessage('Connection error...');
     });
 });
 
+/**
+ * Initializes the main application components.
+ */
 function initializeApp() {
-    // Initialize managers
-    authManager = new AuthManager();
-    chatManager = new ChatManager();
-    videoCallManager = new VideoCallManager();
+    console.log('[APP_DEBUG] Inside initializeApp...');
+    // Ensure managers are created only once
+    if (!authManager) {
+        authManager = new AuthManager(window.socket);
+        console.log('[APP_DEBUG] AuthManager created.');
+    }
+    if (!chatManager) {
+        // Pass authManager instance to ChatManager
+        chatManager = new ChatManager(window.socket, authManager); 
+        console.log('[APP_DEBUG] ChatManager created.');
+    }
+    // VideoCallManager initialization would go here if needed
+
+    // Initialize AuthManager FIRST. It will handle checking the session 
+    // and deciding whether to show login or proceed.
+    console.log('[APP_DEBUG] Calling AuthManager.initialize...');
+    authManager.initialize();
+    console.log('[APP_DEBUG] AuthManager.initialize finished.');
     
-    // Make videoCallManager globally accessible
-    window.videoCallManager = videoCallManager;
+    // ChatManager initialization is now TRIGGERED BY AuthManager
+    // after successful login or session restoration. See event listener below.
     
-    console.log('The Homies App initialized successfully');
+    console.log('[APP_DEBUG] initializeApp finished.');
 }
 
-// Helper function to format dates
+// Event listener for AuthManager to trigger ChatManager initialization
+document.addEventListener('userLoggedIn', (event) => {
+    console.log('[APP_DEBUG] userLoggedIn event received in app.js.');
+    const user = event.detail.user;
+    if (!user) {
+        console.error('[APP_DEBUG] userLoggedIn event fired without user data!');
+        return;
+    }
+    if (chatManager && !chatManager.isInitialized) {
+        console.log('[APP_DEBUG] ChatManager not initialized, calling ChatManager.initialize...');
+        chatManager.initialize(user); // Pass user info
+    } else if (chatManager && chatManager.isInitialized) {
+        console.warn('[APP_DEBUG] ChatManager already initialized when userLoggedIn event received.');
+        // Optionally update user info if needed: chatManager.currentUser = user;
+        // chatManager.updateCurrentUserDisplay();
+    }
+});
+
+// Helper function to format dates (keep as is)
 function formatDate(timestamp) {
     const date = new Date(timestamp);
-    return date.toLocaleString();
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 // Helper function to securely encrypt data

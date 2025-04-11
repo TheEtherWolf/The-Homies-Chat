@@ -1,789 +1,380 @@
 /**
- * Chat module for The Homies App
- * Handles messaging, user status, and UI updates
+ * Chat module for The Homies App - DM Focused
+ * Handles direct messaging, user list, settings, and UI updates
  */
 
 // Use the global socket from app.js directly
-console.log('Chat module initialized, using global socket connection');
+console.log('[CHAT_DEBUG] Chat module initialized, using global socket connection');
 
 class ChatManager {
-    constructor() {
+    constructor(socket, authManager) {
+        console.log('[CHAT_DEBUG] ChatManager constructor called.');
+        this.socket = socket;
+        this.authManager = authManager; // Keep reference if needed for user info
+        
+        // --- DOM Element References (Updated for DM Layout) ---
         this.messagesContainer = document.getElementById('messages-container');
         this.messageInput = document.getElementById('message-input');
         this.sendButton = document.getElementById('send-button');
-        this.usersList = document.getElementById('users-list');
-        this.typingIndicator = document.getElementById('typing-indicator');
-        this.chatTitle = document.getElementById('chat-title');
-        
-        this.typingTimeout = null;
-        this.encryptionKey = localStorage.getItem('messageEncryptionKey');
-        this.currentStatus = 'online';
-        this.currentChannel = 'general';
-        this.messageCache = {}; // Cache for messages by channel
-        this.initialized = false; // Flag to prevent multiple event handler attachment
-        
-        this.statusIcons = {
-            'online': 'bi-circle-fill text-success',
-            'away': 'bi-circle-fill text-warning',
-            'busy': 'bi-circle-fill text-danger'
+        this.dmListContainer = document.getElementById('dm-list'); // *** UPDATED ***
+        this.chatHeader = document.getElementById('chat-header'); // Use the whole header
+        this.dmPartnerName = document.getElementById('dm-partner-name'); // *** NEW ***
+        this.dmPartnerAvatar = document.getElementById('dm-partner-avatar'); // *** NEW ***
+        this.statusOptions = document.querySelectorAll('.status-option'); // Keep status dropdown for now
+        this.currentUserDisplay = document.getElementById('current-user'); // In sidebar
+        this.settingsButton = document.getElementById('settings-button'); // *** NEW ***
+        this.settingsPane = document.getElementById('settings-pane'); // *** NEW ***
+        this.closeSettingsButton = document.getElementById('close-settings-button'); // *** NEW ***
+        this.mainContentArea = document.getElementById('main-content'); // *** NEW ***
+        this.sidebar = document.getElementById('sidebar'); // *** NEW ***
+        // --- Removed: usersList, chatTitle, typingIndicator, channelButtons ---
+
+        // --- State Variables (Updated for DM Layout) ---
+        this.currentDmRecipientId = null; // *** NEW *** Track the user ID of the current DM conversation
+        this.dmConversations = {}; // *** NEW *** Cache messages: { 'recipientUserId': [messages] }
+        this.allUsers = {}; // *** NEW *** Store all fetched users: { 'userId': {username, id, status?, avatar_url?} }
+        this.currentStatus = 'online'; // Keep status for now
+        this.currentUser = null; // Store current user info { username, id }
+        this.isInitialized = false;
+        // --- Removed: currentChannel, messagesByChannel, messageCache, unreadMessagesByChannel, activeUsers, typingTimeout ---
+
+        this.statusIcons = { // Keep for potential future use
+            online: 'text-success',
+            away: 'text-warning',
+            busy: 'text-danger'
+        };
+        this.statusText = { // Keep for potential future use
+            online: 'Online',
+            away: 'Away',
+            busy: 'Do Not Disturb'
         };
         
-        this.statusText = {
-            'online': 'Online',
-            'away': 'Away',
-            'busy': 'Do Not Disturb'
-        };
-        
-        this.messagesByChannel = {};
-        this.unreadMessagesByChannel = {};
+        // Bind methods needed early or frequently
+        this.sendMessage = this.sendMessage.bind(this); // Will be refactored later
+        this.handleReconnect = this.handleReconnect.bind(this); // Will be refactored later
+        this.showSettings = this.showSettings.bind(this); // Add settings toggle later
+        this.hideSettings = this.hideSettings.bind(this); // Add settings toggle later
+        // Other methods will be bound/defined later
     }
-    
-    initialize() {
-        console.log('Initializing chat manager...');
-        
-        // Ensure username is in localStorage for proper message display
-        const userData = JSON.parse(sessionStorage.getItem('user') || '{}');
-        if (userData && userData.username) {
-            localStorage.setItem('username', userData.username);
-            console.log('Set username in localStorage:', userData.username);
-        }
-        
-        // Set up all event listeners - only do this once
-        if (!this.initialized) {
-            this.setupEventListeners();
-            this.initialized = true;
-            console.log('Event listeners set up for first time');
-        } else {
-            console.log('Skipping event listener setup - already initialized');
-        }
-        
-        // Load message history
-        this.loadMessageHistory();
-        
-        console.log('Chat manager initialization complete');
-    }
-    
-    setupEventListeners() {
-        console.log('Setting up event listeners...');
-        
-        // Direct DOM references to ensure we have the elements
-        const sendButton = document.getElementById('send-button');
-        const messageInput = document.getElementById('message-input');
-        const channelItems = document.querySelectorAll('.channel-item');
-        const statusOptions = document.querySelectorAll('.status-option');
-        
-        // Message sending with click
-        if (sendButton) {
-            sendButton.onclick = (e) => {
-                e.preventDefault();
-                console.log('Send button clicked');
-                this.sendMessage();
-                return false;
-            };
-            console.log('Send button handler attached');
-        } else {
-            console.error('Send button not found in DOM');
-        }
-        
-        // Message sending with enter key
-        if (messageInput) {
-            messageInput.onkeypress = (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    console.log('Enter key pressed, sending message');
-                    this.sendMessage();
-                    return false;
-                }
-            };
-            
-            // Typing indicator
-            messageInput.oninput = () => this.handleTyping();
-            console.log('Message input handlers attached');
-        } else {
-            console.error('Message input not found in DOM');
-        }
-        
-        // Channel switching
-        channelItems.forEach(channel => {
-            channel.onclick = (e) => {
-                e.preventDefault();
-                console.log('Channel item clicked:', channel.getAttribute('data-channel'));
-                
-                // Remove active class from all channels
-                channelItems.forEach(c => c.classList.remove('active'));
-                
-                // Add active class to clicked channel
-                channel.classList.add('active');
-                
-                // Switch channel using data attribute
-                const channelName = channel.getAttribute('data-channel') || 'general';
-                this.switchChannel(channelName);
-                return false;
-            };
-        });
-        console.log('Channel item handlers attached to', channelItems.length, 'items');
-        
-        // Status options
-        statusOptions.forEach(option => {
-            option.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const status = option.getAttribute('data-status');
-                console.log('Status option clicked:', status);
-                this.updateUserStatus(status);
-                return false;
-            };
-        });
-        console.log('Status option handlers attached');
-        
-        // Socket events
-        window.socket.on('chat-message', (data) => {
-            console.log('Received chat message from server:', data);
-            this.addMessageToChat(data);
-        });
-        
-        window.socket.on('message-history', (data) => {
-            console.log('Received message history:', data);
-            const channel = data.channel || 'general';
-            const messages = data.messages || [];
-            
-            // Cache the messages for this channel
-            this.messageCache[channel] = messages;
-            
-            // If this is the current channel, display the messages
-            if (this.currentChannel === channel) {
-                this.displayMessageHistory(messages);
-            }
-        });
-        
-        window.socket.on('active-users', (users) => {
-            console.log('Received active users list:', users);
-            this.updateUsersList(users);
-        });
-        
-        window.socket.on('user-joined', (username) => {
-            console.log('User joined:', username);
-            this.addSystemMessage(`${username} has joined the chat`);
-            // Request updated users list
-            window.socket.emit('get-active-users');
-        });
-        
-        window.socket.on('user-left', (username) => {
-            console.log('User left:', username);
-            this.addSystemMessage(`${username} has left the chat`);
-            // Request updated users list
-            window.socket.emit('get-active-users');
-        });
-        
-        // Request users list
-        window.socket.emit('get-active-users');
-        console.log('Socket event handlers attached');
-    }
-    
-    // We'll keep the old initEventListeners for compatibility, but it won't do anything
-    initEventListeners() {
-        console.log('Deprecated initEventListeners called - using setupEventListeners instead');
-    }
-    
-    // We'll keep the old initChannelListeners for compatibility, but it won't do anything
-    initChannelListeners() {
-        console.log('Deprecated initChannelListeners called - using setupEventListeners instead');
-    }
-    
-    switchChannel(channelName) {
-        console.log(`Switching to channel: ${channelName}`);
-        
-        // Update the current channel
-        this.currentChannel = channelName;
-        
-        // Update channel title
-        if (this.chatTitle) {
-            const channelDisplay = channelName.charAt(0).toUpperCase() + channelName.slice(1);
-            this.chatTitle.textContent = `#${channelDisplay}`;
-        }
-        
-        // Clear messages for the new channel
-        if (this.messagesContainer) {
-            // Don't clear all messages, we'll load from cache or fetch new ones
-            console.log('Preparing to display messages for channel:', channelName);
-        }
-        
-        // Check if we have cached messages for this channel
-        if (this.messageCache[channelName] && this.messageCache[channelName].length > 0) {
-            console.log(`Using ${this.messageCache[channelName].length} cached messages for channel:`, channelName);
-            this.displayMessageHistory(this.messageCache[channelName]);
-        } else {
-            // If no cached messages, request them from the server
-            console.log('No cached messages found, requesting from server for channel:', channelName);
-            this.loadChannelMessages(channelName);
-        }
-    }
-    
-    loadMessageHistory() {
-        this.loadChannelMessages(this.currentChannel);
-    }
-    
-    loadChannelMessages(channel) {
-        window.socket.emit('get-messages', { channel });
-    }
-    
-    sendMessage() {
-        const messageInput = document.getElementById('message-input');
-        if (!messageInput) {
-            console.error('Message input element not found');
+
+    // Modified initialize to accept user info and set up for DMs
+    initialize(user) {
+        console.log('[CHAT_DEBUG] ChatManager initialize called with user:', user);
+        if (this.isInitialized) {
+            console.warn('[CHAT_DEBUG] ChatManager already initialized. Aborting.');
             return;
         }
+        if (!user || !user.id || !user.username) {
+             console.error('[CHAT_DEBUG] Initialization failed: Invalid user object provided.', user);
+             // Potentially notify the user or AuthManager
+             return;
+        }
         
-        const message = messageInput.value.trim();
-        console.log('Attempting to send message:', message);
+        this.currentUser = user; 
+        this.updateCurrentUserDisplay(); // Update sidebar display
+        this.attachEventListeners(); // Call this, but listeners will be added in next steps
+        this.updateUserStatus(this.currentStatus); // Set initial status (will emit later)
+
+        // Request the list of users AFTER basic setup
+        console.log('[CHAT_DEBUG] Requesting user list after initialization...');
+        this.requestUserList(); // Define this method later
         
-        if (message) {
-            // Get user info from sessionStorage
-            const userData = JSON.parse(sessionStorage.getItem('user') || '{}');
-            const username = userData.username || localStorage.getItem('username') || 'Anonymous';
-            
-            // Create message object
-            const messageObj = {
-                id: Date.now() + '-' + Math.random().toString(36).substr(2, 9), // Local ID for UI only
-                message: message,
-                username: username,
-                timestamp: Date.now(),
-                channel: this.currentChannel
+        // Don't request message history here, wait for DM selection
+        this.displayPlaceholderMessage("Select a conversation from the left to start chatting."); // Define later
+        
+        this.isInitialized = true;
+        console.log('[CHAT_DEBUG] ChatManager successfully initialized (structure setup).');
+        // Removed: setActiveChannel, requestInitialData (replaced by requestUserList)
+    }
+
+    // Implemented: Attaches DOM and Socket Listeners
+    attachEventListeners() {
+        console.log('[CHAT_DEBUG] Attaching ChatManager event listeners...');
+
+        // --- DOM Event Listeners ---
+        if (this.sendButton && this.messageInput) {
+            // Use named functions for easier removal if needed later
+            this.sendMessageHandler = this.sendMessage.bind(this); // Defined later
+            this.messageKeypressHandler = (e) => { 
+                if (e.key === 'Enter' && !e.shiftKey) { 
+                    e.preventDefault(); 
+                    this.sendMessage(); // Defined later
+                } 
             };
             
-            console.log('Sending message to server:', messageObj);
-            
-            // Disable send button to prevent double-sends
-            if (this.sendButton) {
-                this.sendButton.disabled = true;
-                setTimeout(() => {
-                    this.sendButton.disabled = false;
-                }, 1000); // Re-enable after 1 second
-            }
-            
-            // Send to server (only once)
-            window.socket.emit('chat-message', messageObj);
-            
-            // Add to UI immediately for faster feedback
-            this.addMessageToUI(messageObj);
-            
-            // Clear input
-            messageInput.value = '';
-            console.log('Message sent and input cleared');
+            this.sendButton.removeEventListener('click', this.sendMessageHandler);
+            this.messageInput.removeEventListener('keypress', this.messageKeypressHandler);
+
+            this.sendButton.addEventListener('click', this.sendMessageHandler);
+            this.messageInput.addEventListener('keypress', this.messageKeypressHandler);
         } else {
-            console.log('Empty message, not sending');
-        }
-    }
-    
-    addMessageToChat(data) {
-        const message = data.message || data.content || data;
-        const username = data.username || data.sender;
-        const timestamp = data.timestamp || Date.now();
-        const channel = data.channel || data.channelId || this.currentChannel;
-        const messageId = data.id || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
-        
-        // Check if this message already exists in the UI to prevent duplicates
-        if (this.messagesContainer) {
-            const existingMsg = this.messagesContainer.querySelector(`[data-message-id="${messageId}"]`);
-            if (existingMsg) {
-                console.log('Message already exists in UI, not adding duplicate:', messageId);
-                return;
-            }
-        }
-        
-        // Create the message object with a consistent format
-        const messageObj = {
-            username,
-            message: typeof message === 'object' ? message.message || message.content : message,
-            timestamp,
-            channelId: channel,
-            id: messageId
-        };
-        
-        // Add to storage
-        this.addMessageToStorage(messageObj, channel);
-        
-        // Only display if this is the active channel
-        if (channel === this.currentChannel) {
-            // Add to UI
-            this.addMessageToUI(messageObj);
-        } else {
-            // Update unread message count for this channel
-            this.updateChannelUnreadCount(channel);
-        }
-    }
-    
-    addMessageToUI(messageObj) {
-        const { username, message, timestamp, id } = messageObj;
-        
-        // Check if this message already exists in the UI to prevent duplicates
-        if (this.messagesContainer) {
-            const existingMsg = this.messagesContainer.querySelector(`[data-message-id="${id}"]`);
-            if (existingMsg) {
-                console.log('Message already exists in UI, not adding duplicate:', id);
-                return;
-            }
-        }
-        
-        this.displayMessage(messageObj);
-        this.scrollToBottom();
-    }
-    
-    addMessageToStorage(messageObj, channel = 'general') {
-        // Ensure channel exists
-        if (!this.messagesByChannel[channel]) {
-            this.messagesByChannel[channel] = [];
-        }
-        
-        // Add message
-        this.messagesByChannel[channel].push(messageObj);
-        
-        // Limit number of messages stored (prevent memory issues)
-        if (this.messagesByChannel[channel].length > 300) {
-            this.messagesByChannel[channel].shift();
-        }
-    }
-    
-    addMessageToUI(messageObj) {
-        const chatMessages = document.getElementById('messages-container');
-        
-        const messageElement = document.createElement('div');
-        messageElement.classList.add('message');
-        
-        // Check if it's the current user's message
-        if (messageObj.username === localStorage.getItem('username')) {
-            messageElement.classList.add('my-message');
-        } else {
-            messageElement.classList.add('other-message');
-        }
-        
-        // Format timestamp
-        const date = new Date(messageObj.timestamp);
-        const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
-        messageElement.innerHTML = `
-            <div class="message-header">
-                <span class="message-username">${messageObj.username}</span>
-                <span class="message-time">${timeString}</span>
-            </div>
-            <div class="message-content">${this.formatMessageContent(messageObj.message)}</div>
-        `;
-        
-        chatMessages.appendChild(messageElement);
-        
-        // Scroll to bottom
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-    
-    displayMessageHistory(messages) {
-        this.messagesContainer.innerHTML = '';
-        messages.forEach(message => this.addMessageToUI(message));
-        this.scrollToBottom();
-    }
-    
-    displayMessage(message, scroll = true) {
-        // Check if we need to start a new message group
-        const shouldStartNewGroup = this.shouldStartNewMessageGroup(message);
-        let messageElement;
-        
-        // Normalize username field (some may use sender, some username)
-        const username = message.username || message.sender;
-        const isCurrentUser = username === localStorage.getItem('username');
-        
-        if (shouldStartNewGroup) {
-            // Create a new message group
-            messageElement = document.createElement('div');
-            messageElement.classList.add('message');
-            messageElement.dataset.username = username;
-            messageElement.dataset.timestamp = message.timestamp || new Date().toISOString();
-            
-            let avatarLetter = username ? username.charAt(0).toUpperCase() : 'U';
-            
-            // Add avatar, sender and message
-            messageElement.innerHTML = `
-                <div class="message-avatar" style="background-color: ${this.getUserColor(username)}">
-                    ${avatarLetter}
-                </div>
-                <div class="message-content">
-                    <div class="message-header">
-                        <span class="message-sender">${isCurrentUser ? 'You' : username}</span>
-                        <span class="message-time">${this.formatMessageTime(message.timestamp)}</span>
-                        ${message.encrypted ? '<i class="bi bi-lock-fill ms-2" title="End-to-End Encrypted"></i>' : ''}
-                    </div>
-                    <div class="message-text"></div>
-                </div>
-            `;
-        } else {
-            // Find last message in the same group
-            const lastMessage = Array.from(this.messagesContainer.children)
-                .filter(el => el.dataset.username === username)
-                .pop();
-                
-            if (lastMessage) {
-                messageElement = lastMessage;
-            } else {
-                // Fallback to creating a new message
-                return this.displayMessage({...message, forceNewGroup: true}, scroll);
-            }
-        }
-        
-        // Decrypt if encrypted
-        let content = message.content;
-        if (message.encrypted && this.encryptionKey) {
-            try {
-                content = CryptoJS.AES.decrypt(content, this.encryptionKey).toString(CryptoJS.enc.Utf8);
-            } catch (error) {
-                console.error('Decryption error:', error);
-                content = '🔒 [Encrypted message - Cannot decrypt]';
-            }
-        }
-        
-        // Process content for display
-        content = this.formatMessageContent(content);
-        
-        if (shouldStartNewGroup) {
-            // Set the content in the new message
-            messageElement.querySelector('.message-text').innerHTML = content;
-            this.messagesContainer.appendChild(messageElement);
-        } else {
-            // Add new paragraph to existing message
-            const messageText = messageElement.querySelector('.message-text');
-            
-            // Update message with new content
-            messageText.innerHTML += `<br>${content}`;
-            
-            // Update timestamp
-            const timeElement = messageElement.querySelector('.message-time');
-            if (timeElement) {
-                timeElement.textContent = this.formatMessageTime(message.timestamp);
-            }
-            
-            // Update the message timestamp
-            messageElement.dataset.timestamp = message.timestamp || new Date().toISOString();
-        }
-        
-        // Store the message in MEGA after displaying
-        this.persistMessageToMEGA(message);
-        
-        if (scroll) {
-            this.scrollToBottom();
-        }
-    }
-    
-    persistMessageToMEGA(message) {
-        // Make sure we don't try to persist the same message multiple times
-        if (message._persisted) return;
-        
-        // Mark as persisted to avoid duplicates
-        message._persisted = true;
-        
-        // Queue the message for MEGA storage
-        window.socket.emit('persist-message', {
-            message,
-            channel: message.channel || this.currentChannel
-        });
-    }
-    
-    shouldStartNewMessageGroup(message) {
-        if (message.forceNewGroup) return true;
-        
-        // Get all existing messages
-        const messages = Array.from(this.messagesContainer.children);
-        
-        // If no messages yet, start a new group
-        if (messages.length === 0) return true;
-        
-        // Get the last message in the container
-        const lastMessage = messages[messages.length - 1];
-        
-        // Normalize username
-        const username = message.username || message.sender;
-        
-        // If the last message is from a different user, start a new group
-        if (lastMessage.dataset.username !== username) return true;
-        
-        // If the last message is more than 5 minutes older, start a new group
-        const lastTimestamp = new Date(lastMessage.dataset.timestamp);
-        const currentTimestamp = new Date(message.timestamp || new Date());
-        const timeDifference = (currentTimestamp - lastTimestamp) / (1000 * 60); // diff in minutes
-        
-        return timeDifference > 5;
-    }
-    
-    getUserColor(username) {
-        // Generate a consistent color for a username
-        let hash = 0;
-        for (let i = 0; i < username.length; i++) {
-            hash = username.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        
-        // Use Discord-like colors
-        const colors = [
-            '#5865F2', // Discord blue
-            '#3BA55C', // Discord green
-            '#ED4245', // Discord red
-            '#FAA61A', // Discord yellow/orange
-            '#9B59B6', // Purple
-            '#2ECC71', // Green
-            '#E74C3C', // Red
-            '#3498DB'  // Blue
-        ];
-        
-        return colors[Math.abs(hash) % colors.length];
-    }
-    
-    formatMessageTime(timestamp) {
-        const messageDate = timestamp ? new Date(timestamp) : new Date();
-        
-        // Today's date for comparison
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        
-        // Check if same day
-        if (messageDate.toDateString() === today.toDateString()) {
-            return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        } 
-        // Check if yesterday
-        else if (messageDate.toDateString() === yesterday.toDateString()) {
-            return `Yesterday at ${messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-        } 
-        // Otherwise show full date
-        else {
-            return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + 
-                   ` at ${messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-        }
-    }
-    
-    formatMessageContent(content) {
-        // Basic formatting: Convert URLs to links
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
-        content = content.replace(urlRegex, url => `<a href="${url}" target="_blank">${url}</a>`);
-        
-        // Convert line breaks to <br>
-        content = content.replace(/\n/g, '<br>');
-        
-        // Convert emojis
-        content = this.replaceEmojis(content);
-        
-        return content;
-    }
-    
-    replaceEmojis(text) {
-        const emojiMap = {
-            ':)': '😊',
-            ':D': '😃',
-            ':(': '😞',
-            ':P': '😋',
-            ';)': '😉',
-            '<3': '❤️',
-            ':+1:': '👍',
-            ':-1:': '👎'
-        };
-        
-        for (const [code, emoji] of Object.entries(emojiMap)) {
-            text = text.replace(new RegExp(code.replace(/([.*+?^=!:${}()|[\]\/\\])/g, '\\$1'), 'g'), emoji);
-        }
-        
-        return text;
-    }
-    
-    addSystemMessage(content) {
-        const messageElement = document.createElement('div');
-        messageElement.classList.add('system-message');
-        messageElement.textContent = content;
-        
-        this.messagesContainer.appendChild(messageElement);
-        this.scrollToBottom();
-    }
-    
-    updateUsersList(users) {
-        this.usersList.innerHTML = '';
-        
-        // Group users by status
-        const onlineUsers = [];
-        const awayUsers = [];
-        const busyUsers = [];
-        
-        users.forEach(user => {
-            const username = typeof user === 'string' ? user : user.username;
-            const status = user.status || 'online';
-            
-            if (username === localStorage.getItem('username')) return;
-            
-            switch(status) {
-                case 'online':
-                    onlineUsers.push({ username, status });
-                    break;
-                case 'away':
-                    awayUsers.push({ username, status });
-                    break;
-                case 'busy':
-                    busyUsers.push({ username, status });
-                    break;
-                default:
-                    onlineUsers.push({ username, status: 'online' });
-            }
-        });
-        
-        // Create status group headers and user items
-        if (onlineUsers.length > 0) {
-            this.createUserStatusGroup('ONLINE', onlineUsers.length, onlineUsers);
-        }
-        
-        if (awayUsers.length > 0) {
-            this.createUserStatusGroup('AWAY', awayUsers.length, awayUsers);
-        }
-        
-        if (busyUsers.length > 0) {
-            this.createUserStatusGroup('DO NOT DISTURB', busyUsers.length, busyUsers);
+            console.error('[CHAT_DEBUG] Send button or message input not found!');
         }
 
-        // Update header in the DOM to show actual count
-        const membersHeader = document.querySelector('.members-header');
-        if (membersHeader) {
-            membersHeader.textContent = `ONLINE — ${onlineUsers.length}`;
+        // Event delegation for dynamically added DM list items
+        if (this.dmListContainer) {
+            // Define handler separately for potential removal
+            this.handleDmItemClick = (event) => {
+                 const dmItem = event.target.closest('.dm-item');
+                 if (dmItem && dmItem.dataset.userId) {
+                     event.preventDefault();
+                     const recipientId = dmItem.dataset.userId;
+                     this.openDmConversation(recipientId); // Define later
+                 }
+            };
+            this.dmListContainer.removeEventListener('click', this.handleDmItemClick); // Remove previous if any
+            this.dmListContainer.addEventListener('click', this.handleDmItemClick);
+        } else {
+             console.error('[CHAT_DEBUG] DM list container not found!');
         }
-    }
-    
-    createUserStatusGroup(statusLabel, count, users) {
-        // Create header
-        const header = document.createElement('div');
-        header.classList.add('members-header');
-        header.textContent = `${statusLabel} — ${count}`;
-        this.usersList.appendChild(header);
         
-        // Create users
-        users.forEach(user => {
-            const userElement = document.createElement('div');
-            userElement.classList.add('user-item');
-            userElement.setAttribute('data-username', user.username);
-            
-            const statusClass = this.statusIcons[user.status] || this.statusIcons.online;
-            const userInitial = user.username.charAt(0).toUpperCase();
-            
-            userElement.innerHTML = `
-                <div class="user-item-avatar" style="background-color: ${this.getUserColor(user.username)}">
-                    ${userInitial}
-                    <span class="user-status-indicator ${statusClass}"></span>
-                </div>
-                <span class="user-name">${user.username}</span>
-                <button class="btn btn-sm btn-outline-primary float-end call-btn" data-username="${user.username}">
-                    <i class="bi bi-camera-video"></i>
-                </button>
-            `;
-            
-            this.usersList.appendChild(userElement);
+        // Settings toggle
+        if(this.settingsButton) {
+             this.settingsButton.removeEventListener('click', this.showSettings); // Remove previous
+             this.settingsButton.addEventListener('click', this.showSettings);
+        }
+         if(this.closeSettingsButton) {
+             this.closeSettingsButton.removeEventListener('click', this.hideSettings); // Remove previous
+             this.closeSettingsButton.addEventListener('click', this.hideSettings);
+        }
+
+        // Status options (keep logic, ensure updateUserStatus is implemented)
+        this.statusOptions.forEach(option => {
+            const status = option.dataset.status;
+            // Ensure handler is bound correctly and remove previous if any
+            const handler = () => this.updateUserStatus(status); // Implemented below
+            option.removeEventListener('click', option.handlerRef); // Use stored ref if exists
+            option.addEventListener('click', handler);
+            option.handlerRef = handler; // Store reference for removal
+        });
+
+        // --- Socket Event Listeners (Use .off().on() pattern) ---
+        console.log('[CHAT_DEBUG] Attaching/Re-attaching socket event listeners using .off().on()');
+        
+        // Listen for the list of all users
+        this.socket.off('user-list-all').on('user-list-all', (users) => {
+            console.log('[CHAT_DEBUG] Received user-list-all event:', users);
+            this.updateAllUsers(users); // Define later
+            this.displayUserList(); // Define later
+        });
+
+        // Listen for Direct Messages
+        this.socket.off('dm-message').on('dm-message', (data) => {
+            console.log('[CHAT_DEBUG] Received dm-message event:', data);
+            this.handleIncomingDm(data); // Define later
         });
         
-        // Add event listeners to call buttons
-        document.querySelectorAll('.call-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const targetUser = e.currentTarget.getAttribute('data-username');
-                
-                // This will be handled by video-call.js
-                if (window.videoCallManager) {
-                    window.videoCallManager.initiateCall(targetUser);
-                }
-            });
+        // Listen for DM history response
+        this.socket.off('dm-history').on('dm-history', (data) => {
+            console.log('[CHAT_DEBUG] Received dm-history event for recipient:', data.recipientId);
+            this.handleDmHistory(data); // Define later
         });
-    }
-    
-    updateUserInList(username, status) {
-        const userItem = this.usersList.querySelector(`[data-username="${username}"]`);
-        if (!userItem) return;
+
+        // Listen for updates to a specific user's status/info
+        this.socket.off('user-updated').on('user-updated', (user) => {
+             console.log('[CHAT_DEBUG] Received user-updated event:', user);
+             this.handleUserUpdate(user); // Define later
+        });
         
-        const statusIcon = userItem.querySelector('.bi');
-        if (statusIcon) {
-            // Remove all status classes
-            Object.values(this.statusIcons).forEach(cls => {
-                const classes = cls.split(' ');
-                classes.forEach(c => statusIcon.classList.remove(c));
-            });
-            
-            // Add new status class
-            const newClasses = this.statusIcons[status].split(' ');
-            newClasses.forEach(c => statusIcon.classList.add(c));
+         // Listen for users joining (might be new potential DM partners)
+        this.socket.off('user-joined').on('user-joined', (user) => {
+            console.log('[CHAT_DEBUG] Received user-joined event (new potential DM partner):', user);
+             this.handleUserJoined(user); // Define later
+        });
+
+        // Listen for users leaving
+        this.socket.off('user-left').on('user-left', (userId) => {
+            console.log('[CHAT_DEBUG] Received user-left event:', userId);
+             this.handleUserLeft(userId); // Define later
+        });
+
+        console.log('[CHAT_DEBUG] Socket event listeners attached/re-attached.');
+    }
+
+    // Implemented: Emit event
+    requestUserList() {
+        console.log('[CHAT_DEBUG] Requesting full user list from server...');
+        // TODO: Implement socket emit in the next edit
+        if (this.socket && this.socket.connected) {
+             this.socket.emit('get-all-users'); 
+        } else {
+             console.error('[CHAT_DEBUG] Cannot request user list: Socket not connected.');
         }
     }
     
-    updateUserStatus(status) {
-        // Update the user's status
-        this.currentStatus = status;
-        
-        // Inform the server
-        window.socket.emit('status-update', { status });
-        
-        // Update the local display immediately
-        const statusDisplay = document.getElementById('user-status-display');
-        const statusText = document.getElementById('status-text');
-        
-        if (statusDisplay) {
-            // Remove all status classes
-            statusDisplay.classList.remove('text-success', 'text-warning', 'text-danger');
-            
-            // Add the appropriate class for this status
-            if (status === 'online') {
-                statusDisplay.classList.add('text-success');
-            } else if (status === 'away') {
-                statusDisplay.classList.add('text-warning');
-            } else if (status === 'busy') {
-                statusDisplay.classList.add('text-danger');
-            }
+    // Implemented: Basic placeholder display
+    displayPlaceholderMessage(text) {
+         console.log('[CHAT_DEBUG] Displaying placeholder message:', text);
+         if (this.messagesContainer) {
+             // Basic placeholder for now
+             this.messagesContainer.innerHTML = `<div class="text-center text-muted mt-5 placeholder-message">${text}</div>`;
+         } else {
+             console.error('[CHAT_DEBUG] messagesContainer not found for placeholder.');
+         }
+     }
+     
+     // Implemented: Update text content
+     updateCurrentUserDisplay() {
+         console.log('[CHAT_DEBUG] Updating current user display...');
+          if (this.currentUserDisplay && this.currentUser) {
+             this.currentUserDisplay.textContent = this.currentUser.username;
+         } else {
+              console.warn('[CHAT_DEBUG] Cannot update current user display.');
+         }
+     }
+     
+     // Implemented: Update status and emit event
+     updateUserStatus(status) {
+         console.log('[CHAT_DEBUG] Updating user status to:', status);
+         if (!this.statusText[status]) {
+              console.warn('[CHAT_DEBUG] Invalid status provided:', status);
+              return;
+         }
+         this.currentStatus = status;
+         
+         // TODO: Update any visual indicator for the current user's status in the UI
+         // Example: Update the icon in the profile dropdown
+         const statusDisplay = document.getElementById('user-status-display'); // Assuming ID exists
+         const statusTextElement = document.getElementById('status-text'); // Assuming ID exists
+         if (statusDisplay) {
+            statusDisplay.className = 'bi bi-circle-fill me-2'; // Reset classes
+            statusDisplay.classList.add(this.statusIcons[status] || 'text-secondary');
+         }
+         if (statusTextElement) {
+             statusTextElement.textContent = this.statusText[status];
+         }
+         
+         // Emit the update to the server
+         if (this.socket && this.socket.connected && this.currentUser) {
+             this.socket.emit('status-update', { userId: this.currentUser.id, status: this.currentStatus });
+             console.log('[CHAT_DEBUG] Emitted status-update:', { userId: this.currentUser.id, status: this.currentStatus });
+         } else {
+              console.error('[CHAT_DEBUG] Cannot emit status update: Socket not connected or user not identified.');
+         }
+     }
+
+    // To be fully implemented later
+    handleReconnect() {
+        console.log('[CHAT_DEBUG] Handling socket reconnection (placeholder)...');
+        if (!this.isInitialized || !this.currentUser) {
+            console.warn('[CHAT_DEBUG] ChatManager not fully initialized, cannot handle reconnect.');
+            return;
         }
-        
-        if (statusText) {
-            statusText.textContent = this.statusText[status] || 'Online';
-        }
-        
-        console.log(`Status updated to: ${status}`);
-    }
-    
-    handleTyping() {
-        window.socket.emit('typing');
-        
-        // Clear previous timeout
-        if (this.typingTimeout) {
-            clearTimeout(this.typingTimeout);
-        }
-        
-        // Set new timeout
-        this.typingTimeout = setTimeout(() => {
-            this.stopTypingNotification();
-        }, 3000);
-    }
-    
-    stopTypingNotification() {
-        window.socket.emit('stop-typing');
-        
-        if (this.typingTimeout) {
-            clearTimeout(this.typingTimeout);
-            this.typingTimeout = null;
+        // Re-attach listeners is handled by .off().on() in attachEventListeners
+        // Re-emit current status
+        this.updateUserStatus(this.currentStatus);
+        // Request fresh user list
+        this.requestUserList(); 
+        // Re-request history for the currently open DM if any
+        if (this.currentDmRecipientId) {
+             this.requestDmHistory(this.currentDmRecipientId); // Define later
         }
     }
     
-    showTypingIndicator(username) {
-        this.typingIndicator.textContent = `${username} is typing...`;
-        this.typingIndicator.classList.remove('d-none');
+    // Placeholder - Define later
+    sendMessage() {
+        console.log('[CHAT_DEBUG] sendMessage called (placeholder)...');
+        // TODO: Implement DM sending logic later
     }
     
-    hideTypingIndicator() {
-        this.typingIndicator.classList.add('d-none');
+    // Implemented: Show settings pane
+    showSettings() {
+        console.log('[CHAT_DEBUG] showSettings called.');
+        if (this.settingsPane && this.mainContentArea && this.sidebar) {
+             this.settingsPane.classList.remove('d-none');
+             this.mainContentArea.classList.add('d-none'); // Hide chat view
+             // Optional: Add class to sidebar to indicate settings are open
+             this.sidebar.classList.add('settings-open'); 
+        } else {
+             console.error('[CHAT_DEBUG] Cannot show settings: Pane or main content area not found.');
+        }
     }
     
+    // Implemented: Hide settings pane
+    hideSettings() {
+        console.log('[CHAT_DEBUG] hideSettings called.');
+         if (this.settingsPane && this.mainContentArea && this.sidebar) {
+             this.settingsPane.classList.add('d-none');
+             this.mainContentArea.classList.remove('d-none'); // Show chat view
+             this.sidebar.classList.remove('settings-open'); 
+        } else {
+             console.error('[CHAT_DEBUG] Cannot hide settings: Pane or main content area not found.');
+        }
+    }
+
+    // --- REMOVED OLD METHODS ---
+    // switchChannel, setActiveChannel, displayMessageHistory (old version),
+    // updateUsersList, addUserToList, removeUserFromList, addSystemMessage (old version),
+    // updateUserStatusDisplay, handleTyping, startTyping, stopTyping, etc.
+    
+    // Method to add messages (will be used by incoming/history later)
+    // Placeholder - Define later
+    addMessageToDisplay(message, isCurrentUser) {
+        console.log('[CHAT_DEBUG] Adding message to display (placeholder)...', message);
+        // TODO: Implement message element creation and appending later
+    }
+
+    // Placeholder - Define later
     scrollToBottom() {
-        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        console.log('[CHAT_DEBUG] Scrolling to bottom (placeholder)...');
+         if (this.messagesContainer) {
+            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        }
     }
     
-    updateChannelUnreadCount(channel) {
-        // Update unread count for each channel
-        document.querySelectorAll('.channel-item').forEach(channel => {
-            const channelName = channel.textContent.trim().replace(/^[#\s]+/, '').trim();
-            const unreadCount = this.unreadMessagesByChannel[channelName] || 0;
-            channel.querySelector('.unread-count').textContent = unreadCount > 0 ? unreadCount : '';
-        });
+    // --- NEW PLACEHOLDERS for socket event handlers ---
+    
+    // Placeholder - Define later
+    updateAllUsers(users) {
+        console.log('[CHAT_DEBUG] Updating local user cache (placeholder)...', users);
+        // TODO: Implement logic to update this.allUsers
     }
+    
+    // Placeholder - Define later
+    displayUserList() {
+         console.log('[CHAT_DEBUG] Displaying user list in sidebar (placeholder)...');
+         // TODO: Implement logic to render users in this.dmListContainer
+    }
+    
+    // Placeholder - Define later
+    handleIncomingDm(data) {
+         console.log('[CHAT_DEBUG] Handling incoming DM (placeholder)...', data);
+         // TODO: Implement logic to cache and potentially display message
+    }
+    
+    // Placeholder - Define later
+    handleDmHistory(data) {
+         console.log('[CHAT_DEBUG] Handling DM history response (placeholder)...', data);
+         // TODO: Implement logic to cache and display history
+    }
+    
+    // Placeholder - Define later
+    handleUserUpdate(user) {
+         console.log('[CHAT_DEBUG] Handling user update (placeholder)...', user);
+         // TODO: Implement logic to update user in this.allUsers and potentially UI
+    }
+    
+    // Placeholder - Define later
+    handleUserJoined(user) {
+         console.log('[CHAT_DEBUG] Handling user joined (placeholder)...', user);
+         // TODO: Implement logic to add user to this.allUsers and potentially UI
+    }
+    
+    // Placeholder - Define later
+    handleUserLeft(userId) {
+         console.log('[CHAT_DEBUG] Handling user left (placeholder)...', userId);
+         // TODO: Implement logic to remove user from this.allUsers and potentially UI
+    }
+    
+     // Placeholder - Define later
+     openDmConversation(recipientId) {
+          console.log('[CHAT_DEBUG] Opening DM conversation (placeholder)...', recipientId);
+          // TODO: Implement logic to set current recipient, update header, request history
+     }
+     
+     // Placeholder - Define later
+     requestDmHistory(recipientId) {
+         console.log('[CHAT_DEBUG] Requesting DM history (placeholder)...', recipientId);
+         // TODO: Implement socket emit later
+     }
 }
-
-// Will be initialized in app.js
