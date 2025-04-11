@@ -3,15 +3,47 @@
  * Handles authentication and database operations
  */
 
+const { createClient } = require('@supabase/supabase-js');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
 
-// Supabase credentials from environment variables
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+// Environment variables for Supabase
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY; 
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY; // Service role key
 
-let supabase;
+// Create a regular client for client-side operations
+let supabase = null;
+
+// Create a service client for server-side operations that bypass RLS
+let serviceSupabase = null;
+
+// Initialize Supabase clients
+if (SUPABASE_URL && SUPABASE_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  
+  // If a service key is provided, create a separate client for server operations
+  if (SUPABASE_SERVICE_KEY) {
+    serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    console.log('Supabase service client initialized for server operations');
+  }
+  
+  console.log('Supabase initialized with regular client');
+}
+
+/**
+ * Get the appropriate Supabase client based on operation type
+ * @param {boolean} serverOperation - Whether this is a server-side operation that should bypass RLS
+ * @returns {Object} Supabase client
+ */
+function getSupabaseClient(serverOperation = false) {
+  // Use service client for server operations if available
+  if (serverOperation && serviceSupabase) {
+    return serviceSupabase;
+  }
+  // Otherwise use regular client
+  return supabase;
+}
 
 // Set NODE_ENV to development if not set
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
@@ -44,9 +76,6 @@ try {
     if (process.env.NODE_ENV === 'production' && (!SUPABASE_URL || !SUPABASE_KEY)) {
       throw new Error('Supabase credentials are required in production mode');
     }
-    
-    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-    console.log('Supabase client initialized successfully');
   }
 } catch (error) {
   console.error('Failed to initialize Supabase client:', error);
@@ -265,68 +294,6 @@ async function loadMessagesFromSupabase() {
 }
 
 /**
- * Save messages to Supabase
- * @param {Array} messages - Messages to save
- * @returns {Promise<boolean>} Success status
- */
-async function saveMessagesToSupabase(messages) {
-  try {
-    // Only use development mode when explicitly allowed
-    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
-        (!SUPABASE_URL || !SUPABASE_KEY)) {
-      console.log('Development mode: Skipping Supabase message save');
-      return true;
-    }
-
-    if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
-      console.error('Supabase not configured, cannot save messages');
-      return false;
-    }
-
-    // No need to delete all messages first, we'll just upsert
-    // Transform messages to match Supabase schema
-    if (messages && messages.length > 0) {
-      const formattedMessages = messages.map(msg => {
-        // Generate a unique ID for each message if it doesn't have one
-        const id = uuidv4(); // Always use proper UUID format
-        
-        return {
-          id,
-          sender_id: uuidv4(), // Use a generated UUID for sender_id as well
-          content: msg.message || msg.content || "",
-          created_at: new Date(msg.timestamp || Date.now()).toISOString(),
-          type: msg.type || "text",
-          // Include file info if available
-          file_url: msg.fileUrl || null,
-          file_type: msg.fileType || null,
-          file_size: msg.fileSize || null
-        };
-      });
-
-      // Insert in smaller batches if there are many messages
-      const batchSize = 100;
-      for (let i = 0; i < formattedMessages.length; i += batchSize) {
-        const batch = formattedMessages.slice(i, i + batchSize);
-        const { error: insertError } = await supabase
-          .from('messages')
-          .upsert(batch, { onConflict: 'id' }); // Use upsert to avoid duplicates
-        
-        if (insertError) {
-          console.error(`Error saving batch ${i/batchSize + 1} to Supabase:`, insertError);
-          return false;
-        }
-      }
-    }
-
-    console.log(`Saved ${messages ? messages.length : 0} messages to Supabase`);
-    return true;
-  } catch (error) {
-    console.error('Error in saveMessagesToSupabase:', error);
-    return false;
-  }
-}
-
-/**
  * Save a single message to Supabase
  * @param {Object} message - The message to save
  * @returns {Promise<boolean>} Success status
@@ -369,7 +336,10 @@ async function saveMessageToSupabase(message) {
       file_size: message.fileSize || null
     };
 
-    const { error } = await supabase
+    // Use serviceSupabase for message saving (server operation) if available
+    const client = getSupabaseClient(true);
+    
+    const { error } = await client
       .from('messages')
       .upsert(formattedMessage);
     
@@ -382,6 +352,68 @@ async function saveMessageToSupabase(message) {
     return true;
   } catch (error) {
     console.error('Error in saveMessageToSupabase:', error);
+    return false;
+  }
+}
+
+/**
+ * Save messages to Supabase
+ * @param {Array} messages - Messages to save
+ * @returns {Promise<boolean>} Success status
+ */
+async function saveMessagesToSupabase(messages) {
+  try {
+    // Only use development mode when explicitly allowed
+    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
+        (!SUPABASE_URL || !SUPABASE_KEY)) {
+      console.log('Development mode: Skipping Supabase messages save');
+      return true;
+    }
+
+    if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
+      console.error('Supabase not configured, cannot save messages');
+      return false;
+    }
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      console.log('No messages to save to Supabase');
+      return true;
+    }
+
+    // Process in batches to prevent timeout or payload size issues
+    const batchSize = 10; // Adjust if needed
+    for (let i = 0; i < messages.length; i += batchSize) {
+      const batch = messages.slice(i, i + batchSize);
+      
+      // Format messages to match Supabase schema
+      const formattedMessages = batch.map(message => ({
+        id: message.id || uuidv4(),
+        sender_id: message.senderId,
+        content: message.message || message.content || "",
+        created_at: new Date(message.timestamp || Date.now()).toISOString(),
+        type: message.type || "text",
+        file_url: message.fileUrl || null,
+        file_type: message.fileType || null,
+        file_size: message.fileSize || null
+      }));
+
+      // Use serviceSupabase for message saving (server operation) if available
+      const client = getSupabaseClient(true);
+      
+      const { error } = await client
+        .from('messages')
+        .upsert(formattedMessages);
+      
+      if (error) {
+        console.error(`Error saving batch ${i/batchSize + 1} to Supabase:`, error);
+        continue; // Continue with next batch even if this one failed
+      }
+    }
+    
+    console.log(`Saved ${messages ? messages.length : 0} messages to Supabase`);
+    return true;
+  } catch (error) {
+    console.error('Error in saveMessagesToSupabase:', error);
     return false;
   }
 }
