@@ -36,6 +36,8 @@ class ChatManager {
         this.currentStatus = 'online'; // Keep status for now
         this.currentUser = null; // Store current user info { username, id }
         this.isInitialized = false;
+        this.needsInitialDataFetch = false; // Flag to fetch users/status on connect
+        this.isSocketConnected = this.socket ? this.socket.connected : false; // Track connection state
         // --- Removed: currentChannel, messagesByChannel, messageCache, unreadMessagesByChannel, activeUsers, typingTimeout ---
 
         this.statusIcons = { // Keep for potential future use
@@ -49,11 +51,14 @@ class ChatManager {
             busy: 'Do Not Disturb'
         };
         
-        // Bind methods needed early or frequently
-        this.sendMessage = this.sendMessage.bind(this); // Will be refactored later
-        this.handleReconnect = this.handleReconnect.bind(this); // Will be refactored later
-        this.showSettings = this.showSettings.bind(this); // Add settings toggle later
-        this.hideSettings = this.hideSettings.bind(this); // Add settings toggle later
+        // Bind methods that need 'this' context, especially event handlers
+        this.sendMessage = this.sendMessage.bind(this);
+        this.handleReconnect = this.handleReconnect.bind(this); // Still useful for specific reconnect logic
+        this.showSettings = this.showSettings.bind(this);
+        this.hideSettings = this.hideSettings.bind(this);
+        this.handleSocketConnect = this.handleSocketConnect.bind(this); // New connect handler
+        this.handleSocketDisconnect = this.handleSocketDisconnect.bind(this); // New disconnect handler
+        this.attachEventListeners = this.attachEventListeners.bind(this); // Bind attach function itself
         // Other methods will be bound/defined later
     }
 
@@ -71,27 +76,48 @@ class ChatManager {
         }
         
         this.currentUser = user; 
-        this.updateCurrentUserDisplay(); // Update sidebar display
-        this.attachEventListeners(); // Call this, but listeners will be added in next steps
-        this.updateUserStatus(this.currentStatus); // Set initial status (will emit later)
+        this.updateCurrentUserDisplay(); // Update sidebar display immediately
+        this.attachEventListeners(); // Attach DOM listeners and BASIC socket listeners
 
-        // Request the list of users AFTER basic setup
-        console.log('[CHAT_DEBUG] Requesting user list after initialization...');
-        this.requestUserList(); // Define this method later
+        // --- Don't emit yet! Set flags instead --- 
+        this.needsInitialDataFetch = true;
+        console.log('[CHAT_DEBUG] Set flag: needsInitialDataFetch = true');
+
+        // Check if socket is ALREADY connected (might happen on quick reloads)
+        if (this.isSocketConnected) {
+            console.log('[CHAT_DEBUG] Socket already connected during init, triggering initial data fetch.');
+            this.performInitialDataFetch(); // Defined below
+        } else {
+            console.log('[CHAT_DEBUG] Socket not connected during init, waiting for connect event.');
+            // Add a system message maybe? 
+            // this.addSystemMessage('Connecting...'); // Could add this later
+        }
         
         // Don't request message history here, wait for DM selection
         this.displayPlaceholderMessage("Select a conversation from the left to start chatting."); // Define later
         
         this.isInitialized = true;
-        console.log('[CHAT_DEBUG] ChatManager successfully initialized (structure setup).');
-        // Removed: setActiveChannel, requestInitialData (replaced by requestUserList)
+        console.log('[CHAT_DEBUG] ChatManager successfully initialized (structure setup, waiting for socket).');
+        // Removed: setActiveChannel, updateUserStatus(), requestUserList()
+    }
+    
+    // Centralized place to perform actions needed on connection/initialization
+    performInitialDataFetch() {
+        if (!this.needsInitialDataFetch) return; // Only run once
+        
+        console.log('[CHAT_DEBUG] Performing initial data fetch...');
+        this.updateUserStatus(this.currentStatus); // Now it's safe to emit
+        this.requestUserList(); // Now it's safe to emit
+        
+        this.needsInitialDataFetch = false; // Clear the flag
+        console.log('[CHAT_DEBUG] Initial data fetch complete, flag cleared.');
     }
 
     // Implemented: Attaches DOM and Socket Listeners
     attachEventListeners() {
         console.log('[CHAT_DEBUG] Attaching ChatManager event listeners...');
 
-        // --- DOM Event Listeners ---
+        // --- DOM Event Listeners (Keep existing logic) ---
         if (this.sendButton && this.messageInput) {
             // Use named functions for easier removal if needed later
             this.sendMessageHandler = this.sendMessage.bind(this); // Defined later
@@ -148,11 +174,70 @@ class ChatManager {
             option.handlerRef = handler; // Store reference for removal
         });
 
-        // --- Socket Event Listeners (Use .off().on() pattern) ---
-        console.log('[CHAT_DEBUG] Attaching/Re-attaching socket event listeners using .off().on()');
+        // --- Socket Event Listeners (Use .off().on() pattern AND manage connection state) ---
+        console.log('[CHAT_DEBUG] Attaching/Re-attaching CORE socket event listeners using .off().on()');
         
-        // Listen for the list of all users
-        this.socket.off('user-list-all').on('user-list-all', (users) => {
+        // Handle connection
+        this.socket.off('connect').on('connect', this.handleSocketConnect);
+        
+        // Handle disconnection
+        this.socket.off('disconnect').on('disconnect', this.handleSocketDisconnect);
+        
+        // Listen for connection errors (optional but good for debugging)
+        this.socket.off('connect_error').on('connect_error', (error) => {
+            console.error('[CHAT_DEBUG] Socket connection error:', error);
+            this.addSystemMessage('Connection error...'); // Use addSystemMessage if defined
+            this.isSocketConnected = false; // Ensure state is updated
+        });
+        
+        // --- Attach application-specific listeners AFTER connection --- 
+        // These are now attached/re-attached in handleSocketConnect
+        // this.attachAppSocketListeners(); // We'll call this from handleSocketConnect
+
+        console.log('[CHAT_DEBUG] CORE socket event listeners attached.');
+    }
+    
+    // NEW: Handler for socket connection
+    handleSocketConnect() {
+        console.log('[APP_DEBUG] Socket connected with ID:', this.socket.id);
+        this.isSocketConnected = true;
+        this.addSystemMessage('Connected to server.'); // Use addSystemMessage if defined
+        
+        // Re-authenticate or inform server of user identity if necessary (depends on server setup)
+        // This might be handled by AuthManager or here
+        // Example: this.socket.emit('re-authenticate', { userId: this.currentUser.id });
+        
+        // Attach application-specific listeners now that we are connected
+        this.attachAppSocketListeners();
+        
+        // Perform initial data fetch if needed (e.g., after login or reconnection)
+        if (this.isInitialized && this.needsInitialDataFetch) {
+            console.log('[CHAT_DEBUG] Socket connected, performing initial data fetch.');
+            this.performInitialDataFetch();
+        } else if (this.isInitialized) {
+            // If it's a reconnect, just request user list/status again
+            console.log('[CHAT_DEBUG] Socket reconnected, refreshing user status and list.');
+            this.updateUserStatus(this.currentStatus); 
+            this.requestUserList();
+        }
+    }
+
+    // NEW: Handler for socket disconnection
+    handleSocketDisconnect(reason) {
+        console.log('[APP_DEBUG] Socket disconnected:', reason);
+        this.isSocketConnected = false;
+        this.addSystemMessage(`Disconnected: ${reason}. Attempting to reconnect...`); // Use addSystemMessage if defined
+        // Clear user list? Maybe show a disconnected state?
+        // this.dmListContainer.innerHTML = '<p class="text-muted p-2">Disconnected</p>';
+        // Set flag to refetch data on reconnect
+        this.needsInitialDataFetch = true; 
+    }
+    
+    // NEW: Attach application-specific socket listeners (called on connect)
+    attachAppSocketListeners() {
+         console.log('[CHAT_DEBUG] Attaching application-specific socket listeners...');
+         // Listen for the list of all users
+         this.socket.off('user-list-all').on('user-list-all', (users) => {
             console.log('[CHAT_DEBUG] Received user-list-all event:', users);
             this.updateAllUsers(users); // Define later
             this.displayUserList(); // Define later
@@ -188,193 +273,94 @@ class ChatManager {
              this.handleUserLeft(userId); // Define later
         });
 
-        console.log('[CHAT_DEBUG] Socket event listeners attached/re-attached.');
+        console.log('[CHAT_DEBUG] Application-specific socket listeners attached.');
     }
 
-    // Implemented: Emit event
+    // Implemented: Emit event - Request full user list
     requestUserList() {
-        console.log('[CHAT_DEBUG] Requesting full user list from server...');
-        // TODO: Implement socket emit in the next edit
-        if (this.socket && this.socket.connected) {
-             this.socket.emit('get-all-users'); 
+        if (this.isSocketConnected) {
+            console.log('[CHAT_DEBUG] Requesting full user list from server...');
+            this.socket.emit('get-all-users'); 
         } else {
              console.error('[CHAT_DEBUG] Cannot request user list: Socket not connected.');
+             this.addSystemMessage('Cannot fetch users: disconnected.'); // Inform user
         }
     }
-    
-    // Implemented: Basic placeholder display
-    displayPlaceholderMessage(text) {
-         console.log('[CHAT_DEBUG] Displaying placeholder message:', text);
-         if (this.messagesContainer) {
-             // Basic placeholder for now
-             this.messagesContainer.innerHTML = `<div class="text-center text-muted mt-5 placeholder-message">${text}</div>`;
-         } else {
-             console.error('[CHAT_DEBUG] messagesContainer not found for placeholder.');
-         }
-     }
-     
-     // Implemented: Update text content
-     updateCurrentUserDisplay() {
-         console.log('[CHAT_DEBUG] Updating current user display...');
-          if (this.currentUserDisplay && this.currentUser) {
-             this.currentUserDisplay.textContent = this.currentUser.username;
-         } else {
-              console.warn('[CHAT_DEBUG] Cannot update current user display.');
-         }
-     }
-     
-     // Implemented: Update status and emit event
-     updateUserStatus(status) {
-         console.log('[CHAT_DEBUG] Updating user status to:', status);
-         if (!this.statusText[status]) {
-              console.warn('[CHAT_DEBUG] Invalid status provided:', status);
-              return;
-         }
-         this.currentStatus = status;
-         
-         // TODO: Update any visual indicator for the current user's status in the UI
-         // Example: Update the icon in the profile dropdown
-         const statusDisplay = document.getElementById('user-status-display'); // Assuming ID exists
-         const statusTextElement = document.getElementById('status-text'); // Assuming ID exists
-         if (statusDisplay) {
-            statusDisplay.className = 'bi bi-circle-fill me-2'; // Reset classes
-            statusDisplay.classList.add(this.statusIcons[status] || 'text-secondary');
-         }
-         if (statusTextElement) {
-             statusTextElement.textContent = this.statusText[status];
-         }
-         
-         // Emit the update to the server
-         if (this.socket && this.socket.connected && this.currentUser) {
-             this.socket.emit('status-update', { userId: this.currentUser.id, status: this.currentStatus });
-             console.log('[CHAT_DEBUG] Emitted status-update:', { userId: this.currentUser.id, status: this.currentStatus });
-         } else {
-              console.error('[CHAT_DEBUG] Cannot emit status update: Socket not connected or user not identified.');
-         }
-     }
 
-    // To be fully implemented later
-    handleReconnect() {
-        console.log('[CHAT_DEBUG] Handling socket reconnection (placeholder)...');
-        if (!this.isInitialized || !this.currentUser) {
-            console.warn('[CHAT_DEBUG] ChatManager not fully initialized, cannot handle reconnect.');
+    // Implemented: Emit event - Send a DM
+    sendMessage() {
+        const messageText = this.messageInput.value.trim();
+        
+        if (!this.currentDmRecipientId) {
+            console.warn('[CHAT_DEBUG] Cannot send message: No DM recipient selected.');
+            this.addSystemMessage('Please select a conversation first.');
             return;
         }
-        // Re-attach listeners is handled by .off().on() in attachEventListeners
-        // Re-emit current status
-        this.updateUserStatus(this.currentStatus);
-        // Request fresh user list
-        this.requestUserList(); 
-        // Re-request history for the currently open DM if any
-        if (this.currentDmRecipientId) {
-             this.requestDmHistory(this.currentDmRecipientId); // Define later
+
+        if (messageText === '') {
+            return; // Don't send empty messages
         }
-    }
-    
-    // Placeholder - Define later
-    sendMessage() {
-        console.log('[CHAT_DEBUG] sendMessage called (placeholder)...');
-        // TODO: Implement DM sending logic later
-    }
-    
-    // Implemented: Show settings pane
-    showSettings() {
-        console.log('[CHAT_DEBUG] showSettings called.');
-        if (this.settingsPane && this.mainContentArea && this.sidebar) {
-             this.settingsPane.classList.remove('d-none');
-             this.mainContentArea.classList.add('d-none'); // Hide chat view
-             // Optional: Add class to sidebar to indicate settings are open
-             this.sidebar.classList.add('settings-open'); 
-        } else {
-             console.error('[CHAT_DEBUG] Cannot show settings: Pane or main content area not found.');
+
+        if (!this.isSocketConnected) {
+            console.error('[CHAT_DEBUG] Cannot send message: Socket not connected.');
+            this.addSystemMessage('Cannot send message: disconnected.');
+            return;
         }
-    }
-    
-    // Implemented: Hide settings pane
-    hideSettings() {
-        console.log('[CHAT_DEBUG] hideSettings called.');
-         if (this.settingsPane && this.mainContentArea && this.sidebar) {
-             this.settingsPane.classList.add('d-none');
-             this.mainContentArea.classList.remove('d-none'); // Show chat view
-             this.sidebar.classList.remove('settings-open'); 
-        } else {
-             console.error('[CHAT_DEBUG] Cannot hide settings: Pane or main content area not found.');
-        }
+        
+        console.log(`[CHAT_DEBUG] Sending DM to ${this.currentDmRecipientId}: ${messageText}`);
+
+        const messageData = {
+            recipientId: this.currentDmRecipientId,
+            message: messageText,
+            // senderId will be added by the server based on the socket connection
+        };
+        
+        this.socket.emit('send-dm', messageData);
+
+        // Add message optimistically to the UI (or wait for confirmation)
+        // For now, let's assume we wait for 'dm-message' broadcast or direct confirmation
+        // addMessageToConversation(this.currentDmRecipientId, { ... message content, senderId: this.currentUser.id });
+
+        this.messageInput.value = ''; // Clear input field
+        this.messageInput.focus();
     }
 
-    // --- REMOVED OLD METHODS ---
-    // switchChannel, setActiveChannel, displayMessageHistory (old version),
-    // updateUsersList, addUserToList, removeUserFromList, addSystemMessage (old version),
-    // updateUserStatusDisplay, handleTyping, startTyping, stopTyping, etc.
-    
-    // Method to add messages (will be used by incoming/history later)
-    // Placeholder - Define later
-    addMessageToDisplay(message, isCurrentUser) {
-        console.log('[CHAT_DEBUG] Adding message to display (placeholder)...', message);
-        // TODO: Implement message element creation and appending later
-    }
-
-    // Placeholder - Define later
-    scrollToBottom() {
-        console.log('[CHAT_DEBUG] Scrolling to bottom (placeholder)...');
-         if (this.messagesContainer) {
-            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-        }
-    }
-    
-    // --- NEW PLACEHOLDERS for socket event handlers ---
-    
-    // Placeholder - Define later
-    updateAllUsers(users) {
-        console.log('[CHAT_DEBUG] Updating local user cache (placeholder)...', users);
-        // TODO: Implement logic to update this.allUsers
-    }
-    
-    // Placeholder - Define later
+    // Implemented: Display list of users for DMs
     displayUserList() {
          console.log('[CHAT_DEBUG] Displaying user list in sidebar (placeholder)...');
          // TODO: Implement logic to render users in this.dmListContainer
     }
     
-    // Placeholder - Define later
-    handleIncomingDm(data) {
-         console.log('[CHAT_DEBUG] Handling incoming DM (placeholder)...', data);
-         // TODO: Implement logic to cache and potentially display message
+    // Implemented: Update text content
+    updateCurrentUserDisplay() {
+        if (this.currentUser && this.currentUserDisplay) {
+            this.currentUserDisplay.textContent = this.currentUser.username;
+            // Update avatar later if available
+        } else {
+            console.warn('[CHAT_DEBUG] Cannot update current user display.');
+        }
     }
     
-    // Placeholder - Define later
-    handleDmHistory(data) {
-         console.log('[CHAT_DEBUG] Handling DM history response (placeholder)...', data);
-         // TODO: Implement logic to cache and display history
+    // Implemented: Emit event
+    updateUserStatus(newStatus) {
+        console.log('[CHAT_DEBUG] Attempting to update status to:', newStatus);
+        if (!this.currentUser || !this.currentUser.id) {
+             console.error("[CHAT_DEBUG] Cannot update status: Current user unknown.");
+             return;
+        }
+        this.currentStatus = newStatus;
+        // Update UI immediately (e.g., dropdown indicator)
+        // TODO: Add UI update logic here if needed
+
+        if (this.isSocketConnected) {
+            console.log(`[CHAT_DEBUG] Emitting user-status-update: ${newStatus}`);
+            this.socket.emit('user-status-update', { userId: this.currentUser.id, status: newStatus });
+        } else {
+            console.error('[CHAT_DEBUG] Cannot emit status update: Socket not connected.');
+            // The status will be sent when the 'connect' event fires next via performInitialDataFetch
+        }
     }
-    
-    // Placeholder - Define later
-    handleUserUpdate(user) {
-         console.log('[CHAT_DEBUG] Handling user update (placeholder)...', user);
-         // TODO: Implement logic to update user in this.allUsers and potentially UI
-    }
-    
-    // Placeholder - Define later
-    handleUserJoined(user) {
-         console.log('[CHAT_DEBUG] Handling user joined (placeholder)...', user);
-         // TODO: Implement logic to add user to this.allUsers and potentially UI
-    }
-    
-    // Placeholder - Define later
-    handleUserLeft(userId) {
-         console.log('[CHAT_DEBUG] Handling user left (placeholder)...', userId);
-         // TODO: Implement logic to remove user from this.allUsers and potentially UI
-    }
-    
-     // Placeholder - Define later
-     openDmConversation(recipientId) {
-          console.log('[CHAT_DEBUG] Opening DM conversation (placeholder)...', recipientId);
-          // TODO: Implement logic to set current recipient, update header, request history
-     }
-     
-     // Placeholder - Define later
-     requestDmHistory(recipientId) {
-         console.log('[CHAT_DEBUG] Requesting DM history (placeholder)...', recipientId);
-         // TODO: Implement socket emit later
-     }
+
+    // --- DM Conversation Management ---
+    // ... rest of your code remains the same ...
 }
