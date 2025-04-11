@@ -199,13 +199,47 @@ io.on("connection", (socket) => {
             // Only use development mode when explicitly allowed
             if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
                 console.log('Development mode: auto-approving login');
-                const devUserId = 'dev-' + uuidv4(); // Use uuid for dev users too
-                users[socket.id] = { username, userId: devUserId }; // Store username and dev userId
+                
+                // Instead of making up a dev ID that won't work with foreign key constraints,
+                // check if this user exists in Supabase first
+                let userId;
+                
+                try {
+                    // Try to find user in Supabase
+                    const existingUser = await signInUser(username, password);
+                    if (existingUser && existingUser.id) {
+                        // If user exists, use their actual UUID
+                        userId = existingUser.id;
+                        console.log(`Development mode: Found existing user with ID: ${userId}`);
+                    } else {
+                        // If user doesn't exist, create a test user in Supabase
+                        // This ensures the user ID will satisfy the foreign key constraint
+                        console.log(`Development mode: Auto-creating test user in Supabase`);
+                        const devEmail = `${username}@example.com`;
+                        const testUser = await registerUser(username, password, devEmail);
+                        
+                        if (testUser && testUser.id) {
+                            userId = testUser.id;
+                            console.log(`Development mode: Created test user with ID: ${userId}`);
+                        } else {
+                            // If we can't create a user, generate a valid UUID but warn it may not work
+                            userId = uuidv4(); 
+                            console.warn(`Development mode: Could not create Supabase user. Generated UUID ${userId} may not satisfy foreign key constraints.`);
+                        }
+                    }
+                } catch (userError) {
+                    console.error('Error finding/creating test user:', userError);
+                    // Fall back to UUID, but at least generate a proper UUID without 'dev-' prefix
+                    userId = uuidv4();
+                    console.warn(`Development mode: Using generated UUID ${userId}. This may not work for message sending.`);
+                }
+                
+                users[socket.id] = { username, userId }; // Store username and userId
                 activeUsers.add(username);
                 updateUserList();
                 return callback({ 
                     success: true, 
-                    userId: devUserId, // Return dev userId
+                    userId, // Return userId
                     username
                 });
             }

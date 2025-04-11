@@ -1,11 +1,11 @@
 /* Main Styles for The Homies App - DM Focused Layout */
 :root {
-  --primary-color: rgb(140, 223, 214); /* Light teal - was Discord blue */
-  --secondary-color: rgb(90, 113, 106); /* Dark greenish-gray - was Discord darker gray */
-  --background-color: rgb(90, 113, 106); /* Dark greenish-gray - was Discord dark background */
-  --light-background: rgb(109, 192, 213); /* Medium blue-teal - was Sidebar, user list background */
-  --content-background: rgb(90, 113, 106); /* Dark greenish-gray - was Main chat area background */
-  --very-dark: #18191C; /* Not currently used, kept for potential */
+  --primary-color: rgb(140, 223, 214); /* Light teal - accent color */
+  --secondary-color: #2a2d31; /* Very dark gray */
+  --background-color: #1a1c1e; /* Almost black */
+  --light-background: #2F3136; /* Discord-style dark background */
+  --content-background: #202225; /* Discord-style very dark background */
+  --very-dark: #18191C; /* Even darker option */
   --text-light: #FFFFFF;
   --text-muted: #B9BBBE; /* Muted text, placeholders */
   --text-dark: #DCDDDE; /* Normal text */
@@ -17,7 +17,7 @@
   --hover-bg: rgba(255, 255, 255, 0.04);
   --active-bg: rgba(255, 255, 255, 0.08);
   --border-radius: 8px;
-  --border-color: rgb(90, 113, 106); /* Dark greenish-gray - was #3a3c42 */
+  --border-color: #3a3c42;
   --sidebar-width: 280px;
 }
 
