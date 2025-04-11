@@ -97,6 +97,17 @@ try {
 }
 
 /**
+ * Check if a string is a valid UUID
+ * @param {string} str - String to check
+ * @returns {boolean} Whether the string is a valid UUID
+ */
+function isValidUUID(str) {
+  // Simple UUID v4 regex check
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return str && typeof str === 'string' && uuidPattern.test(str);
+}
+
+/**
  * Register a new user
  * @param {string} username - Username
  * @param {string} password - Password
@@ -317,16 +328,23 @@ async function saveMessageToSupabase(message) {
       return false;
     }
     
-    // Validate senderId is present and looks like a UUID or dev ID
+    // Validate senderId is present and valid
     if (!message.senderId || typeof message.senderId !== 'string') {
         console.error('Invalid or missing senderId in message object:', message);
         return false; // Stop if senderId is missing or not a string
     }
 
+    // Ensure senderId is a valid UUID
+    const senderId = isValidUUID(message.senderId) ? message.senderId : uuidv4();
+    
+    // Always generate a valid UUID for the message ID
+    // Don't try to reuse non-UUID IDs from message.id
+    const messageId = uuidv4();
+
     // Format message to match Supabase schema
     const formattedMessage = {
-      id: message.id || uuidv4(), // Use message ID if provided, otherwise generate one
-      sender_id: message.senderId, // Use the senderId from the message object
+      id: messageId,
+      sender_id: senderId,
       content: message.message || message.content || "",
       created_at: new Date(message.timestamp || Date.now()).toISOString(),
       type: message.type || "text",
@@ -386,27 +404,48 @@ async function saveMessagesToSupabase(messages) {
       const batch = messages.slice(i, i + batchSize);
       
       // Format messages to match Supabase schema
-      const formattedMessages = batch.map(message => ({
-        id: message.id || uuidv4(),
-        sender_id: message.senderId,
-        content: message.message || message.content || "",
-        created_at: new Date(message.timestamp || Date.now()).toISOString(),
-        type: message.type || "text",
-        file_url: message.fileUrl || null,
-        file_type: message.fileType || null,
-        file_size: message.fileSize || null
-      }));
+      const formattedMessages = batch.map(message => {
+        // Always generate a fresh UUID for message ID
+        const messageId = uuidv4();
+        
+        // Ensure we have a valid sender ID (UUID format)
+        // If message.senderId is not a valid UUID, generate a new one
+        let senderId;
+        if (message.senderId && typeof message.senderId === 'string') {
+          senderId = isValidUUID(message.senderId) ? message.senderId : uuidv4();
+        } else {
+          // Default fallback sender ID if none provided
+          senderId = uuidv4();
+          console.warn(`Missing sender ID for message, generated: ${senderId}`);
+        }
+        
+        return {
+          id: messageId,
+          sender_id: senderId,
+          content: message.message || message.content || "",
+          created_at: new Date(message.timestamp || Date.now()).toISOString(),
+          type: message.type || "text",
+          file_url: message.fileUrl || null,
+          file_type: message.fileType || null,
+          file_size: message.fileSize || null
+        };
+      });
 
       // Use serviceSupabase for message saving (server operation) if available
       const client = getSupabaseClient(true);
       
-      const { error } = await client
-        .from('messages')
-        .upsert(formattedMessages);
-      
-      if (error) {
-        console.error(`Error saving batch ${i/batchSize + 1} to Supabase:`, error);
-        continue; // Continue with next batch even if this one failed
+      try {
+        const { error } = await client
+          .from('messages')
+          .upsert(formattedMessages);
+        
+        if (error) {
+          console.error(`Error saving batch ${Math.floor(i/batchSize) + 1} to Supabase:`, error);
+          continue; // Continue with next batch even if this one failed
+        }
+      } catch (batchError) {
+        console.error(`Exception in batch ${Math.floor(i/batchSize) + 1}:`, batchError);
+        continue;
       }
     }
     
