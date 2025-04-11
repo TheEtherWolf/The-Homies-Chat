@@ -404,23 +404,55 @@ async function saveMessageToSupabase(message) {
       return false;
     }
     
-    // Validate senderId is present and valid
-    if (!message.senderId || typeof message.senderId !== 'string') {
-        console.error('Invalid or missing senderId in message object:', message);
-        return false; // Stop if senderId is missing or not a string
+    // Validate senderId is present, valid, and exists in users table
+    if (!message.senderId || !isValidUUID(message.senderId)) {
+      console.error('Invalid or missing senderId in message object:', message);
+      return false; // Stop if senderId is missing or not a UUID
     }
 
-    // Ensure senderId is a valid UUID
-    const senderId = isValidUUID(message.senderId) ? message.senderId : uuidv4();
-    
-    // Always generate a valid UUID for the message ID
-    // Don't try to reuse non-UUID IDs from message.id
+    // Before saving, verify the sender exists in the users table
+    const client = getSupabaseClient(true);
+    const { data: userExists, error: userCheckError } = await client
+      .from('users')
+      .select('id')
+      .eq('id', message.senderId)
+      .limit(1);
+
+    if (userCheckError) {
+      console.error('Error checking if user exists:', userCheckError);
+      return false;
+    }
+
+    if (!userExists || userExists.length === 0) {
+      console.error(`User with ID ${message.senderId} doesn't exist in the database. Creating...`);
+      
+      // Try to create the user if we have a username
+      if (message.username) {
+        const { error: insertError } = await client
+          .from('users')
+          .insert([{
+            id: message.senderId,
+            username: message.username,
+            created_at: new Date().toISOString()
+          }]);
+          
+        if (insertError) {
+          console.error('Failed to create user record:', insertError);
+          return false;
+        }
+        console.log(`Created user record for ${message.username} with ID ${message.senderId}`);
+      } else {
+        return false; // Can't proceed without a valid user
+      }
+    }
+
+    // Generate a valid UUID for the message ID
     const messageId = uuidv4();
 
     // Format message to match Supabase schema
     const formattedMessage = {
       id: messageId,
-      sender_id: senderId,
+      sender_id: message.senderId,
       content: message.message || message.content || "",
       created_at: new Date(message.timestamp || Date.now()).toISOString(),
       type: message.type || "text",
@@ -429,9 +461,6 @@ async function saveMessageToSupabase(message) {
       file_type: message.fileType || null,
       file_size: message.fileSize || null
     };
-
-    // Use serviceSupabase for message saving (server operation) if available
-    const client = getSupabaseClient(true);
     
     const { error } = await client
       .from('messages')
@@ -474,28 +503,75 @@ async function saveMessagesToSupabase(messages) {
       return true;
     }
 
+    // First, get a list of all valid user IDs from the database
+    // This will be used to check if the sender IDs are valid
+    const client = getSupabaseClient(true);
+    const { data: existingUsers, error: usersError } = await client
+      .from('users')
+      .select('id');
+
+    if (usersError) {
+      console.error('Error fetching users for validation:', usersError);
+      return false;
+    }
+
+    // Create a set of valid user IDs for quick lookup
+    const validUserIds = new Set(existingUsers.map(user => user.id));
+    console.log(`Loaded ${validUserIds.size} valid user IDs for message validation`);
+
     // Process in batches to prevent timeout or payload size issues
     const batchSize = 10; // Adjust if needed
+    let savedMessageCount = 0;
+    
     for (let i = 0; i < messages.length; i += batchSize) {
       const batch = messages.slice(i, i + batchSize);
       
       // Format messages to match Supabase schema
-      const formattedMessages = batch.map(message => {
+      const formattedMessages = [];
+      
+      for (const message of batch) {
         // Always generate a fresh UUID for message ID
         const messageId = uuidv4();
         
-        // Ensure we have a valid sender ID (UUID format)
-        // If message.senderId is not a valid UUID, generate a new one
-        let senderId;
+        // Check if sender ID is valid (exists in our users table)
+        let senderId = null;
+        let validSender = false;
+        
         if (message.senderId && typeof message.senderId === 'string') {
-          senderId = isValidUUID(message.senderId) ? message.senderId : uuidv4();
-        } else {
-          // Default fallback sender ID if none provided
-          senderId = uuidv4();
-          console.warn(`Missing sender ID for message, generated: ${senderId}`);
+          // First check if it's a valid UUID format
+          if (isValidUUID(message.senderId)) {
+            // Then check if it exists in our valid users list
+            if (validUserIds.has(message.senderId)) {
+              senderId = message.senderId;
+              validSender = true;
+            } else {
+              console.warn(`Message has UUID sender_id (${message.senderId}) but it doesn't exist in the users table`);
+            }
+          } else if (message.senderId.startsWith('dev-')) {
+            // It's a development ID - try to find a real user with the matching username
+            if (message.username) {
+              const { data: userMatch } = await client
+                .from('users')
+                .select('id')
+                .eq('username', message.username)
+                .limit(1);
+                
+              if (userMatch && userMatch.length > 0) {
+                senderId = userMatch[0].id;
+                validSender = true;
+                console.log(`Mapped dev user ${message.username} to valid user ID ${senderId}`);
+              }
+            }
+          }
         }
         
-        return {
+        // Skip messages without valid senders to prevent foreign key violations
+        if (!validSender) {
+          console.warn(`Skipping message without valid sender ID: ${message.message?.substring(0, 30)}...`);
+          continue;
+        }
+        
+        formattedMessages.push({
           id: messageId,
           sender_id: senderId,
           content: message.message || message.content || "",
@@ -504,12 +580,15 @@ async function saveMessagesToSupabase(messages) {
           file_url: message.fileUrl || null,
           file_type: message.fileType || null,
           file_size: message.fileSize || null
-        };
-      });
-
-      // Use serviceSupabase for message saving (server operation) if available
-      const client = getSupabaseClient(true);
+        });
+      }
       
+      // Skip empty batches
+      if (formattedMessages.length === 0) {
+        console.log(`Skipping empty batch ${Math.floor(i/batchSize) + 1}`);
+        continue;
+      }
+
       try {
         const { error } = await client
           .from('messages')
@@ -519,13 +598,15 @@ async function saveMessagesToSupabase(messages) {
           console.error(`Error saving batch ${Math.floor(i/batchSize) + 1} to Supabase:`, error);
           continue; // Continue with next batch even if this one failed
         }
+        
+        savedMessageCount += formattedMessages.length;
       } catch (batchError) {
         console.error(`Exception in batch ${Math.floor(i/batchSize) + 1}:`, batchError);
         continue;
       }
     }
     
-    console.log(`Saved ${messages ? messages.length : 0} messages to Supabase`);
+    console.log(`Saved ${savedMessageCount} messages to Supabase successfully`);
     return true;
   } catch (error) {
     console.error('Error in saveMessagesToSupabase:', error);

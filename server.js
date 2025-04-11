@@ -539,13 +539,69 @@ io.on("connection", (socket) => {
         }
 
         const userInfo = users[socket.id]; // Get user info object { username, userId }
-        if (!userInfo || !userInfo.username || !userInfo.userId) {
-            console.error('User not found or missing userId for socket:', socket.id);
+        if (!userInfo || !userInfo.username) {
+            console.error('User not found for socket:', socket.id);
             return; // Don't process if user info is incomplete
         }
         
         const username = userInfo.username;
-        const userId = userInfo.userId; // Get the actual user ID (UUID)
+        
+        // CRITICAL FIX: Ensure we have a valid sender ID that exists in Supabase
+        let userId = null;
+        
+        // First try to use the socket's stored userId (should be a valid UUID)
+        if (userInfo.userId && typeof userInfo.userId === 'string') {
+            userId = userInfo.userId;
+        }
+        
+        // If we don't have a valid userId in the socket info, try to find one in Supabase
+        if (!userId || !isValidUUID(userId)) {
+            try {
+                // Get or create a user record for this username
+                console.log(`Finding or creating user record for ${username}`);
+                const { data: userRecord } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('username', username)
+                    .limit(1);
+                    
+                if (userRecord && userRecord.length > 0) {
+                    // Use the existing user's ID
+                    userId = userRecord[0].id;
+                    console.log(`Found existing user ID for ${username}: ${userId}`);
+                } else {
+                    // Create a new user record with a proper UUID
+                    const newUserId = uuidv4();
+                    const { error } = await supabase
+                        .from('users')
+                        .insert([{ 
+                            id: newUserId, 
+                            username: username,
+                            created_at: new Date().toISOString()
+                        }]);
+                        
+                    if (!error) {
+                        userId = newUserId;
+                        console.log(`Created new user record for ${username} with ID: ${userId}`);
+                    } else {
+                        console.error(`Error creating user record: ${error.message}`);
+                    }
+                }
+                
+                // Update our local users map with the valid ID
+                if (userId) {
+                    users[socket.id].userId = userId;
+                }
+            } catch (err) {
+                console.error('Error finding/creating user record:', err);
+            }
+        }
+        
+        // If we still don't have a valid userId, we can't proceed
+        if (!userId || !isValidUUID(userId)) {
+            console.error(`Could not get or create valid user ID for ${username}`);
+            return;
+        }
 
         const channel = data.channel || 'general';
         
@@ -575,10 +631,15 @@ io.on("connection", (socket) => {
         // We're wrapping this in try/catch to prevent any errors from disrupting the app
         try {
             // Pass the complete messageObj which now includes senderId
-            saveMessageToSupabase(messageObj).catch(err => {
+            const saved = await saveMessageToSupabase(messageObj).catch(err => {
                 // Log the specific error from Supabase
                 console.error('Error saving message to Supabase:', err);
+                return false;
             });
+            
+            if (saved) {
+                console.log(`Message saved to Supabase with sender ${userId}`);
+            }
         } catch (error) {
             console.error('Failed to save message to Supabase:', error);
         }
