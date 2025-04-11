@@ -42,8 +42,16 @@ document.addEventListener('DOMContentLoaded', () => {
     
     window.socket.on('connect_error', (error) => {
         console.error('[APP_DEBUG] Socket connection error:', error);
-         if (chatManager) chatManager.addSystemMessage('Connection error...');
+        if (chatManager) chatManager.addSystemMessage('Connection error...');
     });
+    
+    // Manually force reconnection if needed
+    setInterval(() => {
+        if (window.socket && !window.socket.connected) {
+            console.log('[APP_DEBUG] Attempting to reconnect socket...');
+            window.socket.connect();
+        }
+    }, 5000); // Try every 5 seconds
 });
 
 /**
@@ -83,13 +91,30 @@ document.addEventListener('userLoggedIn', (event) => {
         console.error('[APP_DEBUG] userLoggedIn event fired without user data!');
         return;
     }
+    
+    // If managers aren't initialized yet, make sure they are
+    if (!authManager) {
+        authManager = new AuthManager(window.socket);
+    }
+    
+    if (!chatManager) {
+        chatManager = new ChatManager(window.socket, authManager);
+    }
+    
     if (chatManager && !chatManager.isInitialized) {
         console.log('[APP_DEBUG] ChatManager not initialized, calling ChatManager.initialize...');
         chatManager.initialize(user); // Pass user info
     } else if (chatManager && chatManager.isInitialized) {
         console.warn('[APP_DEBUG] ChatManager already initialized when userLoggedIn event received.');
-        // Optionally update user info if needed: chatManager.currentUser = user;
-        // chatManager.updateCurrentUserDisplay();
+        // Update user info and reconnect socket
+        chatManager.currentUser = user;
+        chatManager.updateCurrentUserDisplay();
+        
+        // Force socket reconnection if needed
+        if (window.socket && !window.socket.connected) {
+            console.log('[APP_DEBUG] Forcing socket reconnection...');
+            window.socket.connect();
+        }
     }
 });
 

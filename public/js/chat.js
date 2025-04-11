@@ -119,7 +119,7 @@ class ChatManager {
         dmItems.forEach(item => {
             item.addEventListener('click', () => {
                 const username = item.querySelector('span').textContent.trim();
-                this.openDirectMessage(username);
+                this.openDM(username);
             });
         });
     }
@@ -170,57 +170,70 @@ class ChatManager {
         }
     }
     
-    // Open direct message with a user
-    openDirectMessage(username) {
-        const userId = this.getUserIdByUsername(username);
-        if (!userId) {
-            console.error(`[CHAT_DEBUG] Cannot open DM: User ${username} not found`);
-            return;
+    // Open a direct message conversation
+    openDM(username) {
+        console.log('[CHAT_DEBUG] Opening DM with:', username);
+        
+        // Find the user by username
+        let recipientUser = null;
+        
+        // Search for user in our list
+        for (const userId in this.allUsers) {
+            if (this.allUsers[userId].username === username) {
+                recipientUser = this.allUsers[userId];
+                break;
+            }
         }
         
-        console.log(`[CHAT_DEBUG] Opening DM with user: ${username} (${userId})`);
-        
-        // Update UI active state
-        const allItems = document.querySelectorAll('.channel-item, .dm-item');
-        allItems.forEach(item => item.classList.remove('active'));
-        
-        const dmItems = document.querySelectorAll('.dm-item');
-        dmItems.forEach(item => {
-            const itemName = item.querySelector('span').textContent.trim();
-            if (itemName === username) {
-                item.classList.add('active');
-            }
-        });
+        // If user not found in the list, create a temporary user
+        if (!recipientUser) {
+            console.log('[CHAT_DEBUG] User not found in list, creating temporary user');
+            
+            // Generate temporary ID
+            const tempUserId = 'temp-' + Date.now();
+            
+            // Create temporary user
+            recipientUser = {
+                id: tempUserId,
+                username: username,
+                status: 'offline'
+            };
+            
+            // Add to user list
+            this.allUsers[tempUserId] = recipientUser;
+            
+            // Add to UI for future selection
+            this.updateUserList();
+        }
         
         // Update state
-        this.currentDmRecipientId = userId;
+        this.currentDmRecipientId = recipientUser.id;
         this.inGeneralChat = false;
         this.currentChannel = null;
         
-        // Update header
-        if (this.chatTitle) {
-            this.chatTitle.textContent = username;
-        }
+        // Update UI
+        this.updateChannelHeader(username, true);
         
-        // Clear message container
-        this.clearMessagesContainer();
+        // Clear messages container
+        this.messagesContainer.innerHTML = '';
         
-        // Display DM messages
-        if (this.dmConversations[userId]) {
-            this.dmConversations[userId].forEach(msg => this.displayMessageInUI(msg, 'dm'));
+        // Show DM messages if available
+        const conversationKey = this.currentUser.id + '_' + recipientUser.id;
+        const reverseKey = recipientUser.id + '_' + this.currentUser.id;
+        
+        if (this.dmConversations[conversationKey]) {
+            this.renderMessageHistory(this.dmConversations[conversationKey]);
+        } else if (this.dmConversations[reverseKey]) {
+            this.renderMessageHistory(this.dmConversations[reverseKey]);
         } else {
-            this.displaySystemMessage(`This is the beginning of your direct message history with ${username}`);
+            this.addSystemMessage(`This is the beginning of your conversation with ${username}`);
         }
         
-        // Request DM history from server
-        this.socket.emit('get-dm-history', { recipientId: userId });
+        // Mark conversation as active in UI
+        this.updateActiveDM(username);
         
-        // Update input placeholder
-        if (this.messageInput) {
-            this.messageInput.placeholder = `Message @${username}`;
-            this.messageInput.disabled = false;
-            this.messageInput.focus();
-        }
+        // Focus message input
+        this.messageInput.focus();
     }
     
     // Helper method to get user ID by username
@@ -533,20 +546,16 @@ class ChatManager {
             const user = this.allUsers[userId];
             
             const dmItem = document.createElement('div');
-            dmItem.className = 'dm-item';
-            dmItem.dataset.userId = userId;
-            
-            const statusClass = this.statusIcons[user.status || 'offline'];
-            
+            dmItem.className = 'sidebar-item';
             dmItem.innerHTML = `
-                <div class="dm-avatar">
-                    <img src="assets/default-avatar.png" alt="${user.username}'s Avatar">
-                    <div class="dm-status ${user.status || 'offline'}"></div>
-                </div>
+                <div class="user-status ${user.status || 'offline'}"></div>
                 <span>${user.username}</span>
             `;
             
-            dmItem.addEventListener('click', () => this.openDirectMessage(user.username));
+            // Add click event
+            dmItem.addEventListener('click', () => {
+                this.openDM(user.username);
+            });
             
             this.dmListContainer.appendChild(dmItem);
         }
@@ -554,55 +563,92 @@ class ChatManager {
     
     // Send a message
     sendMessage() {
-        const messageText = this.messageInput.value.trim();
+        const message = this.messageInput.value.trim();
         
-        if (messageText === '') {
+        if (!message) {
             return; // Don't send empty messages
         }
-
-        if (!this.isSocketConnected) {
-            console.error('[CHAT_DEBUG] Cannot send message: Socket not connected.');
-            this.displaySystemMessage('Cannot send message: disconnected.');
+        
+        // Force socket reconnection if needed
+        if (!this.socket.connected) {
+            console.log('[CHAT_DEBUG] Socket disconnected, attempting to reconnect...');
+            this.socket.connect();
+            
+            // Add system message
+            this.addSystemMessage('Reconnecting to server...');
+            
+            // Give it a moment to reconnect
+            setTimeout(() => {
+                if (this.socket.connected) {
+                    console.log('[CHAT_DEBUG] Socket reconnected, sending message');
+                    this._sendMessageNow(message);
+                } else {
+                    console.log('[CHAT_DEBUG] Cannot send message: Socket not connected.');
+                    this.addSystemMessage('Cannot send message: disconnected. Try refreshing the page.');
+                    
+                    // Store message in local storage to try later
+                    const pendingMessages = JSON.parse(localStorage.getItem('pendingMessages') || '[]');
+                    pendingMessages.push({
+                        message,
+                        timestamp: Date.now(),
+                        channel: this.currentChannel,
+                        dmRecipient: this.currentDmRecipientId
+                    });
+                    localStorage.setItem('pendingMessages', JSON.stringify(pendingMessages));
+                }
+            }, 1000);
             return;
         }
-
-        // Create message object
-        const messageObj = {
-            senderId: this.currentUser.id,
-            username: this.currentUser.username,
-            message: messageText,
-            timestamp: Date.now()
-        };
-
-        // Different handling based on current mode
-        if (this.inGeneralChat) {
-            // General chat message
-            messageObj.channel = 'general';
-            messageObj.isGeneralMessage = true;
-            
-            this.socket.emit('chat-message', messageObj);
-            console.log('[CHAT_DEBUG] Sent general message:', messageObj);
-        } else if (this.currentChannel) {
-            // Channel message
-            messageObj.channel = this.currentChannel;
-            
-            this.socket.emit('chat-message', messageObj);
-            console.log(`[CHAT_DEBUG] Sent channel message to #${this.currentChannel}:`, messageObj);
-        } else if (this.currentDmRecipientId) {
-            // DM message
-            messageObj.recipientId = this.currentDmRecipientId;
-            messageObj.isDM = true;
-            
-            this.socket.emit('direct-message', messageObj);
-            console.log(`[CHAT_DEBUG] Sent DM to ${this.currentDmRecipientId}:`, messageObj);
-        } else {
-            console.error('[CHAT_DEBUG] Cannot send message: No valid destination');
-            return;
-        }
-
-        // Reset input
+        
+        this._sendMessageNow(message);
+    }
+    
+    // Helper method to actually send the message
+    _sendMessageNow(message) {
+        // Clear input immediately for better UX
         this.messageInput.value = '';
-        this.messageInput.focus();
+        
+        try {
+            // Get user info from session (should be set by AuthManager)
+            const user = JSON.parse(sessionStorage.getItem('user'));
+            
+            if (!user || !user.username) {
+                console.error('[CHAT_DEBUG] No user found in session storage');
+                this.addSystemMessage('Error: You are not logged in. Please refresh and log in again.');
+                return;
+            }
+            
+            // Prepare message data
+            const messageData = {
+                username: user.username,
+                senderId: user.id,
+                message: message,
+                timestamp: Date.now()
+            };
+            
+            if (this.inGeneralChat) {
+                // General chat message
+                messageData.channel = 'general';
+                console.log('[CHAT_DEBUG] Sending message to general chat:', messageData);
+                this.socket.emit('chat-message', messageData);
+            } else if (this.currentDmRecipientId) {
+                // Direct message
+                messageData.recipientId = this.currentDmRecipientId;
+                console.log('[CHAT_DEBUG] Sending DM to', this.currentDmRecipientId, ':', messageData);
+                this.socket.emit('direct-message', messageData);
+            } else {
+                // Channel message
+                messageData.channel = this.currentChannel;
+                console.log('[CHAT_DEBUG] Sending message to channel', this.currentChannel, ':', messageData);
+                this.socket.emit('chat-message', messageData);
+            }
+            
+            // Add to UI immediately for instant feedback
+            this.addMessageToUI(messageData, true);
+        } catch (error) {
+            console.error('[CHAT_DEBUG] Error sending message:', error);
+            this.addSystemMessage('Error sending message. Please try again.');
+        }
     }
     
     // Display message in UI
