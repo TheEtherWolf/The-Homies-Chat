@@ -686,7 +686,7 @@ class ChatManager {
         const timeDisplay = `Today at ${formattedTime}`;
         
         // Create avatar (default or user avatar)
-        const avatarSrc = message.avatarUrl || 'default pic.png';
+        const avatarSrc = message.avatarUrl || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378';
         
         // Construct message HTML
         messageElement.innerHTML = `
