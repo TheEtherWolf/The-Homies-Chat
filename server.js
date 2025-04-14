@@ -26,10 +26,16 @@ const {
     loadMessagesFromSupabase
 } = require("./supabase-client");
 
-// Set NODE_ENV to development if not set
-process.env.NODE_ENV = 'development';
-process.env.ALLOW_DEV_AUTH = 'true';
-console.log(`Running in ${process.env.NODE_ENV} mode with dev auth enabled`);
+// Environment settings - DO NOT force development mode
+// Keep the existing NODE_ENV or default to 'production' for security
+if (!process.env.NODE_ENV) {
+    process.env.NODE_ENV = 'production'; // Default to production for security
+}
+
+// IMPORTANT: Disable development authentication bypasses
+process.env.ALLOW_DEV_AUTH = 'false';
+
+console.log(`Running in ${process.env.NODE_ENV} mode with dev auth DISABLED`);
 
 const app = express();
 const server = http.createServer(app);

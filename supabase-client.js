@@ -116,40 +116,7 @@ function isValidUUID(str) {
  */
 async function registerUser(username, password, email) {
   try {
-    // Only use development mode when explicitly allowed
-    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
-      console.log('Development mode: Auto-registering user', username);
-      // Generate a valid UUID for dev mode instead of 'dev-' prefix
-      const devUserId = uuidv4();
-      
-      // Create a record in the users table when in dev mode
-      // This ensures the UUID exists in the users table for foreign key constraints
-      try {
-        if (serviceSupabase) {
-          const { error } = await serviceSupabase
-            .from('users')
-            .upsert({
-              id: devUserId,
-              username: username,
-              email: email || `${username}@homies.app`,
-              password: 'dev-password', // Not using real passwords in dev mode
-              created_at: new Date().toISOString(),
-              verified: true // Auto-verify in dev mode
-            }, { onConflict: 'username' });
-            
-          if (error) {
-            console.warn('Development mode: Error creating user record:', error);
-          } else {
-            console.log('Development mode: Created user record with ID:', devUserId);
-          }
-        }
-      } catch (devError) {
-        console.warn('Development mode: Failed to create user record:', devError);
-      }
-      
-      return { id: devUserId, username, email: email || `${username}@homies.app` };
-    }
-    
+    // Ensure Supabase is configured regardless of environment
     if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
       console.error('Supabase not configured, rejecting registration');
       return null;
@@ -184,60 +151,7 @@ async function registerUser(username, password, email) {
  */
 async function signInUser(username, password) {
   try {
-    // Only use development mode when explicitly allowed
-    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
-      console.log('Development mode: Auto-approving sign in for', username);
-      
-      // Check if this user already exists in the users table
-      try {
-        if (serviceSupabase) {
-          const { data, error } = await serviceSupabase
-            .from('users')
-            .select('id')
-            .eq('username', username)
-            .limit(1);
-            
-          if (error) {
-            console.warn('Development mode: Error looking up user:', error);
-          } else if (data && data.length > 0) {
-            // User exists, return the actual user ID
-            console.log('Development mode: Found existing user ID:', data[0].id);
-            return { id: data[0].id, username, email: `${username}@homies.app` };
-          }
-        }
-      } catch (lookupError) {
-        console.warn('Development mode: Error during user lookup:', lookupError);
-      }
-      
-      // User doesn't exist, create a new one with valid UUID
-      const devUserId = uuidv4();
-      
-      try {
-        if (serviceSupabase) {
-          const { error } = await serviceSupabase
-            .from('users')
-            .insert({
-              id: devUserId,
-              username: username,
-              email: `${username}@homies.app`,
-              password: 'dev-password', // Not using real passwords in dev mode
-              created_at: new Date().toISOString(),
-              verified: true
-            });
-            
-          if (error) {
-            console.warn('Development mode: Error creating user for login:', error);
-          } else {
-            console.log('Development mode: Created user with ID:', devUserId);
-          }
-        }
-      } catch (insertError) {
-        console.warn('Development mode: Failed to create user for login:', insertError);
-      }
-      
-      return { id: devUserId, username, email: `${username}@homies.app` };
-    }
-    
+    // Ensure Supabase is configured regardless of environment
     if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
       console.error('Supabase not configured, rejecting login');
       return null;
@@ -350,13 +264,7 @@ async function getAllUsers() {
  */
 async function loadMessagesFromSupabase() {
   try {
-    // Only use development mode when explicitly allowed
-    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
-        (!SUPABASE_URL || !SUPABASE_KEY)) {
-      console.log('Development mode: Using mock messages for Supabase');
-      return [];
-    }
-
+    // Ensure Supabase is configured regardless of environment
     if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
       console.error('Supabase not configured, cannot load messages');
       return null;
@@ -387,18 +295,12 @@ async function loadMessagesFromSupabase() {
  */
 async function saveMessageToSupabase(message) {
   try {
-    // Only use development mode when explicitly allowed
-    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
-        (!SUPABASE_URL || !SUPABASE_KEY)) {
-      console.log('Development mode: Skipping Supabase single message save');
-      return true;
-    }
-
+    // Ensure Supabase is configured regardless of environment
     if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
       console.error('Supabase not configured, cannot save message');
       return false;
     }
-
+    
     if (!message) {
       console.error('No message provided to save');
       return false;
@@ -486,13 +388,7 @@ async function saveMessageToSupabase(message) {
  */
 async function saveMessagesToSupabase(messages) {
   try {
-    // Only use development mode when explicitly allowed
-    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
-        (!SUPABASE_URL || !SUPABASE_KEY)) {
-      console.log('Development mode: Skipping Supabase messages save');
-      return true;
-    }
-
+    // Ensure Supabase is configured regardless of environment
     if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
       console.error('Supabase not configured, cannot save messages');
       return false;
