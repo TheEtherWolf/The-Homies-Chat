@@ -212,7 +212,7 @@ class ChatManager {
         this.currentChannel = null;
         
         // Update UI
-        this.updateChannelHeader(username, true);
+        this.chatTitle.textContent = `@${username}`;
         
         // Clear messages container
         this.messagesContainer.innerHTML = '';
