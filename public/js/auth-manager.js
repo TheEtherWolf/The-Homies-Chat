@@ -34,8 +34,8 @@ class AuthManager {
         // User display
         this.currentUserDisplay = document.getElementById('current-user');
         
-        console.log('[AUTH_DEBUG] Initializing AuthManager...');
-        this.initialize();
+        console.log('[AUTH_DEBUG] AuthManager constructor complete. Ready for initialization.');
+        // Removed automatic initialization to prevent double initialization
     }
     
     /**
@@ -393,9 +393,3 @@ class AuthManager {
         }
     }
 }
-
-// Initialize authentication when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    // Create global auth manager instance
-    window.authManager = new AuthManager();
-});
