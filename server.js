@@ -37,12 +37,52 @@ const io = socketIo(server);
 // Add middleware for parsing JSON
 app.use(express.json());
 
-// Serve static files (like index.html)
-app.use(express.static('public'));
+// Check various paths for serving static files
+const possiblePaths = ['public', '.', './public', '../public'];
+let staticPath = 'public'; // Default path
 
-// Serve the index.html for root path
+// Attempt to find the correct static file path
+for (const path of possiblePaths) {
+    try {
+        const indexPath = path === '.' ? './index.html' : `${path}/index.html`;
+        if (fs.existsSync(indexPath)) {
+            staticPath = path;
+            console.log(`Found index.html at ${indexPath}`);
+            break;
+        }
+    } catch (err) {
+        // Continue checking other paths
+    }
+}
+
+// Serve static files from the validated path
+app.use(express.static(staticPath));
+console.log(`Serving static files from: ${staticPath}`);
+
+// Serve the index.html for root path with fallback options
 app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/public/index.html');
+    // Try multiple possible locations for index.html
+    const possibleIndexPaths = [
+        __dirname + '/public/index.html',
+        __dirname + '/index.html',
+        './public/index.html',
+        './index.html'
+    ];
+
+    // Try each path until we find one that exists
+    for (const indexPath of possibleIndexPaths) {
+        try {
+            if (fs.existsSync(indexPath)) {
+                console.log(`Serving index.html from: ${indexPath}`);
+                return res.sendFile(indexPath, { root: '.' });
+            }
+        } catch (err) {
+            // Continue to next path
+        }
+    }
+
+    // If no index.html is found, return an error
+    res.status(404).send('Cannot find index.html in any expected location');
 });
 
 // REST API endpoints for verification
