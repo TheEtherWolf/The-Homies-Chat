@@ -122,6 +122,7 @@ async function registerUser(username, password, email) {
       return null;
     }
     
+    // First register the user with Supabase Auth
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -136,6 +137,31 @@ async function registerUser(username, password, email) {
     }
     
     console.log('User registered successfully:', data.user.id);
+    
+    // Auto-verify the user without email confirmation using service client
+    if (serviceSupabase && data.user) {
+      try {
+        // Create a record in the users table with verified=true
+        const { error: userError } = await serviceSupabase
+          .from('users')
+          .upsert({
+            id: data.user.id,
+            username: username,
+            email: email,
+            verified: true,
+            created_at: new Date().toISOString()
+          });
+        
+        if (userError) {
+          console.error('Error creating verified user record:', userError);
+        } else {
+          console.log('Created auto-verified user record for:', username);
+        }
+      } catch (verifyError) {
+        console.error('Error auto-verifying user:', verifyError);
+      }
+    }
+    
     return data.user;
   } catch (error) {
     console.error('Exception registering user:', error);
@@ -160,8 +186,28 @@ async function signInUser(username, password) {
     // Check if username is an email
     const isEmail = username.includes('@');
     
+    // If not an email, we need to find the user's email first
+    let email = username;
+    
+    if (!isEmail) {
+      // Look up email by username
+      const { data: userData, error: userError } = await getSupabaseClient(true)
+        .from('users')
+        .select('email')
+        .eq('username', username)
+        .single();
+      
+      if (userError || !userData || !userData.email) {
+        console.error('Error finding user email by username:', userError || 'User not found');
+        return null;
+      }
+      
+      email = userData.email;
+      console.log(`Found email ${email} for username ${username}`);
+    }
+    
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: isEmail ? username : `${username}@homies.app`,
+      email,
       password
     });
     
@@ -355,14 +401,18 @@ async function saveMessageToSupabase(message) {
     const formattedMessage = {
       id: messageId,
       sender_id: message.senderId,
+      sender_username: message.sender || message.username,
       content: message.message || message.content || "",
       created_at: new Date(message.timestamp || Date.now()).toISOString(),
+      channel: message.channel || message.channelId || "general",
       type: message.type || "text",
       // Include file info if available
       file_url: message.fileUrl || null,
       file_type: message.fileType || null,
       file_size: message.fileSize || null
     };
+    
+    console.log(`Saving message to Supabase in channel ${formattedMessage.channel}:`, formattedMessage);
     
     const { error } = await client
       .from('messages')
@@ -472,6 +522,7 @@ async function saveMessagesToSupabase(messages) {
           sender_id: senderId,
           content: message.message || message.content || "",
           created_at: new Date(message.timestamp || Date.now()).toISOString(),
+          channel: message.channel || message.channelId || "general",
           type: message.type || "text",
           file_url: message.fileUrl || null,
           file_type: message.fileType || null,

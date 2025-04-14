@@ -23,7 +23,8 @@ const {
     getCurrentUser, 
     getAllUsers,
     saveMessageToSupabase,
-    loadMessagesFromSupabase
+    loadMessagesFromSupabase,
+    getSupabaseClient
 } = require("./supabase-client");
 
 // Environment settings - DO NOT force development mode
@@ -247,11 +248,11 @@ io.on("connection", (socket) => {
             const user = await signInUser(username, password);
             
             if (user && user.id) {
-                console.log(`User ${username} successfully logged in`);
+                console.log(`User ${username} successfully logged in with ID: ${user.id}`);
                 
                 // Store user info in socket session
                 users[socket.id] = { 
-                    username: user.username || username,
+                    username: user.user_metadata?.username || username,
                     userId: user.id
                 };
                 
@@ -260,6 +261,7 @@ io.on("connection", (socket) => {
                 updateUserList();
                 
                 // Load messages from Supabase for this user
+                console.log(`Loading messages for user ${username}`);
                 const messages = await loadMessagesFromSupabase();
                 if (messages && messages.length > 0) {
                     // Process messages and organize by channel/conversation
@@ -272,39 +274,49 @@ io.on("connection", (socket) => {
                             messagesByChannel[channelKey] = [];
                         }
                         
-                        messagesByChannel[channelKey].push(msg);
+                        messagesByChannel[channelKey].push({
+                            id: msg.id,
+                            sender: msg.sender_username || 'Unknown User',
+                            senderId: msg.sender_id,
+                            content: msg.content,
+                            timestamp: msg.created_at,
+                            channel: channelKey
+                        });
                     });
                     
-                    // Update channel messages with data from Supabase
+                    // Add messages to in-memory storage for each channel
                     Object.keys(messagesByChannel).forEach(channel => {
                         if (!channelMessages[channel]) {
                             channelMessages[channel] = [];
                         }
                         
-                        // Only add messages that aren't already in the channel
-                        const existingIds = new Set(channelMessages[channel].map(m => m.id));
-                        const newMessages = messagesByChannel[channel].filter(m => !existingIds.has(m.id));
-                        
-                        if (newMessages.length > 0) {
-                            channelMessages[channel].push(...newMessages);
+                        // Add only unique messages based on ID
+                        messagesByChannel[channel].forEach(msg => {
+                            const isDuplicate = channelMessages[channel].some(existing => 
+                                existing.id === msg.id
+                            );
                             
-                            // Sort by timestamp
-                            channelMessages[channel].sort((a, b) => {
-                                const timeA = a.timestamp || a.created_at || 0;
-                                const timeB = b.timestamp || b.created_at || 0;
-                                return new Date(timeA) - new Date(timeB);
-                            });
-                        }
+                            if (!isDuplicate) {
+                                channelMessages[channel].push(msg);
+                            }
+                        });
+                        
+                        // Sort messages by timestamp
+                        channelMessages[channel].sort((a, b) => 
+                            new Date(a.timestamp) - new Date(b.timestamp)
+                        );
                     });
                     
-                    console.log(`Loaded ${messages.length} messages from Supabase for ${username}`);
+                    console.log(`Loaded and processed ${messages.length} messages for user ${username}`);
+                } else {
+                    console.log(`No messages found for user ${username}`);
                 }
                 
                 // Notify user of successful login
                 callback({
                     success: true,
                     userId: user.id,
-                    username: user.username || username
+                    username: user.user_metadata?.username || username
                 });
                 
                 // Send chat history to the user
@@ -369,12 +381,22 @@ io.on("connection", (socket) => {
             
             // Check if user already exists
             try {
-                // Find user by username or email
-                const { data: existingUsers } = await supabase
+                console.log('Checking if user exists:', username, email);
+                // Find user by username or email using the supabase client
+                const { data: existingUsers, error } = await getSupabaseClient(true)
                     .from('users')
                     .select('username, email')
-                    .or(`username.eq.${username},email.eq.${email}`)
+                    .or(`username.eq."${username}",email.eq."${email}"`)
                     .limit(1);
+                
+                if (error) {
+                    console.error('Error checking existing user:', error);
+                    callback({ 
+                        success: false, 
+                        message: 'Error checking user existence. Please try again.'
+                    });
+                    return;
+                }
                 
                 if (existingUsers && existingUsers.length > 0) {
                     // User already exists
@@ -506,7 +528,7 @@ io.on("connection", (socket) => {
             try {
                 // Get or create a user record for this username
                 console.log(`Finding or creating user record for ${username}`);
-                const { data: userRecord } = await supabase
+                const { data: userRecord } = await getSupabaseClient(true)
                     .from('users')
                     .select('id')
                     .eq('username', username)
@@ -519,7 +541,7 @@ io.on("connection", (socket) => {
                 } else {
                     // Create a new user record with a proper UUID
                     const newUserId = uuidv4();
-                    const { error } = await supabase
+                    const { error } = await getSupabaseClient(true)
                         .from('users')
                         .insert([{ 
                             id: newUserId, 
@@ -623,7 +645,7 @@ io.on("connection", (socket) => {
             try {
                 // Get or create a user record for this username
                 console.log(`Finding or creating user record for ${username}`);
-                const { data: userRecord } = await supabase
+                const { data: userRecord } = await getSupabaseClient(true)
                     .from('users')
                     .select('id')
                     .eq('username', username)
@@ -646,7 +668,7 @@ io.on("connection", (socket) => {
                 console.log(`Created new user ID for ${username}: ${userId}`);
                 
                 // Create user record in background, don't await to avoid blocking
-                supabase
+                getSupabaseClient(true)
                     .from('users')
                     .insert([{ id: userId, username, created_at: new Date().toISOString() }])
                     .then(result => {
