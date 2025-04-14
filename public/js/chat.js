@@ -232,10 +232,74 @@ class ChatManager {
         // Mark conversation as active in UI
         this.updateActiveDM(username);
         
-        // Focus message input
-        this.messageInput.focus();
+        // Update input placeholder
+        if (this.messageInput) {
+            this.messageInput.placeholder = `Message @${username}`;
+            this.messageInput.disabled = false;
+            this.messageInput.focus();
+        }
     }
     
+    // Update the active DM in the UI
+    updateActiveDM(username) {
+        // First, remove active class from all DM items and channels
+        const allDmItems = document.querySelectorAll('.dm-item');
+        allDmItems.forEach(item => item.classList.remove('active'));
+        
+        const allChannelItems = document.querySelectorAll('.channel-item');
+        allChannelItems.forEach(item => item.classList.remove('active'));
+        
+        // Then find and activate the matching DM item
+        let found = false;
+        allDmItems.forEach(item => {
+            const itemUsername = item.querySelector('span').textContent.trim();
+            if (itemUsername === username) {
+                item.classList.add('active');
+                found = true;
+            }
+        });
+        
+        // If the DM isn't in the list yet, add it
+        if (!found) {
+            this.addDmToList(username);
+        }
+        
+        // Re-attach click handlers for DM items to ensure they're clickable
+        this.setupChannelHandlers();
+    }
+    
+    // Add a DM to the list if it doesn't exist
+    addDmToList(username) {
+        // Check if this DM is already in the list
+        const allDmItems = document.querySelectorAll('.dm-item');
+        for (const item of allDmItems) {
+            const itemUsername = item.querySelector('span').textContent.trim();
+            if (itemUsername === username) {
+                return; // Already exists
+            }
+        }
+        
+        // Create new DM item
+        const dmListContainer = document.getElementById('dm-list');
+        const dmItem = document.createElement('div');
+        dmItem.className = 'dm-item';
+        dmItem.innerHTML = `
+            <div class="dm-avatar">
+                <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="User Avatar">
+                <div class="dm-status"></div>
+            </div>
+            <span>${username}</span>
+        `;
+        
+        // Add click handler
+        dmItem.addEventListener('click', () => {
+            this.openDM(username);
+        });
+        
+        // Add to the list
+        dmListContainer.appendChild(dmItem);
+    }
+
     // Helper method to get user ID by username
     getUserIdByUsername(username) {
         for (const userId in this.allUsers) {

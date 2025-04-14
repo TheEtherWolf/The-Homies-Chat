@@ -708,6 +708,134 @@ io.on("connection", (socket) => {
         throttledSave(); // Consider calling saveAllMessages directly if critical
     });
     
+    // Handle direct messages
+    socket.on('direct-message', async (data) => {
+        // Skip blank or null messages
+        if (!data.message || data.message.trim() === '') {
+            return;
+        }
+
+        const userInfo = users[socket.id]; // Get user info object { username, userId }
+        if (!userInfo || !userInfo.username) {
+            console.error('User not found for socket:', socket.id);
+            return; // Don't process if user info is incomplete
+        }
+        
+        const username = userInfo.username;
+        
+        // CRITICAL FIX: Ensure we have a valid sender ID that exists in Supabase
+        let userId = null;
+        
+        // First try to use the socket's stored userId (should be a valid UUID)
+        if (userInfo.userId && typeof userInfo.userId === 'string') {
+            userId = userInfo.userId;
+        }
+        
+        // If we don't have a valid userId in the socket info, try to find one in Supabase
+        if (!userId || !isValidUUID(userId)) {
+            try {
+                // Get or create a user record for this username
+                console.log(`Finding or creating user record for ${username}`);
+                const { data: userRecord } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('username', username)
+                    .limit(1);
+                    
+                if (userRecord && userRecord.length > 0) {
+                    // Use the existing user's ID
+                    userId = userRecord[0].id;
+                    console.log(`Found existing user ID for ${username}: ${userId}`);
+                }
+            } catch (error) {
+                console.error('Error finding user record:', error);
+            }
+        }
+        
+        // If still no valid userId, try to create a new user
+        if (!userId || !isValidUUID(userId)) {
+            try {
+                userId = uuidv4();
+                console.log(`Created new user ID for ${username}: ${userId}`);
+                
+                // Create user record in background, don't await to avoid blocking
+                supabase
+                    .from('users')
+                    .insert([{ id: userId, username, created_at: new Date().toISOString() }])
+                    .then(result => {
+                        if (result.error) {
+                            console.error('Error creating user record:', result.error);
+                        }
+                    });
+            } catch (error) {
+                console.error('Error creating user ID:', error);
+                // Last resort fallback: use a deterministic UUID based on username
+                userId = uuidv4({ name: username });
+            }
+        }
+        
+        // Update the userId in the socket session
+        users[socket.id].userId = userId;
+        
+        // Construct the message object
+        const messageObj = {
+            username: username,
+            message: data.message,
+            timestamp: data.timestamp || Date.now(),
+            senderId: userId,
+            recipientId: data.recipientId,
+            isDM: true // Flag this as a direct message
+        };
+        
+        // Make sure the DM structure exists
+        if (!channelMessages.dm) {
+            channelMessages.dm = [];
+        }
+        
+        // Store in DM list with a unique conversation identifier
+        const dmId = [userId, data.recipientId].sort().join('_');
+        if (!channelMessages[dmId]) {
+            channelMessages[dmId] = [];
+        }
+        
+        // Add message to the conversation
+        channelMessages[dmId].push(messageObj);
+        
+        // Find the recipient socket by recipientId
+        const recipientSocketId = Object.keys(users).find(id => 
+            users[id] && users[id].userId === data.recipientId
+        );
+        
+        if (recipientSocketId) {
+            // Send directly to recipient
+            io.to(recipientSocketId).emit('direct-message', messageObj);
+        }
+        
+        // Also send back to sender for confirmation
+        socket.emit('direct-message', messageObj);
+        
+        // Store the message in Supabase
+        try {
+            const saved = await saveMessageToSupabase({
+                ...messageObj,
+                type: 'direct',
+                channel: dmId // Use the conversation ID as the channel
+            }).catch(err => {
+                console.error('Error saving DM to Supabase:', err);
+                return false;
+            });
+            
+            if (saved) {
+                console.log(`DM saved to Supabase for conversation ${dmId}`);
+            }
+        } catch (error) {
+            console.error('Failed to save DM to Supabase:', error);
+        }
+        
+        // Save all messages (throttled)
+        throttledSave();
+    });
+    
     // Call signaling
     socket.on('call-offer', ({offer, caller, target, sender}) => {
         console.log(`Call offer from ${caller} to ${target}`);
