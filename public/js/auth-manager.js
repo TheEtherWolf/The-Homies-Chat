@@ -148,28 +148,9 @@ class AuthManager {
                 console.log('[AUTH_DEBUG] Login successful, calling showLoginSuccess...');
                 this.showLoginSuccess();
             } else {
-                // Try bypassing authentication if needed for testing
-                const forceAuth = true; // Change to false to disable this fallback
-                
-                if (forceAuth) {
-                    console.log('[AUTH_DEBUG] Using authentication fallback');
-                    // Create fallback user data
-                    const fallbackUser = {
-                        username: username,
-                        id: 'user-' + Date.now()
-                    };
-                    
-                    // Store user in session storage
-                    sessionStorage.setItem('user', JSON.stringify(fallbackUser));
-                    console.log('[AUTH_DEBUG] Created fallback user', fallbackUser);
-                    
-                    // Show success and proceed to app
-                    this.showLoginSuccess();
-                    return;
-                }
-                
-                this.showMessage(response.message || 'Login failed. Please check your credentials.', 'danger');
-                console.error('Login failed:', response.message);
+                // User not found or incorrect credentials, show appropriate message
+                this.showMessage(response.message || 'Login failed. Please check your credentials or create an account.', 'danger');
+                console.error('[AUTH_DEBUG] Login failed:', response.message);
             }
         });
     }
@@ -227,7 +208,7 @@ class AuthManager {
         const password = this.registerPassword.value;
         const confirmPassword = this.registerConfirmPassword.value;
         
-        // Validate input
+        // Basic validation
         if (!username || !email || !password || !confirmPassword) {
             this.showMessage('Please fill out all fields', 'danger');
             return;
@@ -238,24 +219,10 @@ class AuthManager {
             return;
         }
         
-        // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            this.showMessage('Please enter a valid email address', 'danger');
-            return;
-        }
-        
-        // Validate password strength
-        if (password.length < 6) {
-            this.showMessage('Password must be at least 6 characters long', 'danger');
-            return;
-        }
-        
         // Show loading message
         this.showMessage('Creating your account...', 'info');
         
-        // Debug log
-        console.log(`[AUTH_DEBUG] Attempting to register user: ${username} with email: ${email}`);
+        console.log('[AUTH_DEBUG] Attempting to register user:', username);
         
         // Check if socket is available
         if (!window.socket) {
@@ -264,40 +231,15 @@ class AuthManager {
             return;
         }
         
-        // Fallback registration for testing
-        const forceRegistration = true; // Change to false to disable this fallback
-        
-        if (forceRegistration) {
-            console.log('[AUTH_DEBUG] Using registration fallback');
-            
-            // Create fallback user data
-            const fallbackUser = {
-                username: username,
-                email: email,
-                id: 'user-' + Date.now()
-            };
-            
-            // Show success message
-            this.showMessage('Account created successfully! You can now log in.', 'success');
-            console.log('[AUTH_DEBUG] Created fallback user account', fallbackUser);
-            
-            // Switch to login form after a delay
-            setTimeout(() => {
-                this.toggleForms('login');
-                // Pre-fill the login form for convenience
-                this.loginUsername.value = username;
-            }, 2000);
-            
-            return;
-        }
-        
-        // Emit registration event to server
-        window.socket.emit('register-user', { username, email, password }, (response) => {
+        // Send registration request
+        window.socket.emit('register', { username, email, password }, (response) => {
             console.log('[AUTH_DEBUG] Registration response:', response);
             
             if (response.success) {
-                if (response.requireVerification) {
-                    // Show verification message
+                console.log('[AUTH_DEBUG] Registration successful');
+                
+                // If email verification is required
+                if (response.verificationRequired) {
                     this.showMessage(`${response.message}`, 'success');
                     // Switch to login form after a delay
                     setTimeout(() => {

@@ -22,7 +22,8 @@ const {
     signOutUser, 
     getCurrentUser, 
     getAllUsers,
-    saveMessageToSupabase
+    saveMessageToSupabase,
+    loadMessagesFromSupabase
 } = require("./supabase-client");
 
 // Set NODE_ENV to development if not set
@@ -236,304 +237,184 @@ io.on("connection", (socket) => {
         console.log(`Login attempt for user: ${username}`);
         
         try {
-            // Always allow login for testing
-            const forceAuth = true; // Set to false when ready for production authentication
+            // Attempt to sign in with Supabase
+            const user = await signInUser(username, password);
             
-            if (forceAuth || (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true')) {
-                console.log('Development/testing mode: approving login');
+            if (user && user.id) {
+                console.log(`User ${username} successfully logged in`);
                 
-                // Instead of making up a dev ID that won't work with foreign key constraints,
-                // check if this user exists in Supabase first
-                let userId;
+                // Store user info in socket session
+                users[socket.id] = { 
+                    username: user.username || username,
+                    userId: user.id
+                };
                 
-                try {
-                    // Try to find user in Supabase
-                    const existingUser = await signInUser(username, password);
-                    if (existingUser && existingUser.id) {
-                        // If user exists, use their actual UUID
-                        userId = existingUser.id;
-                        console.log(`Development mode: Found existing user with ID: ${userId}`);
-                    } else {
-                        // If user doesn't exist, create a test user in Supabase
-                        // This ensures the user ID will satisfy the foreign key constraint
-                        console.log(`Development mode: Auto-creating test user in Supabase`);
-                        const devEmail = `${username}@example.com`;
-                        const testUser = await registerUser(username, password, devEmail);
+                // Mark user as active
+                activeUsers.add(username);
+                updateUserList();
+                
+                // Load messages from Supabase for this user
+                const messages = await loadMessagesFromSupabase();
+                if (messages && messages.length > 0) {
+                    // Process messages and organize by channel/conversation
+                    const messagesByChannel = {};
+                    
+                    messages.forEach(msg => {
+                        const channelKey = msg.channel || 'general';
                         
-                        if (testUser && testUser.id) {
-                            userId = testUser.id;
-                            console.log(`Development mode: Created test user with ID: ${userId}`);
-                        } else {
-                            // If we can't create a user, generate a valid UUID but warn it may not work
-                            userId = uuidv4(); 
-                            console.warn(`Development mode: Could not create Supabase user. Generated UUID ${userId} may not satisfy foreign key constraints.`);
+                        if (!messagesByChannel[channelKey]) {
+                            messagesByChannel[channelKey] = [];
                         }
-                    }
-                } catch (userError) {
-                    console.error('Error finding/creating test user:', userError);
-                    // Fall back to UUID, but at least generate a proper UUID without 'dev-' prefix
-                    userId = uuidv4();
-                    console.warn(`Development mode: Using generated UUID ${userId}. This may not work for message sending.`);
+                        
+                        messagesByChannel[channelKey].push(msg);
+                    });
+                    
+                    // Update channel messages with data from Supabase
+                    Object.keys(messagesByChannel).forEach(channel => {
+                        if (!channelMessages[channel]) {
+                            channelMessages[channel] = [];
+                        }
+                        
+                        // Only add messages that aren't already in the channel
+                        const existingIds = new Set(channelMessages[channel].map(m => m.id));
+                        const newMessages = messagesByChannel[channel].filter(m => !existingIds.has(m.id));
+                        
+                        if (newMessages.length > 0) {
+                            channelMessages[channel].push(...newMessages);
+                            
+                            // Sort by timestamp
+                            channelMessages[channel].sort((a, b) => {
+                                const timeA = a.timestamp || a.created_at || 0;
+                                const timeB = b.timestamp || b.created_at || 0;
+                                return new Date(timeA) - new Date(timeB);
+                            });
+                        }
+                    });
+                    
+                    console.log(`Loaded ${messages.length} messages from Supabase for ${username}`);
                 }
                 
-                users[socket.id] = { username, userId }; // Store username and userId
-                activeUsers.add(username);
-                updateUserList();
-                return callback({ 
-                    success: true, 
-                    userId, // Return userId
-                    username
-                });
-            }
-            
-            // In production, verify with Supabase
-            const user = await signInUser(username, password);
-            if (user) {
-                console.log(`User authenticated successfully: ${username} with ID: ${user.id}`);
-                // Store user in active users list
-                users[socket.id] = { username, userId: user.id }; // Store username and actual userId (UUID)
-                activeUsers.add(username);
-                updateUserList();
-                callback({ 
-                    success: true, 
-                    userId: user.id, // Return actual userId
-                    username
-                });
-            } else {
-                console.log(`Authentication failed for: ${username}`);
-                callback({ success: false, message: "Incorrect username or password" });
-            }
-        } catch (error) {
-            console.error(`Login error for ${username}:`, error);
-            callback({ success: false, message: "Authentication error. Please try again." });
-        }
-    });
-    
-    // Verify user credentials
-    socket.on('verify-user', async (data, callback) => {
-        const { username, password } = data;
-        
-        try {
-            const user = await signInUser(username, password);
-            if (user) {
-                callback({ success: true });
-            } else {
-                callback({ success: false, message: "Incorrect password" });
-            }
-        } catch (error) {
-            callback({ success: false, message: "User not found" });
-        }
-    });
-    
-    // Register a new user
-    socket.on('register-user', async (data, callback) => {
-        const { username, password, email } = data;
-        
-        if (!email) {
-            callback({ success: false, message: "Email is required" });
-            return;
-        }
-        
-        try {
-            // Identify the email provider for better user feedback
-            const parts = email.split('@');
-            const domain = (parts.length > 1 && parts[1]) ? parts[1].toLowerCase() : '';
-            let providerName = 'email';
-            
-            if (domain.includes('gmail')) {
-                providerName = 'Gmail';
-            } else if (domain.includes('yahoo')) {
-                providerName = 'Yahoo';
-            } else if (domain.includes('proton') || domain.includes('pm.me')) {
-                providerName = 'ProtonMail';
-            } else if (domain.includes('outlook') || domain.includes('hotmail')) {
-                providerName = 'Outlook';
-            }
-            
-            console.log(`Registering user with ${providerName}: ${username} (${email})`);
-            
-            // Always allow registration for testing
-            const forceRegistration = true; // Set to false for production
-            
-            // Check if in development mode or if we're forcing registration for testing
-            if (forceRegistration || (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true')) {
-                console.log('Testing mode: skipping email verification');
-                
-                // Try to create a real user in Supabase
-                try {
-                    const newUser = await registerUser(username, password, email);
-                    if (newUser && newUser.id) {
-                        callback({ 
-                            success: true,
-                            userId: newUser.id,
-                            username,
-                            message: `Account created successfully!`
-                        });
-                        return;
-                    }
-                } catch (supabaseError) {
-                    console.warn('Could not create Supabase user:', supabaseError.message);
-                }
-                
-                // Fallback to a test user if Supabase creation failed
-                const testUserId = uuidv4();
-                
-                callback({ 
+                // Notify user of successful login
+                callback({
                     success: true,
-                    userId: testUserId,
-                    username,
-                    message: `Test account created successfully!`
+                    userId: user.id,
+                    username: user.username || username
                 });
                 
+                // Send chat history to the user
+                for (const channel in channelMessages) {
+                    if (channelMessages.hasOwnProperty(channel)) {
+                        socket.emit('message-history', {
+                            channel,
+                            messages: channelMessages[channel] || []
+                        });
+                    }
+                }
+            } else {
+                console.log(`Login failed for user: ${username}`);
+                callback({ 
+                    success: false, 
+                    message: 'Invalid username or password'
+                });
+            }
+        } catch (error) {
+            console.error(`Error during login for ${username}:`, error);
+            callback({ 
+                success: false, 
+                message: 'An error occurred during login'
+            });
+        }
+    });
+    
+    // Handle user registration
+    socket.on('register', async (data, callback) => {
+        try {
+            console.log(`Registering user with ${data.email && data.email.includes('@proton') ? 'ProtonMail' : 'email'}: ${data.username} (${data.email})`);
+            
+            const { username, email, password } = data;
+            
+            // Validate inputs
+            if (!username || !email || !password) {
+                callback({ 
+                    success: false, 
+                    message: 'Username, email, and password are required'
+                });
                 return;
             }
             
-            // Instead of directly registering, send verification email
-            const emailSent = await sendVerificationEmail(email, username, password);
-            
-            if (emailSent) {
-                callback({ 
-                    success: true, 
-                    requireVerification: true,
-                    message: `Verification email sent to your ${providerName} account. Please check your inbox.`,
-                    provider: providerName
-                });
-            } else {
-                console.error(`Failed to send verification email to ${providerName} account: ${email}`);
+            // Check if email is valid
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
                 callback({ 
                     success: false, 
-                    message: `Failed to send verification email to your ${providerName} account. Please try again or use a different email provider.` 
+                    message: 'Please enter a valid email address'
                 });
-            }
-        } catch (error) {
-            console.error('Registration error:', error);
-            callback({ success: false, message: "Failed to register user" });
-        }
-    });
-    
-    // Verify email code
-    socket.on('verify-email', (data, callback) => {
-        const { email, code } = data;
-        
-        if (!email || !code) {
-            callback({ success: false, message: "Email and verification code are required" });
-            return;
-        }
-        
-        try {
-            // For user experience, log email provider information
-            const parts = email.split('@');
-            const domain = (parts.length > 1 && parts[1]) ? parts[1].toLowerCase() : '';
-            let providerName = 'email';
-            
-            if (domain.includes('gmail')) {
-                providerName = 'Gmail';
-            } else if (domain.includes('yahoo')) {
-                providerName = 'Yahoo';
-            } else if (domain.includes('proton') || domain.includes('pm.me')) {
-                providerName = 'ProtonMail';
-            } else if (domain.includes('outlook') || domain.includes('hotmail')) {
-                providerName = 'Outlook';
+                return;
             }
             
-            console.log(`Verifying ${providerName} account: ${email}`);
-            
-            const userData = verifyEmail(email, code);
-            
-            if (userData) {
-                // Now we can register the user with Supabase
-                registerUser(userData.username, userData.password, email)
-                    .then(user => {
-                        if (user) {
-                            console.log(`Successfully verified and registered ${providerName} account: ${email}`);
-                            callback({ success: true, username: userData.username });
-                        } else {
-                            console.error(`Failed to create user account with ${providerName}`);
-                            callback({ success: false, message: "Failed to create user account" });
-                        }
-                    })
-                    .catch(error => {
-                        console.error(`Error registering verified ${providerName} user:`, error);
-                        callback({ success: false, message: "Error creating account" });
-                    });
-            } else {
-                console.error(`Invalid or expired verification code for ${providerName} account: ${email}`);
-                callback({ success: false, message: "Invalid or expired verification code" });
-            }
-        } catch (error) {
-            console.error('Verification error:', error);
-            callback({ success: false, message: "Error during verification" });
-        }
-    });
-    
-    // Resend verification email
-    socket.on('resend-verification', async (data, callback) => {
-        const { email } = data;
-        
-        if (!email) {
-            callback({ success: false, message: "Email is required" });
-            return;
-        }
-        
-        try {
-            // Identify the email provider for better user feedback
-            const parts = email.split('@');
-            const domain = (parts.length > 1 && parts[1]) ? parts[1].toLowerCase() : '';
-            let providerName = 'email';
-            
-            if (domain.includes('gmail')) {
-                providerName = 'Gmail';
-            } else if (domain.includes('yahoo')) {
-                providerName = 'Yahoo';
-            } else if (domain.includes('proton') || domain.includes('pm.me')) {
-                providerName = 'ProtonMail';
-            } else if (domain.includes('outlook') || domain.includes('hotmail')) {
-                providerName = 'Outlook';
-            }
-            
-            console.log(`Resending verification to ${providerName} account: ${email}`);
-            
-            const emailSent = await resendVerificationEmail(email);
-            
-            if (emailSent) {
-                callback({ 
-                    success: true, 
-                    message: `Verification email resent to your ${providerName} account. Please check your inbox.`,
-                    provider: providerName
-                });
-            } else {
-                console.error(`Failed to resend verification to ${providerName} account: ${email}`);
+            // Check if password meets requirements
+            if (password.length < 6) {
                 callback({ 
                     success: false, 
-                    message: `Failed to resend verification email to your ${providerName} account. Please try again or use a different email.` 
+                    message: 'Password must be at least 6 characters long'
                 });
+                return;
             }
-        } catch (error) {
-            console.error('Resend verification error:', error);
-            callback({ success: false, message: "Error resending verification" });
-        }
-    });
-    
-    // Handle password change requests
-    socket.on('change-password', async (data, callback) => {
-        const { username, currentPassword, newPassword } = data;
-        
-        try {
-            const user = await getCurrentUser();
-            if (user && user.username === username) {
-                await signOutUser();
-                const updatedUser = await signInUser(username, currentPassword);
-                if (updatedUser) {
-                    await registerUser(username, newPassword);
-                    callback({ success: true });
-                } else {
-                    callback({ success: false, message: "Current password is incorrect" });
+            
+            // Check if user already exists
+            try {
+                // Find user by username or email
+                const { data: existingUsers } = await supabase
+                    .from('users')
+                    .select('username, email')
+                    .or(`username.eq.${username},email.eq.${email}`)
+                    .limit(1);
+                
+                if (existingUsers && existingUsers.length > 0) {
+                    // User already exists
+                    const existingUser = existingUsers[0];
+                    
+                    if (existingUser.username === username) {
+                        callback({ 
+                            success: false, 
+                            message: 'Username already taken. Please choose another.'
+                        });
+                    } else {
+                        callback({ 
+                            success: false, 
+                            message: 'Email already registered. Please use another email or try logging in.'
+                        });
+                    }
+                    return;
                 }
+            } catch (error) {
+                console.error('Error checking existing user:', error);
+                // Continue with registration attempt despite error
+            }
+            
+            // Perform actual registration with Supabase
+            const user = await registerUser(username, password, email);
+            
+            if (user) {
+                console.log(`User registered successfully: ${username}`);
+                
+                callback({ 
+                    success: true, 
+                    message: 'Registration successful! You can now log in with your credentials.',
+                    verificationRequired: false
+                });
             } else {
-                callback({ success: false, message: "User not found" });
+                callback({ 
+                    success: false, 
+                    message: 'Failed to register user. Please try again.'
+                });
             }
         } catch (error) {
-            callback({ success: false, message: "Failed to change password" });
+            console.error('Error during registration:', error);
+            callback({ 
+                success: false, 
+                message: 'An error occurred during registration. Please try again.'
+            });
         }
     });
     
