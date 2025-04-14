@@ -644,11 +644,32 @@ class ChatManager {
             }
             
             // Add to UI immediately for instant feedback
-            this.addMessageToUI(messageData, true);
+            this.displayMessageInUI(messageData, true);
         } catch (error) {
             console.error('[CHAT_DEBUG] Error sending message:', error);
             this.addSystemMessage('Error sending message. Please try again.');
         }
+    }
+    
+    // Add a missing function to render message history
+    renderMessageHistory(messages) {
+        if (!messages || !Array.isArray(messages) || messages.length === 0) {
+            this.addSystemMessage("No previous messages");
+            return;
+        }
+        
+        // Sort messages by timestamp if they have timestamps
+        const sortedMessages = [...messages].sort((a, b) => {
+            return (a.timestamp || 0) - (b.timestamp || 0);
+        });
+        
+        // Display each message in the UI
+        sortedMessages.forEach(message => {
+            this.displayMessageInUI(message, 'dm');
+        });
+        
+        // Scroll to bottom after rendering
+        this.scrollToBottom();
     }
     
     // Display message in UI
@@ -665,7 +686,7 @@ class ChatManager {
         const timeDisplay = `Today at ${formattedTime}`;
         
         // Create avatar (default or user avatar)
-        const avatarSrc = message.avatarUrl || 'assets/default-avatar.png';
+        const avatarSrc = message.avatarUrl || 'default pic.png';
         
         // Construct message HTML
         messageElement.innerHTML = `
