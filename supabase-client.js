@@ -122,7 +122,52 @@ async function registerUser(username, password, email) {
       return null;
     }
     
-    // First register the user with Supabase Auth
+    // SIMPLIFIED REGISTRATION PROCESS
+    // First, check if user already exists in the users table
+    if (serviceSupabase) {
+      const { data: existingUser, error: checkError } = await serviceSupabase
+        .from('users')
+        .select('id, username, email')
+        .or(`username.eq."${username}",email.eq."${email}"`)
+        .single();
+        
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking existing user:', checkError);
+      } else if (existingUser) {
+        console.log('User already exists:', existingUser);
+        if (existingUser.username === username) {
+          return { id: existingUser.id, username: existingUser.username, email: existingUser.email };
+        }
+        return null;
+      }
+    }
+    
+    // Generate a unique ID for the new user
+    const userId = uuidv4();
+    
+    // Create a user record directly in the users table
+    if (serviceSupabase) {
+      const { error: userError } = await serviceSupabase
+        .from('users')
+        .insert({
+          id: userId,
+          username: username,
+          email: email,
+          password: password, // Store password for direct login (not secure for production)
+          verified: true,
+          created_at: new Date().toISOString()
+        });
+      
+      if (userError) {
+        console.error('Error creating user record:', userError);
+        return null;
+      }
+      
+      console.log('Created user record with ID:', userId);
+      return { id: userId, username, email };
+    }
+    
+    // Fallback to regular Supabase Auth if service client is not available
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -137,31 +182,6 @@ async function registerUser(username, password, email) {
     }
     
     console.log('User registered successfully:', data.user.id);
-    
-    // Auto-verify the user without email confirmation using service client
-    if (serviceSupabase && data.user) {
-      try {
-        // Create a record in the users table with verified=true
-        const { error: userError } = await serviceSupabase
-          .from('users')
-          .upsert({
-            id: data.user.id,
-            username: username,
-            email: email,
-            verified: true,
-            created_at: new Date().toISOString()
-          });
-        
-        if (userError) {
-          console.error('Error creating verified user record:', userError);
-        } else {
-          console.log('Created auto-verified user record for:', username);
-        }
-      } catch (verifyError) {
-        console.error('Error auto-verifying user:', verifyError);
-      }
-    }
-    
     return data.user;
   } catch (error) {
     console.error('Exception registering user:', error);
@@ -183,28 +203,35 @@ async function signInUser(username, password) {
       return null;
     }
     
-    // Check if username is an email
-    const isEmail = username.includes('@');
-    
-    // If not an email, we need to find the user's email first
-    let email = username;
-    
-    if (!isEmail) {
-      // Look up email by username
-      const { data: userData, error: userError } = await getSupabaseClient(true)
+    // SIMPLIFIED LOGIN PROCESS
+    // Look up the user directly in the users table
+    if (serviceSupabase) {
+      const { data: user, error: userError } = await serviceSupabase
         .from('users')
-        .select('email')
-        .eq('username', username)
+        .select('id, username, email, password')
+        .or(`username.eq."${username}",email.eq."${username}"`)
         .single();
       
-      if (userError || !userData || !userData.email) {
-        console.error('Error finding user email by username:', userError || 'User not found');
-        return null;
+      if (userError) {
+        console.error('Error finding user:', userError);
+      } else if (user && user.password === password) {
+        console.log('Direct login successful for user:', user.id);
+        return { 
+          id: user.id, 
+          username: user.username, 
+          email: user.email,
+          user_metadata: { username: user.username }
+        };
+      } else {
+        console.error('Invalid credentials for username:', username);
       }
-      
-      email = userData.email;
-      console.log(`Found email ${email} for username ${username}`);
     }
+    
+    // Fallback to regular Supabase Auth if direct login fails
+    const isEmail = username.includes('@');
+    const email = isEmail ? username : `${username}@homies.app`;
+    
+    console.log(`Attempting Supabase Auth login with email: ${email}`);
     
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -212,11 +239,11 @@ async function signInUser(username, password) {
     });
     
     if (error) {
-      console.error('Error signing in user:', error);
+      console.error('Error signing in user with Supabase Auth:', error);
       return null;
     }
     
-    console.log('User signed in successfully:', data.user.id);
+    console.log('User signed in successfully with Supabase Auth:', data.user.id);
     return data.user;
   } catch (error) {
     console.error('Exception signing in user:', error);
@@ -569,5 +596,6 @@ module.exports = {
   getAllUsers,
   loadMessagesFromSupabase,
   saveMessagesToSupabase,
-  saveMessageToSupabase
+  saveMessageToSupabase,
+  getSupabaseClient
 };

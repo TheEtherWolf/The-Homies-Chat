@@ -237,6 +237,67 @@ io.on("connection", (socket) => {
         console.log('Sent active users list to client on request:', Array.from(activeUsers));
     });
     
+    // Registration handler
+    socket.on('register-user', async (data, callback) => {
+        try {
+            const { username, password, email } = data;
+            
+            console.log(`Registering user with email: ${username} (${email})`);
+            
+            // Validate username
+            if (!username || username.length < 3) {
+                callback({ 
+                    success: false, 
+                    message: 'Username must be at least 3 characters long'
+                });
+                return;
+            }
+            
+            // Check if email is valid
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                callback({ 
+                    success: false, 
+                    message: 'Please enter a valid email address'
+                });
+                return;
+            }
+            
+            // Check if password meets requirements
+            if (password.length < 6) {
+                callback({ 
+                    success: false, 
+                    message: 'Password must be at least 6 characters long'
+                });
+                return;
+            }
+            
+            // Perform registration with simplified method
+            const user = await registerUser(username, password, email);
+            
+            if (user) {
+                console.log(`User registered successfully: ${username}`);
+                
+                callback({ 
+                    success: true, 
+                    message: 'Registration successful! You can now log in with your credentials.',
+                    verificationRequired: false
+                });
+            } else {
+                callback({ 
+                    success: false, 
+                    message: 'Failed to register user. Username or email may already be taken.'
+                });
+            }
+        } catch (error) {
+            console.error('Error during registration:', error);
+            callback({ 
+                success: false, 
+                message: 'An error occurred during registration. Please try again.'
+            });
+        }
+    });
+    
     // Login user handler
     socket.on('login-user', async (data, callback) => {
         const { username, password } = data;
@@ -244,7 +305,7 @@ io.on("connection", (socket) => {
         console.log(`Login attempt for user: ${username}`);
         
         try {
-            // Attempt to sign in with Supabase
+            // Attempt to sign in with simplified method
             const user = await signInUser(username, password);
             
             if (user && user.id) {
@@ -252,7 +313,7 @@ io.on("connection", (socket) => {
                 
                 // Store user info in socket session
                 users[socket.id] = { 
-                    username: user.user_metadata?.username || username,
+                    username: user.user_metadata?.username || user.username || username,
                     userId: user.id
                 };
                 
@@ -263,6 +324,7 @@ io.on("connection", (socket) => {
                 // Load messages from Supabase for this user
                 console.log(`Loading messages for user ${username}`);
                 const messages = await loadMessagesFromSupabase();
+                
                 if (messages && messages.length > 0) {
                     // Process messages and organize by channel/conversation
                     const messagesByChannel = {};
@@ -340,108 +402,6 @@ io.on("connection", (socket) => {
             callback({ 
                 success: false, 
                 message: 'An error occurred during login'
-            });
-        }
-    });
-    
-    // Handle user registration
-    socket.on('register', async (data, callback) => {
-        try {
-            console.log(`Registering user with ${data.email && data.email.includes('@proton') ? 'ProtonMail' : 'email'}: ${data.username} (${data.email})`);
-            
-            const { username, email, password } = data;
-            
-            // Validate inputs
-            if (!username || !email || !password) {
-                callback({ 
-                    success: false, 
-                    message: 'Username, email, and password are required'
-                });
-                return;
-            }
-            
-            // Check if email is valid
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(email)) {
-                callback({ 
-                    success: false, 
-                    message: 'Please enter a valid email address'
-                });
-                return;
-            }
-            
-            // Check if password meets requirements
-            if (password.length < 6) {
-                callback({ 
-                    success: false, 
-                    message: 'Password must be at least 6 characters long'
-                });
-                return;
-            }
-            
-            // Check if user already exists
-            try {
-                console.log('Checking if user exists:', username, email);
-                // Find user by username or email using the supabase client
-                const { data: existingUsers, error } = await getSupabaseClient(true)
-                    .from('users')
-                    .select('username, email')
-                    .or(`username.eq."${username}",email.eq."${email}"`)
-                    .limit(1);
-                
-                if (error) {
-                    console.error('Error checking existing user:', error);
-                    callback({ 
-                        success: false, 
-                        message: 'Error checking user existence. Please try again.'
-                    });
-                    return;
-                }
-                
-                if (existingUsers && existingUsers.length > 0) {
-                    // User already exists
-                    const existingUser = existingUsers[0];
-                    
-                    if (existingUser.username === username) {
-                        callback({ 
-                            success: false, 
-                            message: 'Username already taken. Please choose another.'
-                        });
-                    } else {
-                        callback({ 
-                            success: false, 
-                            message: 'Email already registered. Please use another email or try logging in.'
-                        });
-                    }
-                    return;
-                }
-            } catch (error) {
-                console.error('Error checking existing user:', error);
-                // Continue with registration attempt despite error
-            }
-            
-            // Perform actual registration with Supabase
-            const user = await registerUser(username, password, email);
-            
-            if (user) {
-                console.log(`User registered successfully: ${username}`);
-                
-                callback({ 
-                    success: true, 
-                    message: 'Registration successful! You can now log in with your credentials.',
-                    verificationRequired: false
-                });
-            } else {
-                callback({ 
-                    success: false, 
-                    message: 'Failed to register user. Please try again.'
-                });
-            }
-        } catch (error) {
-            console.error('Error during registration:', error);
-            callback({ 
-                success: false, 
-                message: 'An error occurred during registration. Please try again.'
             });
         }
     });
