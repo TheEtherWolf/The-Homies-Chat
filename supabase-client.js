@@ -111,10 +111,10 @@ function isValidUUID(str) {
  * Register a new user
  * @param {string} username - Username
  * @param {string} password - Password
- * @param {string} email - Email address (ignored for now)
+ * @param {string} email - Email address (optional for development)
  * @returns {Promise<object|null>} - User object or null if error
  */
-async function registerUser(username, password, email) {
+async function registerUser(username, password, email = '') {
   try {
     // Ensure Supabase is configured
     if (!serviceSupabase || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
@@ -126,13 +126,14 @@ async function registerUser(username, password, email) {
     
     // Create a unique ID for the user
     const userId = uuidv4();
+    const now = new Date().toISOString();
     
     // First check if the username already exists
     const { data: existingUser, error: lookupError } = await serviceSupabase
       .from('users')
       .select('id')
       .eq('username', username)
-      .single();
+      .maybeSingle();
     
     if (lookupError && lookupError.code !== 'PGRST116') {
       // PGRST116 is "No rows returned" which is what we want
@@ -144,25 +145,49 @@ async function registerUser(username, password, email) {
       console.log(`User with username ${username} already exists`);
       return { 
         id: existingUser.id, 
-        username, 
+        username,
         user_metadata: { username } 
       };
     }
     
-    // Create user record directly in the database
+    // Generate a verification token (not used in development)
+    const verificationToken = uuidv4();
+    const tokenExpires = new Date();
+    tokenExpires.setDate(tokenExpires.getDate() + 1); // Token expires in 1 day
+    
+    // Create user record directly in the database with all required fields
     const { error: insertError } = await serviceSupabase
       .from('users')
       .insert({
         id: userId,
         username: username,
-        password: password, // Store password directly in the user record - not ideal for security but simplest solution for now
-        created_at: new Date().toISOString(),
-        verified: true
+        email: email || `${username}@homies.app`, // Default email if not provided
+        password: password,
+        created_at: now,
+        last_seen: now,
+        verified: true, // Auto-verify during development
+        verification_token: verificationToken,
+        token_expires: tokenExpires.toISOString(),
+        avater_url: null, // Typo in DB column name preserved
+        status: 'online'
       });
     
     if (insertError) {
       console.error('Error creating user record:', insertError);
       return null;
+    }
+    
+    // Also initialize user's status in the user_status table
+    try {
+      await serviceSupabase
+        .from('user_status')
+        .insert({
+          user_id: userId,
+          status: 'online',
+          last_updated: now
+        });
+    } catch (statusError) {
+      console.warn('Could not initialize user status, continuing anyway:', statusError);
     }
     
     console.log(`User ${username} registered successfully with ID ${userId}`);
@@ -171,7 +196,10 @@ async function registerUser(username, password, email) {
     return {
       id: userId,
       username,
-      user_metadata: { username }
+      user_metadata: { 
+        username: username,
+        email: email || `${username}@homies.app` 
+      }
     };
   } catch (error) {
     console.error('Exception registering user:', error);
@@ -194,13 +222,14 @@ async function signInUser(username, password) {
     }
     
     console.log(`Attempting login for ${username}`);
+    const now = new Date().toISOString();
     
-    // First, try direct simple lookup by username only
+    // First, try direct simple lookup by username only for development
     let { data: user, error } = await serviceSupabase
       .from('users')
-      .select('id, username')
+      .select('id, username, email, status, avater_url')
       .eq('username', username)
-      .maybeSingle(); // Use maybeSingle instead of single to avoid PGRST116 error
+      .maybeSingle();
       
     // Handle the error case when not found
     if (error && error.code !== 'PGRST116') {
@@ -208,46 +237,66 @@ async function signInUser(username, password) {
       return null;
     }
     
-    // If user exists, we'll consider it authenticated
+    // If user exists, we'll update last_seen and status
     if (user && user.id) {
-      console.log(`Found existing user ${username}, considering authenticated`);
+      console.log(`Found existing user ${username}, updating status`);
+      
+      // Update user's last_seen time and status
+      try {
+        await serviceSupabase
+          .from('users')
+          .update({ 
+            last_seen: now,
+            status: 'online'
+          })
+          .eq('id', user.id);
+          
+        // Also update the user_status table
+        const { data: existingStatus } = await serviceSupabase
+          .from('user_status')
+          .select('user_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+          
+        if (existingStatus) {
+          // Update existing status
+          await serviceSupabase
+            .from('user_status')
+            .update({ 
+              status: 'online',
+              last_updated: now
+            })
+            .eq('user_id', user.id);
+        } else {
+          // Create new status entry
+          await serviceSupabase
+            .from('user_status')
+            .insert({
+              user_id: user.id,
+              status: 'online',
+              last_updated: now
+            });
+        }
+      } catch (updateError) {
+        console.warn('Error updating user status, continuing anyway:', updateError);
+      }
       
       // Return user object in similar format to Supabase Auth
       return {
         id: user.id,
         username: user.username,
-        user_metadata: { username: user.username }
+        user_metadata: { 
+          username: user.username,
+          email: user.email,
+          avatar_url: user.avater_url,
+          status: user.status || 'online'
+        }
       };
     }
     
-    // If we're here, the user doesn't exist yet - let's auto-create one for simplicity
+    // If we're here, the user doesn't exist yet - let's auto-create one for simplicity during development
     console.log(`User ${username} not found, auto-creating`);
-    const userId = uuidv4();
-    
-    // Create a new user record
-    const { error: createError } = await serviceSupabase
-      .from('users')
-      .insert({
-        id: userId,
-        username: username,
-        password: password, // For development only
-        created_at: new Date().toISOString(),
-        verified: true
-      });
-    
-    if (createError) {
-      console.error('Error auto-creating user:', createError);
-      return null;
-    }
-    
-    console.log(`Auto-created user ${username} with ID ${userId}`);
-    
-    // Return the newly created user
-    return {
-      id: userId,
-      username: username,
-      user_metadata: { username: username }
-    };
+    return registerUser(username, password);
   } catch (error) {
     console.error('Exception signing in user:', error);
     return null;
@@ -377,48 +426,33 @@ async function saveMessageToSupabase(message) {
       return false;
     }
     
-    if (!message) {
-      console.error('No message provided to save');
-      return false;
-    }
-    
-    // Validate senderId is present, valid, and exists in users table
-    if (!message.senderId || !isValidUUID(message.senderId)) {
-      console.error('Invalid or missing senderId in message object:', message);
-      return false; // Stop if senderId is missing or not a UUID
-    }
-
-    // Before saving, verify the sender exists in the users table
+    // Choose appropriate client
     const client = getSupabaseClient(true);
-    const { data: userExists, error: userCheckError } = await client
-      .from('users')
-      .select('id')
-      .eq('id', message.senderId)
-      .limit(1);
-
-    if (userCheckError) {
-      console.error('Error checking if user exists:', userCheckError);
-      return false;
-    }
-
-    if (!userExists || userExists.length === 0) {
-      console.error(`User with ID ${message.senderId} doesn't exist in the database. Creating...`);
+    
+    // Ensure message has a valid sender ID
+    if (!message.senderId || !isValidUUID(message.senderId)) {
+      console.error('Invalid sender ID for message:', message.senderId);
       
-      // Try to create the user if we have a username
-      if (message.username) {
-        const { error: insertError } = await client
-          .from('users')
-          .insert([{
-            id: message.senderId,
-            username: message.username,
-            created_at: new Date().toISOString()
-          }]);
-          
-        if (insertError) {
-          console.error('Failed to create user record:', insertError);
+      // If we have serviceSupabase, we can check if user exists and create if needed
+      if (serviceSupabase && message.username) {
+        try {
+          // Try to find a user ID by username
+          const { data: userData } = await serviceSupabase
+            .from('users')
+            .select('id')
+            .eq('username', message.username)
+            .maybeSingle();
+            
+          if (userData && userData.id) {
+            message.senderId = userData.id;
+            console.log(`Found existing user ID for ${message.username}: ${message.senderId}`);
+          } else {
+            return false; // Can't proceed without a valid user
+          }
+        } catch (userError) {
+          console.error('Error finding user:', userError);
           return false;
         }
-        console.log(`Created user record for ${message.username} with ID ${message.senderId}`);
       } else {
         return false; // Can't proceed without a valid user
       }
@@ -427,15 +461,13 @@ async function saveMessageToSupabase(message) {
     // Generate a valid UUID for the message ID
     const messageId = uuidv4();
 
-    // Format message to match Supabase schema
+    // Format message to match Supabase schema exactly
     const formattedMessage = {
       id: messageId,
       sender_id: message.senderId,
-      sender_username: message.sender || message.username,
       content: message.message || message.content || "",
       created_at: new Date(message.timestamp || Date.now()).toISOString(),
       type: message.type || "text",
-      // Include file info if available
       file_url: message.fileUrl || null,
       file_type: message.fileType || null,
       file_size: message.fileSize || null
@@ -462,7 +494,7 @@ async function saveMessageToSupabase(message) {
 
 /**
  * Save messages to Supabase
- * @param {Array} messages - Messages to save
+ * @param {Array} messages - Array of messages to save
  * @returns {Promise<boolean>} Success status
  */
 async function saveMessagesToSupabase(messages) {
@@ -472,80 +504,61 @@ async function saveMessagesToSupabase(messages) {
       console.error('Supabase not configured, cannot save messages');
       return false;
     }
-
+    
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      console.log('No messages to save to Supabase');
-      return true;
-    }
-
-    // First, get a list of all valid user IDs from the database
-    // This will be used to check if the sender IDs are valid
-    const client = getSupabaseClient(true);
-    const { data: existingUsers, error: usersError } = await client
-      .from('users')
-      .select('id');
-
-    if (usersError) {
-      console.error('Error fetching users for validation:', usersError);
+      console.error('No valid messages provided');
       return false;
     }
-
-    // Create a set of valid user IDs for quick lookup
-    const validUserIds = new Set(existingUsers.map(user => user.id));
-    console.log(`Loaded ${validUserIds.size} valid user IDs for message validation`);
-
-    // Process in batches to prevent timeout or payload size issues
-    const batchSize = 10; // Adjust if needed
+    
+    // Use service role client for database operations
+    const client = getSupabaseClient(true);
+    
+    // Process in batches to avoid payload size limits
+    const batchSize = 50; // Adjust based on your Supabase plan limits
     let savedMessageCount = 0;
     
     for (let i = 0; i < messages.length; i += batchSize) {
       const batch = messages.slice(i, i + batchSize);
-      
-      // Format messages to match Supabase schema
       const formattedMessages = [];
       
+      // Format each message in the batch
       for (const message of batch) {
-        // Always generate a fresh UUID for message ID
-        const messageId = uuidv4();
+        if (!message) continue;
         
-        // Check if sender ID is valid (exists in our users table)
-        let senderId = null;
-        let validSender = false;
-        
-        if (message.senderId && typeof message.senderId === 'string') {
-          // First check if it's a valid UUID format
-          if (isValidUUID(message.senderId)) {
-            // Then check if it exists in our valid users list
-            if (validUserIds.has(message.senderId)) {
-              senderId = message.senderId;
-              validSender = true;
-            } else {
-              console.warn(`Message has UUID sender_id (${message.senderId}) but it doesn't exist in the users table`);
-            }
-          } else if (message.senderId.startsWith('dev-')) {
-            // It's a development ID - try to find a real user with the matching username
-            if (message.username) {
-              const { data: userMatch } = await client
-                .from('users')
-                .select('id')
-                .eq('username', message.username)
-                .limit(1);
-                
-              if (userMatch && userMatch.length > 0) {
-                senderId = userMatch[0].id;
-                validSender = true;
-                console.log(`Mapped dev user ${message.username} to valid user ID ${senderId}`);
-              }
-            }
-          }
-        }
-        
-        // Skip messages without valid senders to prevent foreign key violations
-        if (!validSender) {
-          console.warn(`Skipping message without valid sender ID: ${message.message?.substring(0, 30)}...`);
+        // Skip messages without content
+        if (!message.content && !message.message) {
           continue;
         }
         
+        // Ensure sender has a valid ID
+        let senderId = message.senderId;
+        if (!senderId || !isValidUUID(senderId)) {
+          console.warn('Invalid sender ID, trying to find by username:', message.sender);
+          
+          // Try to lookup user by username
+          try {
+            const { data: userData } = await client
+              .from('users')
+              .select('id')
+              .eq('username', message.sender || 'Unknown')
+              .maybeSingle();
+              
+            if (userData && userData.id) {
+              senderId = userData.id;
+            } else {
+              console.warn(`Could not find user ID for sender: ${message.sender}`);
+              continue; // Skip this message
+            }
+          } catch (userError) {
+            console.error('Failed to lookup user:', userError);
+            continue; // Skip this message
+          }
+        }
+        
+        // Generate a message ID if needed
+        const messageId = message.id || uuidv4();
+        
+        // Format message according to exact Supabase schema
         formattedMessages.push({
           id: messageId,
           sender_id: senderId,
