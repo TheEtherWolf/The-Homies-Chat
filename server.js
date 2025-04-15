@@ -211,6 +211,43 @@ function throttledSave() {
     }, 5000); // Save every 5 seconds
 }
 
+// Add migration on server start
+async function addChannelColumnIfNeeded() {
+  try {
+    console.log('Checking if messages table needs channel column...');
+    
+    // Try to add the channel column using raw SQL
+    const { error } = await getSupabaseClient(true).rpc('exec_sql', {
+      sql_string: `
+        ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS channel TEXT DEFAULT 'general';
+        UPDATE public.messages SET channel = 'general' WHERE channel IS NULL;
+      `
+    });
+    
+    if (error) {
+      console.error('Error adding channel column:', error);
+    } else {
+      console.log('Channel column added or already exists');
+    }
+  } catch (error) {
+    console.error('Database migration error:', error);
+  }
+}
+
+// Initialize the server
+async function initServer() {
+  // Initialize storage
+  await initializeStorage();
+  
+  // Add channel column if needed
+  await addChannelColumnIfNeeded();
+  
+  // Start the server
+  server.listen(PORT, () => {
+    console.log(`Server listening on *:${PORT}`);
+  });
+}
+
 // Initialize message history and MEGA storage
 (async function initialize() {
     try {
@@ -1086,9 +1123,8 @@ io.on("connection", (socket) => {
 
 // Listen on the port provided by Glitch or default to 3000
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Chat server running on port ${PORT}`);
-});
+
+initServer();
 
 // Clean up stale connections every 5 minutes
 setInterval(() => {
