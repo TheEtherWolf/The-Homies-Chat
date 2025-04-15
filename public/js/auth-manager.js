@@ -204,13 +204,13 @@ class AuthManager {
      */
     handleRegistration() {
         const username = this.registerUsername.value.trim();
-        const email = this.registerEmail.value.trim();
+        // Email is no longer required
         const password = this.registerPassword.value;
         const confirmPassword = this.registerConfirmPassword.value;
         
         // Basic validation
-        if (!username || !email || !password || !confirmPassword) {
-            this.showMessage('Please fill out all fields', 'danger');
+        if (!username || !password || !confirmPassword) {
+            this.showMessage('Please fill out username and password fields', 'danger');
             return;
         }
         
@@ -231,14 +231,14 @@ class AuthManager {
             return;
         }
         
-        // Send registration request
-        window.socket.emit('register', { username, email, password }, (response) => {
+        // Send registration request to the updated register-user event
+        window.socket.emit('register-user', { username, password }, (response) => {
             console.log('[AUTH_DEBUG] Registration response:', response);
             
             if (response.success) {
                 console.log('[AUTH_DEBUG] Registration successful');
                 
-                // If email verification is required
+                // If email verification is required (no longer used but kept for compatibility)
                 if (response.verificationRequired) {
                     this.showMessage(`${response.message}`, 'success');
                     // Switch to login form after a delay
