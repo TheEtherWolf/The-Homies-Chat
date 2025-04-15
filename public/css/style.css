@@ -10,7 +10,7 @@
   --text-muted: #a0c5c0; /* Muted teal text */
   --text-dark: #82b0aa; /* Darker muted teal text */
   --success: #3BA55C; /* Green */
-  --warning: #FAA61A; /* Yellow/orange */
+  --warning: #5cded0; /* Changed from yellow to teal */
   --danger: #ED4245; /* Red */
   --info: #47c7b6; /* Brighter teal */
   --highlight: #5cded0; /* Highlight teal */
@@ -521,11 +521,11 @@ body {
 }
 
 .user-status.idle {
-  background-color: #faa61a;
+  background-color: #5cded0;
 }
 
 .user-status.dnd {
-  background-color: #f04747;
+  background-color: #ED4245;
 }
 
 .user-status.offline {
@@ -548,7 +548,7 @@ body {
 
 /* Message retry button */
 .message-retry {
-  color: #f04747;
+  color: #ED4245;
   margin-left: 8px;
   cursor: pointer;
 }

@@ -420,46 +420,62 @@ async function loadMessagesFromSupabase() {
  */
 async function saveMessageToSupabase(message) {
   try {
-    // Ensure Supabase is configured regardless of environment
-    if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
+    // Ensure Supabase is configured
+    if (!serviceSupabase || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
       console.error('Supabase not configured, cannot save message');
       return false;
     }
     
-    // Choose appropriate client
-    const client = getSupabaseClient(true);
-    
     // Ensure message has a valid sender ID
     if (!message.senderId || !isValidUUID(message.senderId)) {
       console.error('Invalid sender ID for message:', message.senderId);
+      return false;
+    }
+
+    // CRITICAL: First check if the user record exists
+    const { data: userExists, error: userCheckError } = await serviceSupabase
+      .from('users')
+      .select('id')
+      .eq('id', message.senderId)
+      .maybeSingle();
       
-      // If we have serviceSupabase, we can check if user exists and create if needed
-      if (serviceSupabase && message.username) {
-        try {
-          // Try to find a user ID by username
-          const { data: userData } = await serviceSupabase
-            .from('users')
-            .select('id')
-            .eq('username', message.username)
-            .maybeSingle();
-            
-          if (userData && userData.id) {
-            message.senderId = userData.id;
-            console.log(`Found existing user ID for ${message.username}: ${message.senderId}`);
-          } else {
-            return false; // Can't proceed without a valid user
-          }
-        } catch (userError) {
-          console.error('Error finding user:', userError);
-          return false;
-        }
-      } else {
-        return false; // Can't proceed without a valid user
+    if (userCheckError && userCheckError.code !== 'PGRST116') {
+      console.error('Error checking user existence:', userCheckError);
+      return false;
+    }
+    
+    // If user doesn't exist, create them first
+    if (!userExists) {
+      console.log(`User with ID ${message.senderId} doesn't exist, creating record before saving message`);
+      
+      const username = message.sender || message.username || `User_${message.senderId.substring(0, 8)}`;
+      const now = new Date().toISOString();
+      
+      // Create the user record first
+      const { error: createError } = await serviceSupabase
+        .from('users')
+        .insert({
+          id: message.senderId,
+          username: username,
+          email: `${username}@homies.app`,
+          password: 'auto-created',
+          created_at: now,
+          last_seen: now,
+          verified: true,
+          status: 'online',
+          avatar_url: null
+        });
+        
+      if (createError) {
+        console.error('Failed to create user record before saving message:', createError);
+        return false;
       }
+      
+      console.log(`Created user record for ${username} with ID ${message.senderId}`);
     }
 
     // Generate a valid UUID for the message ID
-    const messageId = uuidv4();
+    const messageId = message.id || uuidv4();
 
     // Format message to match Supabase schema exactly
     const formattedMessage = {
@@ -499,8 +515,8 @@ async function saveMessageToSupabase(message) {
  */
 async function saveMessagesToSupabase(messages) {
   try {
-    // Ensure Supabase is configured regardless of environment
-    if (!supabase || !SUPABASE_URL || !SUPABASE_KEY) {
+    // Ensure Supabase is configured
+    if (!serviceSupabase || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
       console.error('Supabase not configured, cannot save messages');
       return false;
     }
@@ -510,16 +526,71 @@ async function saveMessagesToSupabase(messages) {
       return false;
     }
     
-    // Use service role client for database operations
-    const client = getSupabaseClient(true);
-    
     // Process in batches to avoid payload size limits
-    const batchSize = 50; // Adjust based on your Supabase plan limits
+    const batchSize = 10; // Smaller batch size for better error handling
     let savedMessageCount = 0;
     
+    // First collect unique sender IDs to ensure they all exist
+    const senderIds = new Set();
+    messages.forEach(msg => {
+      if (msg && msg.senderId && isValidUUID(msg.senderId)) {
+        senderIds.add(msg.senderId);
+      }
+    });
+    
+    // Verify and create missing user records first
+    if (senderIds.size > 0) {
+      console.log(`Verifying ${senderIds.size} unique sender IDs exist in database`);
+      
+      for (const senderId of senderIds) {
+        // Check if user exists
+        const { data: userExists, error: checkError } = await serviceSupabase
+          .from('users')
+          .select('id')
+          .eq('id', senderId)
+          .maybeSingle();
+          
+        if (checkError && checkError.code !== 'PGRST116') {
+          console.error(`Error checking sender ${senderId}:`, checkError);
+          continue;
+        }
+        
+        if (!userExists) {
+          // Find a message with this sender ID to get username
+          const userMsg = messages.find(m => m.senderId === senderId);
+          const username = userMsg?.sender || userMsg?.username || `User_${senderId.substring(0, 8)}`;
+          const now = new Date().toISOString();
+          
+          console.log(`Creating missing user record for ${username} (${senderId})`);
+          
+          // Create the user record
+          const { error: createError } = await serviceSupabase
+            .from('users')
+            .insert({
+              id: senderId,
+              username: username,
+              email: `${username}@homies.app`,
+              password: 'auto-created',
+              created_at: now,
+              last_seen: now,
+              verified: true,
+              status: 'online',
+              avatar_url: null
+            });
+            
+          if (createError) {
+            console.error(`Failed to create user ${username}:`, createError);
+          } else {
+            console.log(`Successfully created user ${username} with ID ${senderId}`);
+          }
+        }
+      }
+    }
+    
+    // Process in batches to avoid payload size limits
+    const batchMessages = [];
     for (let i = 0; i < messages.length; i += batchSize) {
       const batch = messages.slice(i, i + batchSize);
-      const formattedMessages = [];
       
       // Format each message in the batch
       for (const message of batch) {
@@ -545,12 +616,12 @@ async function saveMessagesToSupabase(messages) {
               
             if (userData && userData.id) {
               senderId = userData.id;
+              console.log(`Found existing user ID for ${message.sender}: ${senderId}`);
             } else {
-              console.warn(`Could not find user ID for sender: ${message.sender}`);
-              continue; // Skip this message
+              return false; // Can't proceed without a valid user
             }
           } catch (userError) {
-            console.error('Failed to lookup user:', userError);
+            console.error('Error finding user:', userError);
             continue; // Skip this message
           }
         }
@@ -559,7 +630,7 @@ async function saveMessagesToSupabase(messages) {
         const messageId = message.id || uuidv4();
         
         // Format message according to exact Supabase schema
-        formattedMessages.push({
+        batchMessages.push({
           id: messageId,
           sender_id: senderId,
           content: message.message || message.content || "",
@@ -572,7 +643,7 @@ async function saveMessagesToSupabase(messages) {
       }
       
       // Skip empty batches
-      if (formattedMessages.length === 0) {
+      if (batchMessages.length === 0) {
         console.log(`Skipping empty batch ${Math.floor(i/batchSize) + 1}`);
         continue;
       }
@@ -580,14 +651,15 @@ async function saveMessagesToSupabase(messages) {
       try {
         const { error } = await serviceSupabase
           .from('messages')
-          .upsert(formattedMessages);
+          .upsert(batchMessages);
         
         if (error) {
           console.error(`Error saving batch ${Math.floor(i/batchSize) + 1} to Supabase:`, error);
           continue; // Continue with next batch even if this one failed
         }
         
-        savedMessageCount += formattedMessages.length;
+        savedMessageCount += batchMessages.length;
+        batchMessages.length = 0; // Reset batch messages
       } catch (batchError) {
         console.error(`Exception in batch ${Math.floor(i/batchSize) + 1}:`, batchError);
         continue;
