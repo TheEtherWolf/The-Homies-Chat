@@ -24,7 +24,8 @@ const {
     getAllUsers,
     saveMessageToSupabase,
     loadMessagesFromSupabase,
-    getSupabaseClient
+    getSupabaseClient,
+    getUserIdByUsername
 } = require("./supabase-client");
 
 // Environment settings - DO NOT force development mode
@@ -453,108 +454,92 @@ io.on("connection", (socket) => {
     
     // Chat message handler
     socket.on("chat-message", async (data) => {
-        if (!users[socket.id] || !users[socket.id].authenticated) {
-            console.error('User not authenticated but trying to send message');
-            socket.emit('auth-error', { message: 'You must be logged in to send messages' });
-            return;
-        }
-        
-        // Skip empty messages
+        // Check for login and skip empty messages
         if (!data.message || data.message.trim() === '') {
             console.log('Ignoring empty message');
             return;
         }
+
+        // Get sender information - try from socket session first
+        let username = null;
+        let userId = null;
         
-        const username = users[socket.id].username;
-        let userId = users[socket.id].userId;
-        
-        console.log(`Chat message from ${username}: ${data.message.substring(0, 30)}${data.message.length > 30 ? '...' : ''}`);
-        
-        // CRITICAL: First check if this user already exists in the database
-        try {
-            // Check by username first
-            const { data: existingUserByName } = await getSupabaseClient(true)
-                .from('users')
-                .select('id')
-                .eq('username', username)
-                .maybeSingle();
-                
-            if (existingUserByName) {
-                // If user exists with this username but different ID, use the existing ID
-                console.log(`Found existing user record for username ${username} with ID ${existingUserByName.id}`);
-                userId = existingUserByName.id;
-                users[socket.id].userId = userId; // Update socket session
-            } else {
-                // Check by user ID
-                const { data: existingUserById } = await getSupabaseClient(true)
+        if (users[socket.id] && users[socket.id].authenticated) {
+            username = users[socket.id].username;
+            userId = users[socket.id].userId;
+            console.log(`Chat message from authenticated user ${username}: ${data.message.substring(0, 30)}${data.message.length > 30 ? '...' : ''}`);
+        } else if (data.sender) {
+            // If socket not authenticated but message has sender info, use that
+            username = data.sender;
+            console.log(`Chat message from message sender field ${username}: ${data.message.substring(0, 30)}${data.message.length > 30 ? '...' : ''}`);
+        } else if (data.username) {
+            // Fallback to username field if available
+            username = data.username;
+            console.log(`Chat message from message username field ${username}: ${data.message.substring(0, 30)}${data.message.length > 30 ? '...' : ''}`);
+        } else if (data.senderId && isValidUUID(data.senderId)) {
+            // If we have a sender ID but no username, try to look it up
+            try {
+                const { data: userRecord } = await getSupabaseClient(true)
                     .from('users')
-                    .select('id, username')
-                    .eq('id', userId)
+                    .select('username')
+                    .eq('id', data.senderId)
                     .maybeSingle();
                     
-                if (!existingUserById) {
-                    console.log(`Creating new user record for ${username} with ID ${userId}`);
-                    // User doesn't exist, create it
-                    const { error: insertError } = await getSupabaseClient(true)
-                        .from('users')
-                        .insert({
-                            id: userId,
-                            username: username,
-                            email: `${username}@homies.app`,
-                            password: 'auto-created',
-                            created_at: new Date().toISOString(),
-                            last_seen: new Date().toISOString(),
-                            verified: true,
-                            status: 'online',
-                            avatar_url: null
-                        });
-                    
-                    if (insertError) {
-                        console.error('Error creating user record:', insertError);
-                        // Generate a different ID with username as suffix for uniqueness
-                        userId = uuidv4();
-                        console.log(`Generated new user ID: ${userId}`);
-                        
-                        // Try one more time with new ID
-                        await getSupabaseClient(true)
-                            .from('users')
-                            .insert({
-                                id: userId,
-                                username: `${username}_${userId.substring(0, 4)}`, // Make username unique
-                                email: `${username}@homies.app`,
-                                password: 'auto-created',
-                                created_at: new Date().toISOString(),
-                                last_seen: new Date().toISOString(),
-                                verified: true,
-                                status: 'online',
-                                avatar_url: null
-                            })
-                            .then(result => {
-                                if (result.error) {
-                                    console.error('Failed on second attempt:', result.error);
-                                } else {
-                                    console.log(`Created user with ID ${userId}`);
-                                    users[socket.id].userId = userId;
-                                }
-                            });
-                    }
+                if (userRecord && userRecord.username) {
+                    username = userRecord.username;
+                    userId = data.senderId;
+                    console.log(`Found username ${username} for sender ID ${userId}`);
                 }
+            } catch (err) {
+                console.error('Error looking up username by ID:', err);
             }
-        } catch (userCheckError) {
-            console.error('Error checking/creating user:', userCheckError);
         }
         
-        // Create message object with all required fields
+        // If we still don't have a username, reject the message
+        if (!username) {
+            console.error('Cannot identify message sender, rejecting message');
+            socket.emit('message-error', { message: 'You must be logged in to send messages' });
+            return;
+        }
+        
+        // Resolve user ID using our new utility function
+        try {
+            // This will either find an existing user or create one
+            userId = await getUserIdByUsername(username);
+            
+            if (!userId) {
+                console.error(`Could not resolve valid user ID for ${username}`);
+                socket.emit('message-error', { message: 'User validation failed' });
+                return;
+            }
+            
+            // Update socket session with verified user info
+            if (!users[socket.id] || !users[socket.id].authenticated) {
+                users[socket.id] = {
+                    socketId: socket.id,
+                    authenticated: true,
+                    username: username,
+                    userId: userId
+                };
+                console.log(`Updated socket session with user ${username} (${userId})`);
+            }
+        } catch (userError) {
+            console.error('Error resolving user:', userError);
+            socket.emit('message-error', { message: 'Error processing user account' });
+            return;
+        }
+        
+        // Create message object with the validated user info
         const messageObj = {
-            id: uuidv4(), // Give each message a unique ID
+            id: uuidv4(),
             sender: username,
             senderId: userId,
             content: data.message,
             timestamp: data.timestamp || Date.now(),
-            channel: data.channel || 'general' // For client-side organization
+            channel: data.channel || 'general'
         };
         
-        // Ensure general channel exists
+        // Ensure channel exists
         if (!channelMessages.general) {
             channelMessages.general = [];
         }
@@ -562,21 +547,21 @@ io.on("connection", (socket) => {
         // Add to channel messages
         channelMessages.general.push(messageObj);
         
-        // Broadcast to all clients with the complete message object
+        // Broadcast to all clients
         io.emit("chat-message", messageObj);
         
-        // Save message to Supabase
+        // Save to Supabase using our improved function
         try {
-            // Now that we've verified/created the user, save the message
-            const saveResult = await saveMessageToSupabase({
+            // The saveMessageToSupabase function will handle user verification again
+            const saved = await saveMessageToSupabase({
                 id: messageObj.id,
+                sender: messageObj.sender,
                 senderId: messageObj.senderId,
                 content: messageObj.content,
-                sender: messageObj.sender,
                 timestamp: messageObj.timestamp
             });
             
-            if (saveResult) {
+            if (saved) {
                 console.log(`Message saved to Supabase with ID: ${messageObj.id}`);
             } else {
                 console.error('Failed to save message to Supabase');
@@ -1034,8 +1019,7 @@ io.on("connection", (socket) => {
                                         created_at: new Date().toISOString(),
                                         last_seen: new Date().toISOString(),
                                         verified: true,
-                                        status: 'online',
-                                        avatar_url: null
+                                        status: 'online'
                                     });
                                     
                                 if (retryError) {
