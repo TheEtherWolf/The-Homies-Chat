@@ -426,13 +426,33 @@ async function saveMessageToSupabase(message) {
       return false;
     }
     
+    // Skip empty messages
+    if (!message.content && !message.message) {
+      console.log('Skipping empty message save');
+      return false;
+    }
+    
     // Ensure message has a valid sender ID
     if (!message.senderId || !isValidUUID(message.senderId)) {
       console.error('Invalid sender ID for message:', message.senderId);
       return false;
     }
 
-    // CRITICAL: First check if the user record exists
+    // First try to find user by username to avoid duplicates
+    if (message.sender) {
+      const { data: userByUsername } = await serviceSupabase
+        .from('users')
+        .select('id')
+        .eq('username', message.sender)
+        .maybeSingle();
+        
+      if (userByUsername && userByUsername.id) {
+        console.log(`Found user ${message.sender} with ID ${userByUsername.id}, using this ID`);
+        message.senderId = userByUsername.id;
+      }
+    }
+
+    // Now check if the user record exists with this ID
     const { data: userExists, error: userCheckError } = await serviceSupabase
       .from('users')
       .select('id')
@@ -446,18 +466,29 @@ async function saveMessageToSupabase(message) {
     
     // If user doesn't exist, create them first
     if (!userExists) {
-      console.log(`User with ID ${message.senderId} doesn't exist, creating record before saving message`);
-      
-      const username = message.sender || message.username || `User_${message.senderId.substring(0, 8)}`;
+      // Get username from message
+      const username = message.sender || `User_${message.senderId.substring(0, 8)}`;
       const now = new Date().toISOString();
+      
+      // Check if this username already exists
+      const { data: existingName } = await serviceSupabase
+        .from('users')
+        .select('id')
+        .eq('username', username)
+        .maybeSingle();
+        
+      // If username exists, create a unique version
+      const finalUsername = existingName ? `${username}_${message.senderId.substring(0, 4)}` : username;
+      
+      console.log(`Creating user record for ${finalUsername} with ID ${message.senderId}`);
       
       // Create the user record first
       const { error: createError } = await serviceSupabase
         .from('users')
         .insert({
           id: message.senderId,
-          username: username,
-          email: `${username}@homies.app`,
+          username: finalUsername,
+          email: `${finalUsername}@homies.app`,
           password: 'auto-created',
           created_at: now,
           last_seen: now,
@@ -471,10 +502,10 @@ async function saveMessageToSupabase(message) {
         return false;
       }
       
-      console.log(`Created user record for ${username} with ID ${message.senderId}`);
+      console.log(`Created user record for ${finalUsername} with ID ${message.senderId}`);
     }
 
-    // Generate a valid UUID for the message ID
+    // Generate a valid UUID for the message ID if not provided
     const messageId = message.id || uuidv4();
 
     // Format message to match Supabase schema exactly

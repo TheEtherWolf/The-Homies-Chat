@@ -447,43 +447,43 @@ io.on("connection", (socket) => {
             return;
         }
         
+        // Skip empty messages
+        if (!data.message || data.message.trim() === '') {
+            console.log('Ignoring empty message');
+            return;
+        }
+        
         const username = users[socket.id].username;
         let userId = users[socket.id].userId;
         
         console.log(`Chat message from ${username}: ${data.message.substring(0, 30)}${data.message.length > 30 ? '...' : ''}`);
         
-        // CRITICAL: First check and ensure this userId exists in the database
+        // CRITICAL: First check if this user already exists in the database
         try {
-            const { data: userExists, error } = await getSupabaseClient(true)
+            // Check by username first
+            const { data: existingUserByName } = await getSupabaseClient(true)
                 .from('users')
                 .select('id')
-                .eq('id', userId)
+                .eq('username', username)
                 .maybeSingle();
                 
-            if (error || !userExists) {
-                console.log(`User ID ${userId} doesn't exist in database. Creating user record.`);
-                // Create the user record BEFORE trying to save any messages
-                const { error: insertError } = await getSupabaseClient(true)
+            if (existingUserByName) {
+                // If user exists with this username but different ID, use the existing ID
+                console.log(`Found existing user record for username ${username} with ID ${existingUserByName.id}`);
+                userId = existingUserByName.id;
+                users[socket.id].userId = userId; // Update socket session
+            } else {
+                // Check by user ID
+                const { data: existingUserById } = await getSupabaseClient(true)
                     .from('users')
-                    .insert({
-                        id: userId,
-                        username: username,
-                        email: `${username}@homies.app`,
-                        password: 'auto-created',
-                        created_at: new Date().toISOString(),
-                        last_seen: new Date().toISOString(),
-                        verified: true,
-                        status: 'online'
-                    });
-                
-                if (insertError) {
-                    console.error('Error creating user record for message sender:', insertError);
-                    // If we can't create the user, generate a new ID and try again
-                    userId = uuidv4();
-                    console.log(`Generated new user ID: ${userId}`);
+                    .select('id, username')
+                    .eq('id', userId)
+                    .maybeSingle();
                     
-                    // Try one more time with new ID
-                    const { error: retryError } = await getSupabaseClient(true)
+                if (!existingUserById) {
+                    console.log(`Creating new user record for ${username} with ID ${userId}`);
+                    // User doesn't exist, create it
+                    const { error: insertError } = await getSupabaseClient(true)
                         .from('users')
                         .insert({
                             id: userId,
@@ -493,20 +493,43 @@ io.on("connection", (socket) => {
                             created_at: new Date().toISOString(),
                             last_seen: new Date().toISOString(),
                             verified: true,
-                            status: 'online'
+                            status: 'online',
+                            avatar_url: null
                         });
+                    
+                    if (insertError) {
+                        console.error('Error creating user record:', insertError);
+                        // Generate a different ID with username as suffix for uniqueness
+                        userId = uuidv4();
+                        console.log(`Generated new user ID: ${userId}`);
                         
-                    if (retryError) {
-                        console.error('Failed to create user record on second attempt:', retryError);
-                    } else {
-                        console.log(`Successfully created user record with new ID: ${userId}`);
-                        // Update the socket session with the new ID
-                        users[socket.id].userId = userId;
+                        // Try one more time with new ID
+                        await getSupabaseClient(true)
+                            .from('users')
+                            .insert({
+                                id: userId,
+                                username: `${username}_${userId.substring(0, 4)}`, // Make username unique
+                                email: `${username}@homies.app`,
+                                password: 'auto-created',
+                                created_at: new Date().toISOString(),
+                                last_seen: new Date().toISOString(),
+                                verified: true,
+                                status: 'online',
+                                avatar_url: null
+                            })
+                            .then(result => {
+                                if (result.error) {
+                                    console.error('Failed on second attempt:', result.error);
+                                } else {
+                                    console.log(`Created user with ID ${userId}`);
+                                    users[socket.id].userId = userId;
+                                }
+                            });
                     }
                 }
             }
         } catch (userCheckError) {
-            console.error('Error checking/creating user before message save:', userCheckError);
+            console.error('Error checking/creating user:', userCheckError);
         }
         
         // Create message object
@@ -519,7 +542,7 @@ io.on("connection", (socket) => {
             channel: 'general' // For client-side organization only
         };
         
-        // Ensure channel exists
+        // Ensure general channel exists
         if (!channelMessages.general) {
             channelMessages.general = [];
         }
@@ -530,11 +553,14 @@ io.on("connection", (socket) => {
         // Broadcast to all clients
         io.emit("chat-message", messageObj);
         
-        // Save to Supabase
+        // Save to Supabase - only pass the formatted message
         try {
             const saved = await saveMessageToSupabase({
-                ...messageObj,
-                message: messageObj.content
+                id: messageObj.id,
+                senderId: messageObj.senderId,
+                content: messageObj.content,
+                sender: messageObj.sender,
+                timestamp: messageObj.timestamp
             });
             
             if (saved) {
@@ -546,8 +572,7 @@ io.on("connection", (socket) => {
             console.error('Error saving message to Supabase:', error);
         }
         
-        // Save all messages (throttled)
-        throttledSave();
+        // No need to call throttledSave() - we've already saved directly
     });
     
     // Direct message handler

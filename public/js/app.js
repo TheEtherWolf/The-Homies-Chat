@@ -144,3 +144,50 @@ function decryptData(encryptedData, key) {
         return null;
     }
 }
+
+// Send a message
+function sendMessage() {
+    // Get user data from session
+    const userData = sessionStorage.getItem('user');
+    if (!userData) {
+        console.error('User not authenticated');
+        showError('Please log in to send messages');
+        return;
+    }
+    
+    // Get message content
+    const messageInput = document.getElementById('message-input');
+    const messageContent = messageInput.value.trim();
+    
+    // Don't send empty messages
+    if (!messageContent) {
+        console.log('Prevented sending empty message');
+        return;
+    }
+    
+    // Parse user data
+    let user;
+    try {
+        user = JSON.parse(userData);
+    } catch (error) {
+        console.error('Error parsing user data:', error);
+        showError('Session data is corrupted. Please log in again.');
+        return;
+    }
+    
+    // Create message object
+    const message = {
+        senderId: user.id,
+        message: messageContent,
+        timestamp: Date.now()
+    };
+    
+    // Clear input field
+    messageInput.value = '';
+    
+    // Send message to server
+    socket.emit('chat-message', message);
+    
+    // Show success feedback
+    messageInput.focus();
+}
