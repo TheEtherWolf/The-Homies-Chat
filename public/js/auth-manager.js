@@ -301,32 +301,43 @@ class AuthManager {
                 if (user && user.username && user.id) {
                     console.log('[AUTH_DEBUG] Valid user found in session:', user.username);
                     
-                    // Re-connect to socket with user information
-                    console.log('[AUTH_DEBUG] Reconnecting socket with user session:', user.username);
-                    window.socket.emit('join', user.username);
+                    // Register this session with the server
+                    console.log('[AUTH_DEBUG] Registering user session with server:', user.username);
+                    window.socket.emit('register-session', user);
                     
-                    // Tell the server to re-authenticate this user
-                    window.socket.emit('session-auth', { userId: user.id, username: user.username }, (response) => {
-                        if (response.success) {
-                            console.log('[AUTH_DEBUG] Server accepted session authentication');
-                            
-                            // Update user display
-                            this.currentUserDisplay.textContent = user.username;
-                            
-                            // Hide auth container and show app
-                            console.log('[AUTH_DEBUG] Hiding auth container, showing app container.');
-                            this.authContainer.classList.add('d-none');
-                            this.appContainer.classList.remove('d-none');
-                            
-                            // ** Dispatch the userLoggedIn event for app.js **
-                            console.log('[AUTH_DEBUG] Dispatching userLoggedIn event from checkSession with user:', user);
-                            const event = new CustomEvent('userLoggedIn', { detail: { user } });
-                            document.dispatchEvent(event);
-                        } else {
-                            console.warn('[AUTH_DEBUG] Server rejected session authentication, clearing session');
-                            sessionStorage.removeItem('user');
-                            this.toggleForms('login');
+                    // Set up listeners for auth responses
+                    window.socket.once('auth-success', (response) => {
+                        console.log('[AUTH_DEBUG] Server accepted session authentication');
+                        
+                        // If server returns a different user ID, update our session storage
+                        if (response.id && response.id !== user.id) {
+                            console.log('[AUTH_DEBUG] Server updated user ID from', user.id, 'to', response.id);
+                            user.id = response.id;
+                            sessionStorage.setItem('user', JSON.stringify(user));
                         }
+                        
+                        // Update user display
+                        this.currentUserDisplay.textContent = user.username;
+                        
+                        // Hide auth container and show app
+                        console.log('[AUTH_DEBUG] Hiding auth container, showing app container.');
+                        this.authContainer.classList.add('d-none');
+                        this.appContainer.classList.remove('d-none');
+                        
+                        // Dispatch the userLoggedIn event for app.js
+                        console.log('[AUTH_DEBUG] Dispatching userLoggedIn event from checkSession with user:', user);
+                        const event = new CustomEvent('userLoggedIn', { detail: { user } });
+                        document.dispatchEvent(event);
+                        
+                        // Request message history after successful auth
+                        window.socket.emit('get-messages', { channel: 'general' });
+                    });
+                    
+                    window.socket.once('auth-error', (error) => {
+                        console.warn('[AUTH_DEBUG] Server rejected session authentication:', error.message);
+                        sessionStorage.removeItem('user');
+                        this.toggleForms('login');
+                        this.showMessage('Session expired. Please log in again.', 'warning');
                     });
                 } else {
                     console.warn('[AUTH_DEBUG] Invalid user data structure found in session storage.');
