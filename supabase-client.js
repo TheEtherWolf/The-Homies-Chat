@@ -168,7 +168,7 @@ async function registerUser(username, password, email = '') {
         verified: true, // Auto-verify during development
         verification_token: verificationToken,
         token_expires: tokenExpires.toISOString(),
-        avater_url: null, // Typo in DB column name preserved
+        avatar_url: null, // Avatar URL for user profile
         status: 'online'
       });
     
@@ -227,7 +227,7 @@ async function signInUser(username, password) {
     // First, try direct simple lookup by username only for development
     let { data: user, error } = await serviceSupabase
       .from('users')
-      .select('id, username, email, status, avater_url')
+      .select('id, username, email, status, avatar_url')
       .eq('username', username)
       .maybeSingle();
       
@@ -288,7 +288,7 @@ async function signInUser(username, password) {
         user_metadata: { 
           username: user.username,
           email: user.email,
-          avatar_url: user.avater_url,
+          avatar_url: user.avatar_url,
           status: user.status || 'online'
         }
       };
@@ -475,7 +475,7 @@ async function saveMessageToSupabase(message) {
     
     console.log(`Saving message to Supabase:`, formattedMessage);
     
-    const { error } = await client
+    const { error } = await serviceSupabase
       .from('messages')
       .upsert(formattedMessage);
     
@@ -537,7 +537,7 @@ async function saveMessagesToSupabase(messages) {
           
           // Try to lookup user by username
           try {
-            const { data: userData } = await client
+            const { data: userData } = await serviceSupabase
               .from('users')
               .select('id')
               .eq('username', message.sender || 'Unknown')
@@ -578,7 +578,7 @@ async function saveMessagesToSupabase(messages) {
       }
 
       try {
-        const { error } = await client
+        const { error } = await serviceSupabase
           .from('messages')
           .upsert(formattedMessages);
         
