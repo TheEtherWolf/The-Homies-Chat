@@ -298,22 +298,36 @@ class AuthManager {
             console.log('[AUTH_DEBUG] Found user data in sessionStorage:', userData);
             try {
                 const user = JSON.parse(userData);
-                if (user && user.username) {
+                if (user && user.username && user.id) {
                     console.log('[AUTH_DEBUG] Valid user found in session:', user.username);
-                    // Update user display
-                    this.currentUserDisplay.textContent = user.username;
                     
-                    // Hide auth container and show app
-                    console.log('[AUTH_DEBUG] Hiding auth container, showing app container.');
-                    this.authContainer.classList.add('d-none');
-                    this.appContainer.classList.remove('d-none');
+                    // Re-connect to socket with user information
+                    console.log('[AUTH_DEBUG] Reconnecting socket with user session:', user.username);
+                    window.socket.emit('join', user.username);
                     
-                    // ** Dispatch the userLoggedIn event for app.js **
-                    console.log('[AUTH_DEBUG] Dispatching userLoggedIn event from checkSession with user:', user);
-                    const event = new CustomEvent('userLoggedIn', { detail: { user } });
-                    document.dispatchEvent(event);
-                    
-                    console.log('[AUTH_DEBUG] Session restored for user:', user.username);
+                    // Tell the server to re-authenticate this user
+                    window.socket.emit('session-auth', { userId: user.id, username: user.username }, (response) => {
+                        if (response.success) {
+                            console.log('[AUTH_DEBUG] Server accepted session authentication');
+                            
+                            // Update user display
+                            this.currentUserDisplay.textContent = user.username;
+                            
+                            // Hide auth container and show app
+                            console.log('[AUTH_DEBUG] Hiding auth container, showing app container.');
+                            this.authContainer.classList.add('d-none');
+                            this.appContainer.classList.remove('d-none');
+                            
+                            // ** Dispatch the userLoggedIn event for app.js **
+                            console.log('[AUTH_DEBUG] Dispatching userLoggedIn event from checkSession with user:', user);
+                            const event = new CustomEvent('userLoggedIn', { detail: { user } });
+                            document.dispatchEvent(event);
+                        } else {
+                            console.warn('[AUTH_DEBUG] Server rejected session authentication, clearing session');
+                            sessionStorage.removeItem('user');
+                            this.toggleForms('login');
+                        }
+                    });
                 } else {
                     console.warn('[AUTH_DEBUG] Invalid user data structure found in session storage.');
                     sessionStorage.removeItem('user'); // Clear invalid data
@@ -326,11 +340,11 @@ class AuthManager {
                 sessionStorage.removeItem('user'); // Clear corrupted data
                 console.log('[AUTH_DEBUG] Cleared corrupted user data from sessionStorage.');
                 // Ensure login form is visible if session check fails
-                 this.toggleForms('login');
+                this.toggleForms('login');
             }
         } else {
             console.log('[AUTH_DEBUG] No user data found in sessionStorage. Showing login form.');
-             // Ensure login form is visible if no session data
+            // Ensure login form is visible if no session data
             this.toggleForms('login');
         }
     }
