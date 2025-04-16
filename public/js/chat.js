@@ -541,33 +541,56 @@ class ChatManager {
         
         if (!message) return;
         
+        // Make sure we have a channel property
+        if (!message.channel && message.isGeneralMessage) {
+            message.channel = 'general';
+        }
+        
+        // Store the sender info in allUsers if not already present
+        if (message.senderId && message.sender && !this.allUsers[message.senderId]) {
+            this.allUsers[message.senderId] = {
+                id: message.senderId,
+                username: message.sender,
+                status: 'online'
+            };
+            // Update UI with new user
+            this.updateUserList();
+        }
+        
+        // Initialize channel if needed
+        if (message.channel && !this.channelMessages[message.channel]) {
+            this.channelMessages[message.channel] = [];
+        }
+        
         // Handle different message types
         if (message.channel === 'general' || message.isGeneralMessage) {
             // General chat message
             this.generalChatMessages.push(message);
             
-            if (this.inGeneralChat) {
+            if (this.inGeneralChat || this.currentChannel === 'general') {
                 this.displayMessageInUI(message, 'general');
             }
-        } else if (message.channel && this.channelMessages[message.channel]) {
-            // Channel message
+        } else if (message.channel && message.channel.startsWith('dm_')) {
+            // DM message - format is dm_userId1_userId2
+            // Store in the channel messages
+            this.channelMessages[message.channel].push(message);
+            
+            const userIds = message.channel.replace('dm_', '').split('_');
+            const otherUserId = userIds[0] === this.currentUser.id ? userIds[1] : userIds[0];
+            
+            // If this is the current conversation, display it
+            if (this.currentChannel === message.channel) {
+                this.displayMessageInUI(message, message.channel);
+            } else {
+                // Notify user of new message
+                this.showUnreadIndicator(otherUserId);
+            }
+        } else if (message.channel) {
+            // Regular channel message
             this.channelMessages[message.channel].push(message);
             
             if (this.currentChannel === message.channel) {
                 this.displayMessageInUI(message, message.channel);
-            }
-        } else if (message.recipientId === this.currentUser.id || message.senderId === this.currentUser.id) {
-            // DM message
-            const otherUserId = message.senderId === this.currentUser.id ? message.recipientId : message.senderId;
-            
-            if (!this.dmConversations[otherUserId]) {
-                this.dmConversations[otherUserId] = [];
-            }
-            
-            this.dmConversations[otherUserId].push(message);
-            
-            if (this.currentDmRecipientId === otherUserId) {
-                this.displayMessageInUI(message, 'dm');
             }
         }
     }
@@ -996,6 +1019,55 @@ class ChatManager {
             // Close bootstrap modal
             const bsModal = bootstrap.Modal.getInstance(modal);
             if (bsModal) bsModal.hide();
+        }
+    }
+
+    // Show unread indicator for a DM
+    showUnreadIndicator(userId) {
+        if (!userId) return;
+        
+        const dmItem = document.querySelector(`.dm-item[data-user-id="${userId}"]`);
+        if (dmItem) {
+            dmItem.classList.add('unread');
+            
+            // Add an unread dot if it doesn't exist
+            if (!dmItem.querySelector('.unread-dot')) {
+                const unreadDot = document.createElement('span');
+                unreadDot.className = 'unread-dot';
+                dmItem.appendChild(unreadDot);
+            }
+        }
+    }
+    
+    // Clear unread indicator for a DM
+    clearUnreadIndicator(userId) {
+        if (!userId) return;
+        
+        const dmItem = document.querySelector(`.dm-item[data-user-id="${userId}"]`);
+        if (dmItem) {
+            dmItem.classList.remove('unread');
+            
+            // Remove the unread dot if it exists
+            const unreadDot = dmItem.querySelector('.unread-dot');
+            if (unreadDot) {
+                unreadDot.remove();
+            }
+        }
+    }
+
+    // Clear unread indicator for a DM
+    clearUnreadIndicator(userId) {
+        if (!userId) return;
+        
+        const dmItem = document.querySelector(`.dm-item[data-user-id="${userId}"]`);
+        if (dmItem) {
+            dmItem.classList.remove('unread');
+            
+            // Remove the unread dot if it exists
+            const unreadDot = dmItem.querySelector('.unread-dot');
+            if (unreadDot) {
+                unreadDot.remove();
+            }
         }
     }
 }

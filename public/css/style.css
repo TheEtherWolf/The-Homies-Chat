@@ -566,6 +566,34 @@ body {
   margin: 10px 0;
 }
 
+/* Unread indicators */
+.unread-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: #0fd7f1;
+    border-radius: 50%;
+    margin-left: 10px;
+    animation: pulse 2s infinite;
+}
+
+.dm-item.unread {
+    font-weight: bold;
+    background-color: rgba(15, 215, 241, 0.1);
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(15, 215, 241, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(15, 215, 241, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(15, 215, 241, 0);
+    }
+}
+
 /* Media queries for responsive design */
 @media (max-width: 768px) {
   #app-container {

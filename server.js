@@ -668,41 +668,50 @@ io.on("connection", (socket) => {
     
     // Chat message handler
     socket.on("chat-message", async (data) => {
-        // Check for login and skip empty messages
-        if (!data.message || data.message.trim() === '') {
-            console.log('Ignoring empty message');
+        console.log("Received chat message:", data);
+        
+        if (!data || typeof data !== 'object') {
+            console.error("Invalid message data received");
+            socket.emit('message-error', { message: 'Invalid message format' });
             return;
         }
-
-        // Get sender information - try from socket session first
-        let username = null;
-        let userId = null;
         
-        if (users[socket.id] && users[socket.id].authenticated) {
-            username = users[socket.id].username;
-            userId = users[socket.id].userId;
-            console.log(`Chat message from authenticated user ${username}: ${data.message.substring(0, 30)}${data.message.length > 30 ? '...' : ''}`);
-        } else if (data.sender) {
-            // If socket not authenticated but message has sender info, use that
-            username = data.sender;
-            console.log(`Chat message from message sender field ${username}: ${data.message.substring(0, 30)}${data.message.length > 30 ? '...' : ''}`);
-        } else if (data.username) {
-            // Fallback to username field if available
-            username = data.username;
-            console.log(`Chat message from message username field ${username}: ${data.message.substring(0, 30)}${data.message.length > 30 ? '...' : ''}`);
-        } else if (data.senderId && isValidUUID(data.senderId)) {
-            // If we have a sender ID but no username, try to look it up
+        // Extract data, with validation and defaults
+        const content = data.content || '';
+        const channel = data.channel || 'general';
+        const timestamp = data.timestamp || Date.now();
+        let senderId = data.senderId || null;
+        let username = data.sender || null;
+        
+        // Validate message content
+        if (!content || typeof content !== 'string' || content.trim() === '') {
+            console.error("Empty or invalid message content");
+            socket.emit('message-error', { message: 'Message content cannot be empty' });
+            return;
+        }
+        
+        // Attempt to resolve sender from socket session if not provided
+        if (!username || !senderId) {
+            if (users[socket.id] && users[socket.id].username) {
+                username = users[socket.id].username;
+                senderId = users[socket.id].userId;
+                console.log(`Using socket session user: ${username} (${senderId})`);
+            }
+        }
+        
+        // If we still don't have a username, try to look it up by ID
+        if (!username && senderId) {
             try {
-                const { data: userRecord } = await getSupabaseClient(true)
+                console.log(`Looking up username for sender ID: ${senderId}`);
+                const { data: userRecord, error } = await getSupabaseClient(true)
                     .from('users')
                     .select('username')
-                    .eq('id', data.senderId)
-                    .maybeSingle();
+                    .eq('id', senderId)
+                    .single();
                     
                 if (userRecord && userRecord.username) {
                     username = userRecord.username;
-                    userId = data.senderId;
-                    console.log(`Found username ${username} for sender ID ${userId}`);
+                    console.log(`Found username ${username} for sender ID ${senderId}`);
                 }
             } catch (err) {
                 console.error('Error looking up username by ID:', err);
@@ -719,9 +728,11 @@ io.on("connection", (socket) => {
         // Resolve user ID using our new utility function
         try {
             // This will either find an existing user or create one
-            userId = await getUserIdByUsername(username);
+            if (!senderId) {
+                senderId = await getUserIdByUsername(username);
+            }
             
-            if (!userId) {
+            if (!senderId) {
                 console.error(`Could not resolve valid user ID for ${username}`);
                 socket.emit('message-error', { message: 'User validation failed' });
                 return;
@@ -733,9 +744,9 @@ io.on("connection", (socket) => {
                     socketId: socket.id,
                     authenticated: true,
                     username: username,
-                    userId: userId
+                    userId: senderId
                 };
-                console.log(`Updated socket session with user ${username} (${userId})`);
+                console.log(`Updated socket session with user ${username} (${senderId})`);
             }
         } catch (userError) {
             console.error('Error resolving user:', userError);
@@ -747,41 +758,36 @@ io.on("connection", (socket) => {
         const messageObj = {
             id: uuidv4(),
             sender: username,
-            senderId: userId,
-            content: data.message,
-            timestamp: data.timestamp || Date.now(),
-            channel: data.channel || 'general'
+            senderId: senderId,
+            content: content,
+            timestamp: timestamp,
+            channel: channel
         };
         
-        // Ensure channel exists
-        if (!channelMessages.general) {
-            channelMessages.general = [];
+        console.log(`Processed message from ${username} (${senderId}) in channel: ${channel}`);
+        
+        // Add to the appropriate channel
+        if (!channelMessages[channel]) {
+            channelMessages[channel] = [];
         }
+        channelMessages[channel].push(messageObj);
         
-        // Add to channel messages
-        channelMessages.general.push(messageObj);
-        
-        // Broadcast to all clients
+        // Broadcast to all connected clients
         io.emit("chat-message", messageObj);
         
-        // Save to Supabase using our improved function
+        // Store in database
         try {
-            // The saveMessageToSupabase function will handle user verification again
-            const saved = await saveMessageToSupabase({
-                id: messageObj.id,
-                sender: messageObj.sender,
-                senderId: messageObj.senderId,
-                content: messageObj.content,
-                timestamp: messageObj.timestamp
-            });
+            console.log(`Saving message to Supabase from user ${username} (${senderId}) in channel ${channel}`);
             
-            if (saved) {
-                console.log(`Message saved to Supabase with ID: ${messageObj.id}`);
-            } else {
-                console.error('Failed to save message to Supabase');
-            }
-        } catch (error) {
-            console.error('Error saving message to Supabase:', error);
+            // Save message to Supabase
+            await saveMessageToSupabase({
+                sender_id: senderId,
+                content: content,
+                channel: channel
+            });
+        } catch (dbError) {
+            console.error("Error saving message to database:", dbError);
+            // We still emit the message even if DB save fails
         }
     });
     
