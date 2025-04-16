@@ -588,14 +588,82 @@ io.on("connection", (socket) => {
     });
     
     // Handle channel-specific message requests
-    socket.on('get-messages', (data) => {
+    socket.on('get-messages', async (data) => {
         const channel = data.channel || 'general';
         console.log(`Requested messages for channel: ${channel}`);
         
-        socket.emit('message-history', {
-            channel,
-            messages: channelMessages[channel] || []
-        });
+        try {
+            // Load messages from Supabase if not already loaded
+            if (!channelMessages[channel] || channelMessages[channel].length === 0) {
+                console.log(`Loading messages for channel: ${channel} from database`);
+                
+                // Fetch messages for this specific channel from Supabase
+                const { data: messages, error } = await getSupabaseClient(true)
+                    .from('messages')
+                    .select(`
+                        id,
+                        sender_id,
+                        content,
+                        created_at,
+                        type,
+                        file_url,
+                        file_type,
+                        file_size,
+                        channel,
+                        users(id, username)
+                    `)
+                    .eq('channel', channel)
+                    .order('created_at', { ascending: true })
+                    .limit(100);
+                
+                if (error) {
+                    console.error(`Error loading messages for channel ${channel}:`, error);
+                } else if (messages && messages.length > 0) {
+                    // Process the messages into the expected format
+                    const formattedMessages = messages.map(msg => ({
+                        id: msg.id,
+                        sender: msg.users?.username || 'Unknown User',
+                        senderId: msg.sender_id,
+                        content: msg.content,
+                        timestamp: msg.created_at,
+                        channel: msg.channel,
+                        type: msg.type,
+                        fileUrl: msg.file_url,
+                        fileType: msg.file_type,
+                        fileSize: msg.file_size
+                    }));
+                    
+                    // Initialize channel if needed
+                    if (!channelMessages[channel]) {
+                        channelMessages[channel] = [];
+                    }
+                    
+                    // Add messages to channel, avoiding duplicates
+                    formattedMessages.forEach(msg => {
+                        const exists = channelMessages[channel].some(existing => existing.id === msg.id);
+                        if (!exists) {
+                            channelMessages[channel].push(msg);
+                        }
+                    });
+                    
+                    // Sort by timestamp
+                    channelMessages[channel].sort((a, b) => 
+                        new Date(a.timestamp) - new Date(b.timestamp)
+                    );
+                    
+                    console.log(`Loaded ${formattedMessages.length} messages for channel: ${channel}`);
+                }
+            }
+            
+            // Send the messages to the client
+            socket.emit('message-history', {
+                channel,
+                messages: channelMessages[channel] || []
+            });
+        } catch (error) {
+            console.error(`Error loading messages for channel ${channel}:`, error);
+            socket.emit('message-history', { channel, messages: [] });
+        }
     });
     
     // Chat message handler
@@ -714,61 +782,6 @@ io.on("connection", (socket) => {
             }
         } catch (error) {
             console.error('Error saving message to Supabase:', error);
-        }
-    });
-    
-    // Handle channel-specific message requests
-    socket.on('get-messages', async (data) => {
-        const channel = data.channel || 'general';
-        console.log(`Requested messages for channel: ${channel}`);
-        
-        try {
-            // Load messages from Supabase if not already loaded
-            if (!channelMessages[channel] || channelMessages[channel].length === 0) {
-                console.log(`Loading messages for channel: ${channel} from database`);
-                const messages = await loadMessagesFromSupabase();
-                
-                if (messages && messages.length > 0) {
-                    // Process messages
-                    const formattedMessages = messages.map(msg => ({
-                        id: msg.id,
-                        sender: msg.sender_username || msg.sender || 'Unknown User',
-                        senderId: msg.sender_id,
-                        content: msg.content,
-                        timestamp: msg.created_at,
-                        channel: channel
-                    }));
-                    
-                    // Initialize channel if needed
-                    if (!channelMessages[channel]) {
-                        channelMessages[channel] = [];
-                    }
-                    
-                    // Add messages to channel, avoiding duplicates
-                    formattedMessages.forEach(msg => {
-                        const exists = channelMessages[channel].some(existing => existing.id === msg.id);
-                        if (!exists) {
-                            channelMessages[channel].push(msg);
-                        }
-                    });
-                    
-                    // Sort by timestamp
-                    channelMessages[channel].sort((a, b) => 
-                        new Date(a.timestamp) - new Date(b.timestamp)
-                    );
-                    
-                    console.log(`Loaded ${formattedMessages.length} messages for channel: ${channel}`);
-                }
-            }
-            
-            // Send the messages to the client
-            socket.emit('message-history', {
-                channel,
-                messages: channelMessages[channel] || []
-            });
-        } catch (error) {
-            console.error(`Error loading messages for channel ${channel}:`, error);
-            socket.emit('message-history', { channel, messages: [] });
         }
     });
     

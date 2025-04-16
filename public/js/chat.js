@@ -134,7 +134,7 @@ class ChatManager {
         // Update UI active state
         const allChannelItems = document.querySelectorAll('.channel-item');
         allChannelItems.forEach(item => {
-            const itemName = item.querySelector('span').textContent.trim();
+            const itemName = item.getAttribute('data-channel') || item.querySelector('span').textContent.trim();
             if (itemName === channelName) {
                 item.classList.add('active');
             } else {
@@ -155,15 +155,17 @@ class ChatManager {
         // Clear message container
         this.clearMessagesContainer();
         
-        // Display channel messages
-        if (this.channelMessages[channelName]) {
+        // Display channel messages from cache if available
+        if (this.channelMessages[channelName] && this.channelMessages[channelName].length > 0) {
+            console.log(`[CHAT_DEBUG] Displaying ${this.channelMessages[channelName].length} cached messages for channel: ${channelName}`);
             this.channelMessages[channelName].forEach(msg => this.displayMessageInUI(msg, channelName));
         } else {
             this.displaySystemMessage(`Welcome to #${channelName}`);
         }
         
-        // Request channel history from server
-        this.socket.emit('join-channel', { channel: channelName });
+        // Always request fresh messages from server
+        console.log(`[CHAT_DEBUG] Requesting messages for channel: ${channelName}`);
+        this.socket.emit('get-messages', { channel: channelName });
         
         // Update input placeholder
         if (this.messageInput) {
@@ -209,28 +211,34 @@ class ChatManager {
             this.updateUserList();
         }
         
+        // Create a consistent DM channel name (sorted IDs to ensure the same channel name regardless of sender/receiver)
+        const userIds = [this.currentUser.id, recipientUser.id].sort();
+        const dmChannelName = `dm_${userIds[0]}_${userIds[1]}`;
+        
         // Update state
         this.currentDmRecipientId = recipientUser.id;
         this.inGeneralChat = false;
-        this.currentChannel = null;
+        this.currentChannel = dmChannelName; // Use the DM channel name
         
         // Update UI
-        this.chatTitle.textContent = `@${username}`;
+        if (this.chatTitle) {
+            this.chatTitle.textContent = `@${username}`;
+        }
         
         // Clear messages container
-        this.messagesContainer.innerHTML = '';
+        this.clearMessagesContainer();
         
-        // Show DM messages if available
-        const conversationKey = this.currentUser.id + '_' + recipientUser.id;
-        const reverseKey = recipientUser.id + '_' + this.currentUser.id;
-        
-        if (this.dmConversations[conversationKey]) {
-            this.renderMessageHistory(this.dmConversations[conversationKey]);
-        } else if (this.dmConversations[reverseKey]) {
-            this.renderMessageHistory(this.dmConversations[reverseKey]);
+        // Display cached DM messages if available
+        if (this.channelMessages[dmChannelName] && this.channelMessages[dmChannelName].length > 0) {
+            console.log(`[CHAT_DEBUG] Displaying ${this.channelMessages[dmChannelName].length} cached messages for DM with ${username}`);
+            this.channelMessages[dmChannelName].forEach(msg => this.displayMessageInUI(msg, dmChannelName));
         } else {
-            this.addSystemMessage(`This is the beginning of your conversation with ${username}`);
+            this.displaySystemMessage(`This is the beginning of your conversation with ${username}`);
         }
+        
+        // Request DM history from server
+        console.log(`[CHAT_DEBUG] Requesting messages for DM channel: ${dmChannelName}`);
+        this.socket.emit('get-messages', { channel: dmChannelName });
         
         // Mark conversation as active in UI
         this.updateActiveDM(username);
@@ -664,44 +672,54 @@ class ChatManager {
     
     // Send a message
     sendMessage() {
-        const message = this.messageInput.value.trim();
-        
-        if (!message) {
-            return; // Don't send empty messages
-        }
-        
-        // Force socket reconnection if needed
-        if (!this.socket.connected) {
-            console.log('[CHAT_DEBUG] Socket disconnected, attempting to reconnect...');
-            this.socket.connect();
-            
-            // Add system message
-            this.addSystemMessage('Reconnecting to server...');
-            
-            // Give it a moment to reconnect
-            setTimeout(() => {
-                if (this.socket.connected) {
-                    console.log('[CHAT_DEBUG] Socket reconnected, sending message');
-                    this._sendMessageNow(message);
-                } else {
-                    console.log('[CHAT_DEBUG] Cannot send message: Socket not connected.');
-                    this.addSystemMessage('Cannot send message: disconnected. Try refreshing the page.');
-                    
-                    // Store message in local storage to try later
-                    const pendingMessages = JSON.parse(localStorage.getItem('pendingMessages') || '[]');
-                    pendingMessages.push({
-                        message,
-                        timestamp: Date.now(),
-                        channel: this.currentChannel,
-                        dmRecipient: this.currentDmRecipientId
-                    });
-                    localStorage.setItem('pendingMessages', JSON.stringify(pendingMessages));
-                }
-            }, 1000);
+        if (!this.socket) {
+            console.error('[CHAT_DEBUG] Cannot send message: Socket not connected');
             return;
         }
         
-        this._sendMessageNow(message);
+        const messageContent = this.messageInput.value.trim();
+        if (!messageContent) {
+            console.log('[CHAT_DEBUG] Cannot send empty message');
+            return;
+        }
+        
+        // Get the appropriate channel based on context
+        let channel = this.currentChannel;
+        
+        // If we're in a DM, make sure to use the DM channel format
+        if (this.currentDmRecipientId) {
+            const userIds = [this.currentUser.id, this.currentDmRecipientId].sort();
+            channel = `dm_${userIds[0]}_${userIds[1]}`;
+        }
+        
+        console.log(`[CHAT_DEBUG] Sending message to channel: ${channel}`);
+        
+        // Create message object
+        const messageObj = {
+            content: messageContent,
+            sender: this.currentUser.username,
+            senderId: this.currentUser.id,
+            timestamp: Date.now(),
+            channel: channel
+        };
+        
+        // Add to local messages cache
+        if (!this.channelMessages[channel]) {
+            this.channelMessages[channel] = [];
+        }
+        
+        // Add to local cache
+        this.channelMessages[channel].push(messageObj);
+        
+        // Display in UI
+        this.displayMessageInUI(messageObj, channel);
+        
+        // Send to server
+        this.socket.emit('chat-message', messageObj);
+        
+        // Clear input
+        this.messageInput.value = '';
+        this.messageInput.focus();
     }
     
     // Helper method to actually send the message
