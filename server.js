@@ -234,6 +234,112 @@ async function addChannelColumnIfNeeded() {
   }
 }
 
+// Add channel management functions
+async function setupChannelsTable() {
+  try {
+    console.log('Setting up channels table...');
+    
+    // Create channels table if it doesn't exist
+    const { error: tableError } = await getSupabaseClient(true).rpc('exec_sql', {
+      sql_string: `
+        CREATE TABLE IF NOT EXISTS public.channels (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT UNIQUE NOT NULL,
+          created_by UUID REFERENCES public.users(id),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+          description TEXT,
+          is_private BOOLEAN DEFAULT false
+        );
+        
+        -- Insert default channels if they don't exist
+        INSERT INTO public.channels (name, description, is_private)
+        VALUES ('general', 'General chat for everyone', false)
+        ON CONFLICT (name) DO NOTHING;
+        
+        INSERT INTO public.channels (name, description, is_private)
+        VALUES ('random', 'Random discussions', false)
+        ON CONFLICT (name) DO NOTHING;
+      `
+    });
+    
+    if (tableError) {
+      console.error('Error creating channels table:', tableError);
+    } else {
+      console.log('Channels table created or verified');
+    }
+  } catch (error) {
+    console.error('Error setting up channels table:', error);
+  }
+}
+
+// Create a new channel
+async function createChannel(name, userId, description = '', isPrivate = false) {
+  try {
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      console.error('Invalid channel name');
+      return { success: false, error: 'Invalid channel name' };
+    }
+    
+    // Sanitize channel name - lowercase, no spaces, only alphanumeric and hyphens
+    const sanitizedName = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    
+    // Check if channel already exists
+    const { data: existingChannel } = await getSupabaseClient(true)
+      .from('channels')
+      .select('id')
+      .eq('name', sanitizedName)
+      .maybeSingle();
+      
+    if (existingChannel) {
+      console.log(`Channel ${sanitizedName} already exists`);
+      return { success: false, error: 'Channel already exists', id: existingChannel.id };
+    }
+    
+    // Create the new channel
+    const { data: newChannel, error } = await getSupabaseClient(true)
+      .from('channels')
+      .insert({
+        name: sanitizedName,
+        created_by: userId,
+        description: description,
+        is_private: isPrivate
+      })
+      .select()
+      .single();
+      
+    if (error) {
+      console.error('Error creating channel:', error);
+      return { success: false, error: error.message };
+    }
+    
+    console.log(`Created new channel: ${sanitizedName}`);
+    return { success: true, channel: newChannel };
+  } catch (error) {
+    console.error('Error in createChannel:', error);
+    return { success: false, error: 'Server error' };
+  }
+}
+
+// Get all channels
+async function getAllChannels() {
+  try {
+    const { data: channels, error } = await getSupabaseClient(true)
+      .from('channels')
+      .select('*')
+      .order('name');
+      
+    if (error) {
+      console.error('Error fetching channels:', error);
+      return [];
+    }
+    
+    return channels || [];
+  } catch (error) {
+    console.error('Error in getAllChannels:', error);
+    return [];
+  }
+}
+
 // Initialize the server
 async function initServer() {
   // Initialize storage
@@ -241,6 +347,9 @@ async function initServer() {
   
   // Add channel column if needed
   await addChannelColumnIfNeeded();
+  
+  // Set up channels table
+  await setupChannelsTable();
   
   // Start the server
   server.listen(PORT, () => {
@@ -830,7 +939,9 @@ io.on("connection", (socket) => {
         console.log(`ICE candidate from ${senderUsername} to ${target}`);
         
         // Find the target socket by username
-        const targetSocketId = Object.keys(users).find(id => users[id] && users[id].username === target);
+        const targetSocketId = Object.keys(users).find(id => 
+            users[id] && users[id].username === target
+        );
         
         if (targetSocketId) {
             io.to(targetSocketId).emit('ice-candidate', {
@@ -845,7 +956,9 @@ io.on("connection", (socket) => {
         console.log(`Call ended by ${senderUsername} for ${target}`);
         
         // Find the target socket by username
-        const targetSocketId = Object.keys(users).find(id => users[id] && users[id].username === target);
+        const targetSocketId = Object.keys(users).find(id => 
+            users[id] && users[id].username === target
+        );
         
         if (targetSocketId) {
             io.to(targetSocketId).emit('call-end', {
@@ -1118,6 +1231,42 @@ io.on("connection", (socket) => {
             console.error('Error during session registration:', error);
             socket.emit('auth-error', { message: 'Registration failed due to server error' });
         }
+    });
+
+    // Handle channel operations
+    socket.on('create-channel', async (data, callback) => {
+        // Check if user is authenticated
+        if (!users[socket.id] || !users[socket.id].authenticated) {
+            if (callback) callback({ success: false, error: 'You must be logged in to create channels' });
+            return;
+        }
+        
+        const { name, description, isPrivate } = data;
+        const userId = users[socket.id].userId;
+        
+        console.log(`User ${users[socket.id].username} is creating channel: ${name}`);
+        
+        // Create the channel
+        const result = await createChannel(name, userId, description, isPrivate);
+        
+        if (result.success) {
+            // Broadcast channel creation to all clients
+            io.emit('channel-created', result.channel);
+            
+            if (callback) callback({ success: true, channel: result.channel });
+        } else {
+            if (callback) callback(result); // Return the error
+        }
+    });
+    
+    // Get all available channels
+    socket.on('get-channels', async (callback) => {
+        const channels = await getAllChannels();
+        
+        if (callback) callback({ channels });
+        
+        // Also emit to this socket specifically
+        socket.emit('channels-list', { channels });
     });
 });
 

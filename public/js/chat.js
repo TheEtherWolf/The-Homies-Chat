@@ -102,6 +102,9 @@ class ChatManager {
         // Open General chat by default
         this.switchChannel('general');
         
+        // Load available channels from the server
+        this.loadChannels();
+        
         this.isInitialized = true;
         console.log('[CHAT_DEBUG] ChatManager successfully initialized.');
     }
@@ -398,6 +401,40 @@ class ChatManager {
                 alert('Settings feature coming soon!');
             });
         }
+        
+        // Add event listeners for channel creation UI
+        const addChannelBtn = document.getElementById('add-channel-btn');
+        if (addChannelBtn) {
+            addChannelBtn.addEventListener('click', () => {
+                // Show the create channel modal
+                const modal = new bootstrap.Modal(document.getElementById('create-channel-modal'));
+                modal.show();
+            });
+        }
+        
+        // Add event listener for create channel submit button
+        const createChannelSubmit = document.getElementById('create-channel-submit');
+        if (createChannelSubmit) {
+            createChannelSubmit.addEventListener('click', this.handleCreateChannelUI.bind(this));
+        }
+        
+        // Listen for new channel creation from server
+        this.socket.on('channel-created', (channel) => {
+            console.log('[CHAT_DEBUG] New channel created:', channel);
+            this.addChannelToUI(channel);
+        });
+        
+        // Listen for channels list update
+        this.socket.on('channels-list', (data) => {
+            console.log('[CHAT_DEBUG] Received channels list:', data.channels);
+            
+            // Update channels in UI
+            if (data.channels && Array.isArray(data.channels)) {
+                data.channels.forEach(channel => {
+                    this.addChannelToUI(channel);
+                });
+            }
+        });
         
         // Socket event listeners
         this.socket.on('connect', this.handleSocketConnect);
@@ -813,6 +850,135 @@ class ChatManager {
     // Add system message
     addSystemMessage(message) {
         this.displaySystemMessage(message);
+    }
+
+    // Create a new channel
+    createChannel(name, description = '', isPrivate = false) {
+        if (!this.socket || !name || name.trim() === '') {
+            console.error('[CHAT_DEBUG] Cannot create channel: Invalid name or socket not connected');
+            return;
+        }
+        
+        console.log(`[CHAT_DEBUG] Requesting creation of channel: ${name}`);
+        
+        // Send create-channel request to server
+        this.socket.emit('create-channel', {
+            name: name,
+            description: description,
+            isPrivate: isPrivate
+        }, (response) => {
+            if (response.success) {
+                console.log(`[CHAT_DEBUG] Channel created successfully: ${response.channel.name}`);
+                this.addChannelToUI(response.channel);
+                
+                // Switch to the new channel
+                this.switchChannel(response.channel.name);
+            } else {
+                console.error(`[CHAT_DEBUG] Failed to create channel: ${response.error}`);
+                // Could display error to user here
+            }
+        });
+    }
+    
+    // Load all available channels
+    loadChannels() {
+        if (!this.socket) {
+            console.error('[CHAT_DEBUG] Cannot load channels: Socket not connected');
+            return;
+        }
+        
+        console.log('[CHAT_DEBUG] Requesting channels list');
+        
+        // Request channels from server
+        this.socket.emit('get-channels', (response) => {
+            if (response && response.channels) {
+                console.log(`[CHAT_DEBUG] Received ${response.channels.length} channels`);
+                
+                // Clear existing channels first
+                const channelsList = document.getElementById('channels-list');
+                // Keep only the channels header
+                const header = channelsList.querySelector('.channels-header');
+                if (header) {
+                    channelsList.innerHTML = '';
+                    channelsList.appendChild(header);
+                }
+                
+                // Add each channel to the UI
+                response.channels.forEach(channel => {
+                    this.addChannelToUI(channel);
+                });
+            }
+        });
+    }
+    
+    // Add a channel to the UI
+    addChannelToUI(channel) {
+        const channelsList = document.getElementById('channels-list');
+        if (!channelsList) {
+            console.error('[CHAT_DEBUG] Channels list element not found');
+            return;
+        }
+        
+        // Check if channel already exists in UI
+        const existingChannel = document.querySelector(`.channel-item[data-channel="${channel.name}"]`);
+        if (existingChannel) {
+            console.log(`[CHAT_DEBUG] Channel ${channel.name} already exists in UI`);
+            return;
+        }
+        
+        // Create channel element
+        const channelItem = document.createElement('div');
+        channelItem.className = 'channel-item';
+        channelItem.setAttribute('data-channel', channel.name);
+        
+        const icon = channel.is_private ? 'lock-fill' : 'hash';
+        
+        channelItem.innerHTML = `
+            <i class="bi bi-${icon}"></i>
+            <span>${channel.name}</span>
+        `;
+        
+        // Add click handler
+        channelItem.addEventListener('click', () => {
+            this.switchChannel(channel.name);
+        });
+        
+        // Add to channels list
+        channelsList.appendChild(channelItem);
+    }
+    
+    // Handle new channel creation from UI
+    handleCreateChannelUI() {
+        // Get channel name from UI
+        const channelNameInput = document.getElementById('new-channel-name');
+        if (!channelNameInput || !channelNameInput.value.trim()) {
+            console.error('[CHAT_DEBUG] Invalid channel name');
+            return;
+        }
+        
+        const channelName = channelNameInput.value.trim();
+        const channelDesc = document.getElementById('new-channel-desc')?.value || '';
+        const isPrivate = document.getElementById('new-channel-private')?.checked || false;
+        
+        // Create the channel
+        this.createChannel(channelName, channelDesc, isPrivate);
+        
+        // Reset form
+        channelNameInput.value = '';
+        if (document.getElementById('new-channel-desc')) {
+            document.getElementById('new-channel-desc').value = '';
+        }
+        if (document.getElementById('new-channel-private')) {
+            document.getElementById('new-channel-private').checked = false;
+        }
+        
+        // Close modal if using one
+        const modal = document.getElementById('create-channel-modal');
+        if (modal) {
+            // Close bootstrap modal
+            const bsModal = bootstrap.Modal.getInstance(modal);
+            if (bsModal) bsModal.hide();
+        }
     }
 }
 

@@ -11,7 +11,7 @@
     <style>
         :root {
             --primary-color: #3498db;
-            --secondary-color: #0fd7f1;
+            --secondary-color: #0fd7f16c;
             --background-color: #f9f9f9;
             --text-color: #333;
         }
@@ -119,34 +119,63 @@
                     <span>The Homies</span>
                 </div>
                 
-                <div class="sidebar-section">
-                    <div class="sidebar-section-header">
-                        <span>Text Channels</span>
-                        <i class="bi bi-plus-lg"></i>
+                <div class="channels-section">
+                    <div class="channels-header" id="channels-header">
+                        <span>TEXT CHANNELS</span>
+                        <button id="add-channel-btn" class="btn btn-sm" title="Add Channel">
+                            <i class="bi bi-plus-circle-fill"></i>
+                        </button>
                     </div>
-                    
-                    <div class="channel-item active">
-                        <div class="channel-icon">
+                    <div id="channels-list" class="channels-list">
+                        <div class="channel-item active" data-channel="general">
                             <i class="bi bi-hash"></i>
+                            <span>general</span>
                         </div>
-                        <span>general</span>
-                    </div>
-                    
-                    <div class="channel-item">
-                        <div class="channel-icon">
+                        <div class="channel-item" data-channel="announcements">
                             <i class="bi bi-hash"></i>
+                            <span>announcements</span>
                         </div>
-                        <span>announcements</span>
-                    </div>
-                    
-                    <div class="channel-item">
-                        <div class="channel-icon">
+                        <div class="channel-item" data-channel="memes">
                             <i class="bi bi-hash"></i>
+                            <span>memes</span>
                         </div>
-                        <span>memes</span>
                     </div>
                 </div>
-                
+
+                <!-- Create Channel Modal -->
+                <div class="modal fade" id="create-channel-modal" tabindex="-1" aria-labelledby="createChannelModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="createChannelModalLabel">Create Text Channel</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="create-channel-form">
+                                    <div class="mb-3">
+                                        <label for="new-channel-name" class="form-label">Channel Name</label>
+                                        <input type="text" class="form-control" id="new-channel-name" placeholder="new-channel" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="new-channel-desc" class="form-label">Description (Optional)</label>
+                                        <input type="text" class="form-control" id="new-channel-desc" placeholder="What's this channel about?">
+                                    </div>
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="new-channel-private">
+                                        <label class="form-check-label" for="new-channel-private">
+                                            Private Channel
+                                        </label>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="create-channel-submit">Create Channel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="sidebar-section">
                     <div class="sidebar-section-header">
                         <span>Voice Channels</span>
