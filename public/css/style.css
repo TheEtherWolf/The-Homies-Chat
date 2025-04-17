@@ -498,7 +498,7 @@ body {
 }
 
 .message-text {
-  padding: 0.5rem 1rem; /* Equal padding on both sides */
+  padding: 8px 12px; /* Use pixel values for more precise control */
   color: var(--text-light);
   word-break: break-word;
   font-size: 0.9375rem;
@@ -544,9 +544,9 @@ body {
   background-color: var(--own-message-bg);
   max-width: fit-content;  /* Make bubble fit the text content */
   width: max-content; /* Force the width to be exactly the size of the content */
-  text-align: right;  /* Align text to the right within the bubble */
-  padding: 0.5rem 1rem; /* Explicitly set equal padding again */
-  box-sizing: border-box; /* Ensure padding is included in size calculation */
+  text-align: center;  /* Center text within the bubble instead of right-align */
+  padding: 8px 12px; /* Exact same pixel values as other messages */
+  box-sizing: border-box;
 }
 
 .message.own-message .message-avatar {
