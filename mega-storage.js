@@ -37,63 +37,100 @@ async function connectToMega() {
     }
 
     console.log('Connecting to MEGA for future file sharing capabilities...');
+    
+    // IMPORTANT: Add a try/catch directly around the Storage creation itself
     try {
-      // Create storage instance with error handling
+      // Create storage instance with error handling and necessary options
       storage = new Storage({
         email: MEGA_EMAIL.trim(),
         password: MEGA_PASSWORD.trim(),
-        autoload: false
-      });
-
-      // Set timeout for connection
-      const connectionPromise = new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          console.warn('MEGA connection timeout - using Supabase only');
-          reject(new Error('MEGA connection timeout'));
-        }, 10000); // 10 seconds timeout
-
-        storage.on('ready', () => {
-          connected = true;
-          clearTimeout(timeoutId);
-          console.log('MEGA storage connection established successfully');
-          resolve(true);
-        });
-
-        storage.on('error', (error) => {
-          clearTimeout(timeoutId);
-          console.error('MEGA storage connection error:', error);
-          reject(error);
-        });
-      });
-
-      // Try to login but don't block if it fails
-      try {
-        storage.login();
-      } catch (loginError) {
-        console.error('MEGA login error:', loginError);
-        connected = false;
-        return false;
-      }
-      
-      // Wait for connection but with timeout
-      await connectionPromise.catch(err => {
-        console.log('Using Supabase only for messages storage');
-        connected = false;
-        return false;
+        autoload: false,
+        autologin: false, // Disable autologin to prevent immediate errors
+        keepalive: false  // Disable keepalive to reduce network errors
       });
       
-    } catch (error) {
-      console.error('MEGA connection error, using Supabase only:', error);
+      console.log('MEGA storage instance created, preparing login...');
+    } catch (initError) {
+      console.error('Error initializing MEGA storage:', initError);
       connected = false;
       return false;
     }
 
-    return connected;
+    // Set timeout for connection
+    const connectionPromise = new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        console.warn('MEGA connection timeout - using Supabase only');
+        reject(new Error('MEGA connection timeout'));
+      }, 10000); // 10 seconds timeout
+
+      storage.on('ready', () => {
+        connected = true;
+        clearTimeout(timeoutId);
+        console.log('MEGA storage connection established successfully');
+        resolve(true);
+      });
+
+      storage.on('error', (error) => {
+        clearTimeout(timeoutId);
+        console.error('MEGA storage connection error:', error);
+        reject(error);
+      });
+    });
+
+    // Try to login but with enhanced error handling
+    try {
+      // Instead of calling login directly, use a safer approach
+      await new Promise((resolve, reject) => {
+        try {
+          // Set a short timeout to catch initialization errors
+          setTimeout(() => {
+            try {
+              // Only attempt login if storage instance is valid
+              if (storage) {
+                storage.login((err) => {
+                  if (err) {
+                    console.error('MEGA login callback error:', err);
+                    reject(err);
+                  } else {
+                    resolve();
+                  }
+                });
+              } else {
+                reject(new Error('MEGA storage instance is not valid'));
+              }
+            } catch (loginCallError) {
+              console.error('Error during MEGA login call:', loginCallError);
+              reject(loginCallError);
+            }
+          }, 500);
+        } catch (promiseError) {
+          console.error('Error setting up MEGA login promise:', promiseError);
+          reject(promiseError);
+        }
+      }).catch(err => {
+        console.error('Caught MEGA login error, continuing without MEGA:', err);
+        // Don't throw, just log and continue
+      });
+    } catch (loginError) {
+      console.error('MEGA login top-level error, continuing without MEGA:', loginError);
+      connected = false;
+      return false;
+    }
+
+    // Wait for connection but with timeout
+    await connectionPromise.catch(err => {
+      console.log('Using Supabase only for messages storage');
+      connected = false;
+      return false;
+    });
+    
   } catch (error) {
     console.error('Failed to initialize MEGA storage:', error);
     connected = false;
     return false;
   }
+
+  return connected;
 }
 
 /**
