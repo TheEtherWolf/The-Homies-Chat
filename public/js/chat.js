@@ -479,6 +479,9 @@ class ChatManager {
         
         // Setup message deletion
         this.handleMessageDeletion();
+        
+        // Setup global click handler for message action menus
+        this.setupGlobalClickHandler();
     }
 
     // Handle socket connection
@@ -887,27 +890,6 @@ class ChatManager {
         }
     }
     
-    // Add a missing function to render message history
-    renderMessageHistory(messages) {
-        if (!messages || !Array.isArray(messages) || messages.length === 0) {
-            this.addSystemMessage("No previous messages");
-            return;
-        }
-        
-        // Sort messages by timestamp if they have timestamps
-        const sortedMessages = [...messages].sort((a, b) => {
-            return (a.timestamp || 0) - (b.timestamp || 0);
-        });
-        
-        // Display each message in the UI
-        sortedMessages.forEach(message => {
-            this.displayMessageInUI(message, 'dm');
-        });
-        
-        // Scroll to bottom after rendering
-        this.scrollToBottom();
-    }
-    
     // Display a message in the UI
     displayMessageInUI(message, channelId) {
         if (!message) return;
@@ -944,10 +926,17 @@ class ChatManager {
         messageDiv.setAttribute('data-message-id', message.id || '');
         messageDiv.setAttribute('data-timestamp', message.timestamp || new Date().toISOString());
         messageDiv.setAttribute('data-sender', message.sender || 'Unknown');
+        messageDiv.setAttribute('data-sender-id', message.senderId || '');
         
         // Add first-message class if not grouped
         if (!isGroupedMessage) {
             messageDiv.classList.add('first-message');
+        }
+        
+        // Determine if this is the current user's message
+        const isOwnMessage = this.currentUser && message.senderId === this.currentUser.id;
+        if (isOwnMessage) {
+            messageDiv.classList.add('own-message');
         }
         
         // Build message content
@@ -1000,16 +989,115 @@ class ChatManager {
         // Close message-content div
         messageHTML += `</div>`;
         
+        // Add message actions menu
+        messageHTML += `
+            <div class="message-actions">
+                <button class="message-actions-btn" aria-label="Message actions">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <div class="message-actions-menu">
+                    <div class="message-action-item" data-action="copy">
+                        <i class="bi bi-clipboard"></i> Copy Message
+                    </div>
+                    ${isOwnMessage ? `
+                    <div class="message-action-item danger" data-action="delete">
+                        <i class="bi bi-trash"></i> Delete Message
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        
         // Set message HTML
         messageDiv.innerHTML = messageHTML;
         
         // Add to container
         messagesContainer.appendChild(messageDiv);
         
+        // Setup message action handlers
+        this.setupMessageActionHandlers(messageDiv);
+        
         // Scroll to bottom
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
     
+    // Setup message action handlers
+    setupMessageActionHandlers(messageElement) {
+        if (!messageElement) return;
+        
+        const actionsBtn = messageElement.querySelector('.message-actions-btn');
+        const actionsMenu = messageElement.querySelector('.message-actions-menu');
+        
+        if (actionsBtn && actionsMenu) {
+            // Toggle menu on button click
+            actionsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                
+                // Close all other open menus first
+                document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
+                    if (menu !== actionsMenu) {
+                        menu.classList.remove('show');
+                    }
+                });
+                
+                // Toggle this menu
+                actionsMenu.classList.toggle('show');
+            });
+            
+            // Setup action handlers
+            actionsMenu.querySelectorAll('.message-action-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    
+                    const action = item.getAttribute('data-action');
+                    const messageId = messageElement.getAttribute('data-message-id');
+                    const messageContent = messageElement.querySelector('.message-text')?.textContent.trim();
+                    
+                    if (action === 'copy' && messageContent) {
+                        // Copy to clipboard
+                        navigator.clipboard.writeText(messageContent)
+                            .then(() => {
+                                console.log('[CHAT_DEBUG] Message copied to clipboard');
+                                this.displaySystemMessage('Message copied to clipboard');
+                            })
+                            .catch(err => {
+                                console.error('[CHAT_DEBUG] Failed to copy message:', err);
+                            });
+                        
+                        // Close menu
+                        actionsMenu.classList.remove('show');
+                    }
+                    else if (action === 'delete' && messageId) {
+                        // Delete message
+                        this.socket.emit('delete-message', { messageId }, (response) => {
+                            if (response.success) {
+                                console.log(`[CHAT_DEBUG] Message deleted successfully: ${messageId}`);
+                            } else {
+                                console.error(`[CHAT_DEBUG] Failed to delete message: ${response.message}`);
+                                alert(`Failed to delete message: ${response.message}`);
+                            }
+                        });
+                        
+                        // Close menu
+                        actionsMenu.classList.remove('show');
+                    }
+                });
+            });
+        }
+    }
+    
+    // Close all message action menus when clicking elsewhere
+    setupGlobalClickHandler() {
+        document.addEventListener('click', (e) => {
+            // Check if click is outside any message action menu
+            if (!e.target.closest('.message-actions')) {
+                document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
+                    menu.classList.remove('show');
+                });
+            }
+        });
+    }
+
     // Format timestamp in Discord style
     formatTimestamp(timestamp) {
         if (!timestamp) return 'Unknown time';
