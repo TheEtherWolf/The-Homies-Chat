@@ -143,6 +143,185 @@ app.post('/api/resend-verification', async (req, res) => {
     }
 });
 
+// API endpoint to initialize channels table
+app.get('/api/init-channels-table', async (req, res) => {
+  try {
+    console.log('API request to initialize channels table');
+    
+    // Check if we have admin access
+    if (!getSupabaseClient(true)) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Server does not have admin access to Supabase' 
+      });
+    }
+    
+    // First check if the table exists
+    try {
+      const { data, error: checkError } = await getSupabaseClient(true)
+        .from('channels')
+        .select('id')
+        .limit(1);
+      
+      if (!checkError) {
+        // Table exists
+        return res.json({ 
+          success: true, 
+          message: 'Channels table already exists', 
+          status: 'existing' 
+        });
+      }
+    } catch (e) {
+      // Table likely doesn't exist, continue
+    }
+    
+    // Attempt to create the columns table manually using schema builder
+    const supabase = getSupabaseClient(true);
+    
+    // Create channels table one column at a time
+    // Note: This approach assumes you have proper permissions to create tables
+    // Normally this would be done in Supabase SQL editor or through migrations
+    const createOperations = [
+      // Create the table with id column
+      supabase.rpc('create_table_if_not_exists', { 
+        table_name: 'channels', 
+        primary_key_column: 'id',
+        primary_key_type: 'uuid'
+      }),
+      
+      // Add other columns
+      supabase.rpc('add_column_if_not_exists', { 
+        table_name: 'channels', 
+        column_name: 'name',
+        column_type: 'text',
+        is_unique: true,
+        is_nullable: false
+      }),
+      
+      supabase.rpc('add_column_if_not_exists', { 
+        table_name: 'channels', 
+        column_name: 'created_by',
+        column_type: 'uuid',
+        references_table: 'users',
+        references_column: 'id'
+      }),
+      
+      supabase.rpc('add_column_if_not_exists', { 
+        table_name: 'channels', 
+        column_name: 'created_at',
+        column_type: 'timestamp with time zone',
+        default_value: 'now()'
+      }),
+      
+      supabase.rpc('add_column_if_not_exists', { 
+        table_name: 'channels', 
+        column_name: 'description',
+        column_type: 'text'
+      }),
+      
+      supabase.rpc('add_column_if_not_exists', { 
+        table_name: 'channels', 
+        column_name: 'is_private',
+        column_type: 'boolean',
+        default_value: 'false'
+      })
+    ];
+    
+    // Try each operation, but don't fail on errors
+    let successCount = 0;
+    let errorCount = 0;
+    let errors = [];
+    
+    for (const operation of createOperations) {
+      try {
+        const { error } = await operation;
+        if (error) {
+          errorCount++;
+          errors.push(error.message);
+        } else {
+          successCount++;
+        }
+      } catch (e) {
+        errorCount++;
+        errors.push(e.message);
+      }
+    }
+    
+    // Create default channels
+    const defaultChannels = [
+      { name: 'general', description: 'General chat for everyone', is_private: false },
+      { name: 'random', description: 'Random discussions', is_private: false }
+    ];
+    
+    let createdChannels = 0;
+    for (const channel of defaultChannels) {
+      try {
+        const { error } = await supabase
+          .from('channels')
+          .insert(channel);
+        
+        if (!error) {
+          createdChannels++;
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+    
+    // Check if message table needs channel column
+    try {
+      const { error } = await supabase.rpc('add_column_if_not_exists', { 
+        table_name: 'messages', 
+        column_name: 'channel',
+        column_type: 'text',
+        default_value: '\'general\''
+      });
+    } catch (e) {
+      // Ignore error
+    }
+    
+    // Return detailed results
+    res.json({
+      success: true,
+      message: `Table creation attempts: ${successCount} succeeded, ${errorCount} failed`,
+      created_channels: createdChannels,
+      schema_errors: errors,
+      next_steps: [
+        "If table creation failed, you will need to create it directly in Supabase SQL Editor with:",
+        `
+CREATE TABLE IF NOT EXISTS public.channels (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT UNIQUE NOT NULL,
+  created_by UUID REFERENCES public.users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  description TEXT,
+  is_private BOOLEAN DEFAULT false
+);
+
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS channel TEXT DEFAULT 'general';
+
+-- Insert default channels
+INSERT INTO public.channels (name, description, is_private)
+VALUES ('general', 'General chat for everyone', false)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO public.channels (name, description, is_private)
+VALUES ('random', 'Random discussions', false)
+ON CONFLICT (name) DO NOTHING;
+        `
+      ]
+    });
+    
+  } catch (error) {
+    console.error('Error in channels init API:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to initialize channels table', 
+      error: error.message 
+    });
+  }
+});
+
 // Track active users and socket connections
 let channelMessages = {}; // Messages for each channel
 let activeUsers = new Set(); // Set of active users
@@ -189,184 +368,6 @@ async function initializeStorage() {
         channelMessages = { general: [] };
     }
 }
-
-// Save messages to storage
-async function saveAllMessages() {
-    try {
-        return await storage.saveMessages({ channels: channelMessages });
-    } catch (error) {
-        console.error('Error saving messages:', error);
-        return false;
-    }
-}
-
-// Throttled save function
-let saveTimeout = null;
-function throttledSave() {
-    if (saveTimeout) {
-        clearTimeout(saveTimeout);
-    }
-    saveTimeout = setTimeout(async () => {
-        await saveAllMessages();
-    }, 5000); // Save every 5 seconds
-}
-
-// Add migration on server start
-async function addChannelColumnIfNeeded() {
-  try {
-    console.log('Checking if messages table needs channel column...');
-    
-    // Try to add the channel column using raw SQL
-    const { error } = await getSupabaseClient(true).rpc('exec_sql', {
-      sql_string: `
-        ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS channel TEXT DEFAULT 'general';
-        UPDATE public.messages SET channel = 'general' WHERE channel IS NULL;
-      `
-    });
-    
-    if (error) {
-      console.error('Error adding channel column:', error);
-    } else {
-      console.log('Channel column added or already exists');
-    }
-  } catch (error) {
-    console.error('Database migration error:', error);
-  }
-}
-
-// Add channel management functions
-async function setupChannelsTable() {
-  try {
-    console.log('Setting up channels table...');
-    
-    // Create channels table if it doesn't exist
-    const { error: tableError } = await getSupabaseClient(true).rpc('exec_sql', {
-      sql_string: `
-        CREATE TABLE IF NOT EXISTS public.channels (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          name TEXT UNIQUE NOT NULL,
-          created_by UUID REFERENCES public.users(id),
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-          description TEXT,
-          is_private BOOLEAN DEFAULT false
-        );
-        
-        -- Insert default channels if they don't exist
-        INSERT INTO public.channels (name, description, is_private)
-        VALUES ('general', 'General chat for everyone', false)
-        ON CONFLICT (name) DO NOTHING;
-        
-        INSERT INTO public.channels (name, description, is_private)
-        VALUES ('random', 'Random discussions', false)
-        ON CONFLICT (name) DO NOTHING;
-      `
-    });
-    
-    if (tableError) {
-      console.error('Error creating channels table:', tableError);
-    } else {
-      console.log('Channels table created or verified');
-    }
-  } catch (error) {
-    console.error('Error setting up channels table:', error);
-  }
-}
-
-// Create a new channel
-async function createChannel(name, userId, description = '', isPrivate = false) {
-  try {
-    if (!name || typeof name !== 'string' || name.trim() === '') {
-      console.error('Invalid channel name');
-      return { success: false, error: 'Invalid channel name' };
-    }
-    
-    // Sanitize channel name - lowercase, no spaces, only alphanumeric and hyphens
-    const sanitizedName = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    
-    // Check if channel already exists
-    const { data: existingChannel } = await getSupabaseClient(true)
-      .from('channels')
-      .select('id')
-      .eq('name', sanitizedName)
-      .maybeSingle();
-      
-    if (existingChannel) {
-      console.log(`Channel ${sanitizedName} already exists`);
-      return { success: false, error: 'Channel already exists', id: existingChannel.id };
-    }
-    
-    // Create the new channel
-    const { data: newChannel, error } = await getSupabaseClient(true)
-      .from('channels')
-      .insert({
-        name: sanitizedName,
-        created_by: userId,
-        description: description,
-        is_private: isPrivate
-      })
-      .select()
-      .single();
-      
-    if (error) {
-      console.error('Error creating channel:', error);
-      return { success: false, error: error.message };
-    }
-    
-    console.log(`Created new channel: ${sanitizedName}`);
-    return { success: true, channel: newChannel };
-  } catch (error) {
-    console.error('Error in createChannel:', error);
-    return { success: false, error: 'Server error' };
-  }
-}
-
-// Get all channels
-async function getAllChannels() {
-  try {
-    const { data: channels, error } = await getSupabaseClient(true)
-      .from('channels')
-      .select('*')
-      .order('name');
-      
-    if (error) {
-      console.error('Error fetching channels:', error);
-      return [];
-    }
-    
-    return channels || [];
-  } catch (error) {
-    console.error('Error in getAllChannels:', error);
-    return [];
-  }
-}
-
-// Initialize the server
-async function initServer() {
-  // Initialize storage
-  await initializeStorage();
-  
-  // Add channel column if needed
-  await addChannelColumnIfNeeded();
-  
-  // Set up channels table
-  await setupChannelsTable();
-  
-  // Start the server
-  server.listen(PORT, () => {
-    console.log(`Server listening on *:${PORT}`);
-  });
-}
-
-// Initialize message history and MEGA storage
-(async function initialize() {
-    try {
-        console.log('Initializing storage...');
-        await initializeStorage();
-        console.log('Storage initialization complete');
-    } catch (error) {
-        console.error('Storage initialization failed:', error);
-    }
-})();
 
 function updateUserList() {
     // Send the consistent active users list to all clients
@@ -707,7 +708,7 @@ io.on("connection", (socket) => {
                     .from('users')
                     .select('username')
                     .eq('id', senderId)
-                    .single();
+                    .maybeSingle();
                     
                 if (userRecord && userRecord.username) {
                     username = userRecord.username;
@@ -1292,6 +1293,23 @@ io.on("connection", (socket) => {
 // Listen on the port provided by Glitch or default to 3000
 const PORT = process.env.PORT || 3000;
 
+// Initialize the server
+async function initServer() {
+  // Initialize storage
+  await initializeStorage();
+  
+  // Add channel column if needed
+  await addChannelColumnIfNeeded();
+  
+  // Set up channels table
+  await setupChannelsTable();
+  
+  // Start the server
+  server.listen(PORT, () => {
+    console.log(`Server listening on *:${PORT}`);
+  });
+}
+
 initServer();
 
 // Clean up stale connections every 5 minutes
@@ -1309,3 +1327,209 @@ setInterval(() => {
     }
     updateUserList();
 }, 5 * 60 * 1000); // 5 minutes
+
+// Add channel management functions
+async function setupChannelsTable() {
+  try {
+    console.log('Setting up channels table...');
+    
+    // Check if channels table exists by trying to query it
+    const { data, error: checkError } = await getSupabaseClient(true)
+      .from('channels')
+      .select('count')
+      .limit(1);
+    
+    // If we get an error about the relation not existing, create the table through the Supabase dashboard
+    if (checkError && checkError.code === '42P01') {
+      console.log('Channels table does not exist. You need to create it in the Supabase dashboard.');
+      console.log('To create the table, go to your Supabase dashboard, SQL Editor, and run:');
+      console.log(`
+CREATE TABLE IF NOT EXISTS public.channels (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT UNIQUE NOT NULL,
+  created_by UUID REFERENCES public.users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  description TEXT,
+  is_private BOOLEAN DEFAULT false
+);
+
+-- Insert default channels if they don't exist
+INSERT INTO public.channels (name, description, is_private)
+VALUES ('general', 'General chat for everyone', false)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO public.channels (name, description, is_private)
+VALUES ('random', 'Random discussions', false)
+ON CONFLICT (name) DO NOTHING;
+      `);
+      
+      // For now, let's create default channels in memory
+      if (!channelMessages['general']) {
+        channelMessages['general'] = [];
+      }
+      if (!channelMessages['random']) {
+        channelMessages['random'] = [];
+      }
+      
+      return;
+    }
+    
+    // If table exists, make sure default channels are there
+    const defaultChannels = [
+      { name: 'general', description: 'General chat for everyone', is_private: false },
+      { name: 'random', description: 'Random discussions', is_private: false }
+    ];
+    
+    for (const channel of defaultChannels) {
+      // Check if channel exists
+      const { data: existingChannel, error: lookupError } = await getSupabaseClient(true)
+        .from('channels')
+        .select('id')
+        .eq('name', channel.name)
+        .maybeSingle();
+      
+      // If channel doesn't exist, create it
+      if (!existingChannel && !lookupError) {
+        const { error: insertError } = await getSupabaseClient(true)
+          .from('channels')
+          .insert(channel);
+        
+        if (insertError) {
+          console.error(`Error creating default channel ${channel.name}:`, insertError);
+        } else {
+          console.log(`Created default channel: ${channel.name}`);
+        }
+      }
+      
+      // Initialize channel messages array
+      if (!channelMessages[channel.name]) {
+        channelMessages[channel.name] = [];
+      }
+    }
+    
+    console.log('Channels table setup complete');
+  } catch (error) {
+    console.error('Error setting up channels table:', error);
+    
+    // Initialize default channels in memory
+    if (!channelMessages['general']) {
+      channelMessages['general'] = [];
+    }
+    if (!channelMessages['random']) {
+      channelMessages['random'] = [];
+    }
+  }
+}
+
+// Create a new channel
+async function createChannel(name, userId, description = '', isPrivate = false) {
+  try {
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      console.error('Invalid channel name');
+      return { success: false, error: 'Invalid channel name' };
+    }
+    
+    // Sanitize channel name - lowercase, no spaces, only alphanumeric and hyphens
+    const sanitizedName = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    
+    // Check if channel already exists
+    const { data: existingChannel } = await getSupabaseClient(true)
+      .from('channels')
+      .select('id')
+      .eq('name', sanitizedName)
+      .maybeSingle();
+      
+    if (existingChannel) {
+      console.log(`Channel ${sanitizedName} already exists`);
+      return { success: false, error: 'Channel already exists', id: existingChannel.id };
+    }
+    
+    // Create the new channel
+    const { data: newChannel, error } = await getSupabaseClient(true)
+      .from('channels')
+      .insert({
+        name: sanitizedName,
+        created_by: userId,
+        description: description,
+        is_private: isPrivate
+      })
+      .select()
+      .single();
+      
+    if (error) {
+      console.error('Error creating channel:', error);
+      return { success: false, error: error.message };
+    }
+    
+    console.log(`Created new channel: ${sanitizedName}`);
+    return { success: true, channel: newChannel };
+  } catch (error) {
+    console.error('Error in createChannel:', error);
+    return { success: false, error: 'Server error' };
+  }
+}
+
+// Get all channels
+async function getAllChannels() {
+  try {
+    const { data: channels, error } = await getSupabaseClient(true)
+      .from('channels')
+      .select('*')
+      .order('name');
+      
+    if (error) {
+      console.error('Error fetching channels:', error);
+      return [];
+    }
+    
+    return channels || [];
+  } catch (error) {
+    console.error('Error in getAllChannels:', error);
+    return [];
+  }
+}
+
+// Add migration on server start
+async function addChannelColumnIfNeeded() {
+  try {
+    console.log('Ensuring messages are properly associated with channels...');
+    
+    // Get all messages that don't have a channel set
+    const { data: messagesWithoutChannel, error: queryError } = await getSupabaseClient(true)
+      .from('messages')
+      .select('id')
+      .is('channel', null);
+    
+    if (queryError) {
+      console.error('Error checking messages without channel:', queryError);
+      return;
+    }
+    
+    // If we found messages without a channel, update them
+    if (messagesWithoutChannel && messagesWithoutChannel.length > 0) {
+      console.log(`Found ${messagesWithoutChannel.length} messages without a channel, updating to 'general'`);
+      
+      // Update in batches to avoid timeouts
+      const batchSize = 100;
+      for (let i = 0; i < messagesWithoutChannel.length; i += batchSize) {
+        const batch = messagesWithoutChannel.slice(i, i + batchSize);
+        const ids = batch.map(msg => msg.id);
+        
+        const { error: updateError } = await getSupabaseClient(true)
+          .from('messages')
+          .update({ channel: 'general' })
+          .in('id', ids);
+        
+        if (updateError) {
+          console.error(`Error updating batch ${i} to ${i + batch.length}:`, updateError);
+        }
+      }
+      
+      console.log('Finished updating messages without channels');
+    } else {
+      console.log('All messages have a channel assigned');
+    }
+  } catch (error) {
+    console.error('Database migration error:', error);
+  }
+}
