@@ -458,6 +458,29 @@ class ChatManager {
         console.log('[CHAT_DEBUG] All event listeners attached');
     }
 
+    initializeEventListeners() {
+        // Message input event listeners
+        this.messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.sendMessage();
+            }
+        });
+        
+        this.sendButton.addEventListener('click', () => {
+            this.sendMessage();
+        });
+        
+        // Setup channel switching
+        this.setupChannelSwitch();
+        
+        // Setup emoji picker
+        this.setupEmojiPicker();
+        
+        // Setup message deletion
+        this.handleMessageDeletion();
+    }
+
     // Handle socket connection
     handleSocketConnect() {
         console.log('[CHAT_DEBUG] Socket connected');
@@ -1251,6 +1274,63 @@ class ChatManager {
                 unreadDot.remove();
             }
         }
+    }
+
+    // Add event listener for message deletion request
+    handleMessageDeletion() {
+        // Add click event listener on messages container for delegation
+        document.getElementById('messages-container').addEventListener('contextmenu', (e) => {
+            // Check if the click was on a message or within a message
+            const messageElement = e.target.closest('.message');
+            if (messageElement) {
+                e.preventDefault(); // Prevent the default context menu
+                
+                // Get message ID
+                const messageId = messageElement.getAttribute('data-message-id');
+                if (!messageId) return;
+                
+                // Simple confirmation to delete
+                if (confirm('Delete this message?')) {
+                    console.log(`[CHAT_DEBUG] Requesting deletion of message: ${messageId}`);
+                    
+                    // Send delete request to server
+                    this.socket.emit('delete-message', { messageId }, (response) => {
+                        if (response.success) {
+                            console.log(`[CHAT_DEBUG] Message deleted successfully: ${messageId}`);
+                        } else {
+                            console.error(`[CHAT_DEBUG] Failed to delete message: ${response.message}`);
+                            alert(`Failed to delete message: ${response.message}`);
+                        }
+                    });
+                }
+            }
+        });
+        
+        // Handle message deletion events from server
+        this.socket.on('message-deleted', (data) => {
+            console.log('[CHAT_DEBUG] Received message deletion notification:', data);
+            
+            if (!data || !data.messageId) return;
+            
+            // Remove message from UI if present
+            const messageElement = document.querySelector(`.message[data-message-id="${data.messageId}"]`);
+            if (messageElement) {
+                messageElement.remove();
+                console.log(`[CHAT_DEBUG] Removed deleted message from UI: ${data.messageId}`);
+            }
+            
+            // Remove from stored messages
+            if (data.channel && this.channelMessages[data.channel]) {
+                const index = this.channelMessages[data.channel].findIndex(
+                    msg => msg.id === data.messageId
+                );
+                
+                if (index !== -1) {
+                    this.channelMessages[data.channel].splice(index, 1);
+                    console.log(`[CHAT_DEBUG] Removed deleted message from cache: ${data.messageId}`);
+                }
+            }
+        });
     }
 }
 

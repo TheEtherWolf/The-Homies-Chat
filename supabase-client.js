@@ -395,9 +395,13 @@ async function loadMessagesFromSupabase() {
       return null;
     }
 
+    console.log('Loading messages from Supabase with filtering...');
+
+    // Get messages with proper filtering
     const { data, error } = await supabase
       .from('messages')
       .select('*')
+      .is('deleted', null) // Only get messages that aren't deleted
       .order('created_at', { ascending: true });
     
     if (error) {
@@ -405,7 +409,7 @@ async function loadMessagesFromSupabase() {
       return null;
     }
 
-    console.log(`Loaded ${data.length} messages from Supabase`);
+    console.log(`Loaded ${data.length} active messages from Supabase`);
     return data;
   } catch (error) {
     console.error('Error in loadMessagesFromSupabase:', error);
@@ -697,6 +701,48 @@ async function saveMessagesToSupabase(messages) {
   }
 }
 
+/**
+ * Mark a message as deleted in Supabase
+ * @param {string} messageId - The ID of the message to delete
+ * @returns {Promise<boolean>} - Success status
+ */
+async function markMessageAsDeleted(messageId) {
+  try {
+    // Ensure Supabase is configured
+    if (!serviceSupabase || !SUPABASE_SERVICE_KEY) {
+      console.error('Supabase service client not configured, cannot delete message');
+      return false;
+    }
+    
+    if (!messageId) {
+      console.error('Cannot delete message without message ID');
+      return false;
+    }
+    
+    console.log(`Marking message with ID ${messageId} as deleted`);
+    
+    // Update the message to set deleted flag
+    const { data, error } = await serviceSupabase
+      .from('messages')
+      .update({ 
+        deleted: true, 
+        deleted_at: new Date().toISOString() 
+      })
+      .eq('id', messageId);
+    
+    if (error) {
+      console.error('Error marking message as deleted:', error);
+      return false;
+    }
+    
+    console.log(`Successfully marked message ${messageId} as deleted`);
+    return true;
+  } catch (error) {
+    console.error('Error in markMessageAsDeleted:', error);
+    return false;
+  }
+}
+
 module.exports = {
   getSupabaseClient,
   registerUser,
@@ -708,5 +754,6 @@ module.exports = {
   saveMessageToSupabase,
   saveMessagesToSupabase,
   getUserIdByUsername,
-  isValidUUID
+  isValidUUID,
+  markMessageAsDeleted
 };

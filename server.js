@@ -717,7 +717,7 @@ io.on("connection", (socket) => {
         if (!username && senderId) {
             try {
                 console.log(`Looking up username for sender ID: ${senderId}`);
-                const { data: userRecord, error } = await getSupabaseClient(true)
+                const { data: userRecord } = await getSupabaseClient(true)
                     .from('users')
                     .select('username')
                     .eq('id', senderId)
@@ -922,6 +922,56 @@ io.on("connection", (socket) => {
         
         // Save all messages (throttled)
         throttledSave();
+    });
+    
+    // Handle message deletion
+    socket.on('delete-message', async (messageData, callback) => {
+        try {
+            if (!messageData || !messageData.messageId) {
+                console.error('Cannot delete message: Missing message ID');
+                callback({ success: false, message: 'Missing message ID' });
+                return;
+            }
+
+            const messageId = messageData.messageId;
+            console.log(`Attempting to delete message: ${messageId}`);
+            
+            // Check if user is authenticated
+            if (!users[socket.id] || !users[socket.id].userId) {
+                console.error('Cannot delete message: User not authenticated');
+                callback({ success: false, message: 'You must be logged in to delete messages' });
+                return;
+            }
+            
+            // Mark message as deleted in Supabase
+            const success = await supabaseClient.markMessageAsDeleted(messageId);
+            
+            if (success) {
+                // Find and remove the message from channelMessages
+                for (const channel in channelMessages) {
+                    const index = channelMessages[channel].findIndex(msg => msg.id === messageId);
+                    if (index !== -1) {
+                        console.log(`Removing message ${messageId} from channel ${channel}`);
+                        channelMessages[channel].splice(index, 1);
+                        
+                        // Notify all users in the channel about the deletion
+                        io.emit('message-deleted', { 
+                            messageId,
+                            channel
+                        });
+                        
+                        break;
+                    }
+                }
+                
+                callback({ success: true, message: 'Message deleted successfully' });
+            } else {
+                callback({ success: false, message: 'Failed to delete message from database' });
+            }
+        } catch (error) {
+            console.error('Error deleting message:', error);
+            callback({ success: false, message: 'An error occurred while deleting the message' });
+        }
     });
     
     // Call signaling
