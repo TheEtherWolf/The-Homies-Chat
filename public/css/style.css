@@ -502,11 +502,12 @@ body {
   font-size: 0.9375rem;
   line-height: 1.375rem;
   white-space: pre-wrap;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.6rem; /* Smaller padding for all message bubbles */
   border-radius: var(--border-radius);
   background-color: var(--other-message-bg);
   display: inline-block;
   max-width: 80%;
+  width: auto;
 }
 
 /* Own message style - right aligned with green bubble */
@@ -539,6 +540,7 @@ body {
 
 .message.own-message .message-text {
   background-color: var(--own-message-bg);
+  max-width: fit-content;  /* Make bubble fit the text content */
 }
 
 .message.own-message .message-avatar {
