@@ -814,38 +814,78 @@ class ChatManager {
         this.scrollToBottom();
     }
     
-    // Display message in UI
-    displayMessageInUI(message, context) {
-        if (!this.messagesContainer || !message) return;
+    // Display a message in the UI
+    displayMessageInUI(message, channel) {
+        if (!message) {
+            console.error('[CHAT_DEBUG] Cannot display undefined message');
+            return;
+        }
         
-        const messageElement = document.createElement('div');
-        messageElement.className = 'message';
+        console.log('[CHAT_DEBUG] Displaying message:', message);
+        
+        // Validate message has required properties
+        if (!message.sender && !message.content && !message.timestamp) {
+            console.error('[CHAT_DEBUG] Message missing required properties', message);
+            return;
+        }
+        
+        // Create message element
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message-item';
+        
+        // Add appropriate class for own messages
+        if (this.currentUser && message.senderId === this.currentUser.id) {
+            messageDiv.classList.add('own-message');
+        } else {
+            messageDiv.classList.add('other-message');
+        }
         
         // Format timestamp
-        const timestamp = new Date(message.timestamp);
-        const formattedTime = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const formattedDate = timestamp.toLocaleDateString();
-        const timeDisplay = `Today at ${formattedTime}`;
+        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
+        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
-        // Create avatar (default or user avatar)
-        const avatarSrc = message.avatarUrl || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378';
+        // Default avatar placeholder
+        const avatarUrl = message.avatarUrl || './img/default-avatar.png';
         
-        // Construct message HTML
-        messageElement.innerHTML = `
-            <img src="${avatarSrc}" alt="${message.username}'s Avatar" class="message-avatar">
+        // Sanitize content to prevent XSS
+        const content = message.content || message.message || '';
+        const sanitizedContent = this.sanitizeHTML(content);
+        
+        // Default to "Unknown User" if sender is missing
+        const senderName = message.sender || 'Unknown User';
+        
+        // Build HTML - with defensive coding against missing values
+        messageDiv.innerHTML = `
+            <div class="message-avatar">
+                <img src="${avatarUrl}" alt="${senderName}" />
+            </div>
             <div class="message-content">
                 <div class="message-header">
-                    <span class="message-author">${message.username}</span>
-                    <span class="message-timestamp">${timeDisplay}</span>
+                    <span class="message-sender">${senderName}</span>
+                    <span class="message-time">${timeString}</span>
                 </div>
-                <div class="message-text">
-                    ${this.formatMessageContent(message.message)}
-                </div>
+                <div class="message-text">${sanitizedContent || 'Empty message'}</div>
             </div>
         `;
         
-        this.messagesContainer.appendChild(messageElement);
+        // Add to the messages container
+        this.messagesContainer.appendChild(messageDiv);
+        
+        // Scroll to bottom
         this.scrollToBottom();
+    }
+    
+    // Helper function to sanitize HTML content to prevent XSS
+    sanitizeHTML(html) {
+        if (!html) return '';
+        
+        // Simple sanitization by replacing problematic characters
+        return String(html)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
     
     // Format message content (handle links, emojis, etc.)

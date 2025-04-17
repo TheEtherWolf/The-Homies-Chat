@@ -1533,3 +1533,24 @@ async function addChannelColumnIfNeeded() {
     console.error('Database migration error:', error);
   }
 }
+
+// Add back the throttledSave function that was accidentally removed
+let saveTimeout = null;
+function throttledSave() {
+    if (saveTimeout) {
+        clearTimeout(saveTimeout);
+    }
+    saveTimeout = setTimeout(async () => {
+        await saveAllMessages();
+    }, 5000); // Save every 5 seconds
+}
+
+// Save messages to storage
+async function saveAllMessages() {
+    try {
+        return await storage.saveMessages({ channels: channelMessages });
+    } catch (error) {
+        console.error('Error saving messages:', error);
+        return false;
+    }
+}
