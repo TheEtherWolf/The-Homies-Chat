@@ -196,7 +196,14 @@ async function loadFromBackup() {
     if (backupFiles.length > 0) {
       const backupData = fs.readFileSync(backupFiles[0], 'utf8');
       console.log(`Loaded from backup: ${backupFiles[0]}`);
-      return JSON.parse(backupData);
+      
+      // Parse the backup data
+      const backupMessages = JSON.parse(backupData);
+      
+      // Now synchronize with Supabase to respect deletions
+      await synchronizeBackupWithSupabase(backupMessages);
+      
+      return backupMessages;
     }
   } catch (backupError) {
     console.error(`Error loading backup: ${backupError.message}`);
@@ -206,12 +213,99 @@ async function loadFromBackup() {
 }
 
 /**
+ * Synchronize backup with Supabase to remove deleted messages
+ * @param {Object} backupMessages - The backup messages object
+ * @returns {Promise<void>}
+ */
+async function synchronizeBackupWithSupabase(backupMessages) {
+  try {
+    if (!backupMessages || !backupMessages.channels) {
+      return;
+    }
+    
+    // Get the current state from Supabase
+    console.log('Synchronizing backup with Supabase to respect message deletions...');
+    const supabaseClient = require('./supabase-client');
+    const supabase = supabaseClient.getSupabaseClient(true);
+    
+    if (!supabase) {
+      console.warn('Cannot synchronize backup: Supabase client not available');
+      return;
+    }
+    
+    // For each channel in the backup
+    for (const channelId in backupMessages.channels) {
+      if (!Array.isArray(backupMessages.channels[channelId])) {
+        continue;
+      }
+      
+      // Filter out deleted messages
+      const messagesToCheck = backupMessages.channels[channelId].filter(msg => msg.id);
+      if (messagesToCheck.length === 0) {
+        continue;
+      }
+      
+      // Get message IDs to check
+      const messageIds = messagesToCheck.map(msg => msg.id);
+      
+      // Check which messages exist in Supabase and aren't deleted
+      const { data, error } = await supabase
+        .from('messages')
+        .select('id')
+        .in('id', messageIds)
+        .is('deleted', null);
+      
+      if (error) {
+        console.error('Error checking message existence in Supabase:', error);
+        continue;
+      }
+      
+      // Create a set of valid message IDs
+      const validMessageIds = new Set(data.map(item => item.id));
+      
+      // Filter the backup to only include messages that exist and aren't deleted in Supabase
+      backupMessages.channels[channelId] = backupMessages.channels[channelId].filter(msg => 
+        !msg.id || validMessageIds.has(msg.id)
+      );
+      
+      console.log(`Synchronized channel ${channelId}: Kept ${backupMessages.channels[channelId].length} valid messages`);
+    }
+  } catch (error) {
+    console.error('Error synchronizing backup with Supabase:', error);
+  }
+}
+
+/**
  * Create a local backup of the messages
  * @param {Object} messages - The messages to backup
  * @returns {Promise<void>}
  */
 async function createBackup(messages) {
   try {
+    // Limit backups to prevent excessive storage use
+    const maxBackups = 3; // Keep only last 3 backups
+    
+    // Clean up older backups first
+    const backupFiles = fs.readdirSync('.')
+      .filter(file => file.startsWith('messages.json.backup'))
+      .sort();
+    
+    // Remove oldest backups if we have too many
+    if (backupFiles.length >= maxBackups) {
+      const filesToRemove = backupFiles.slice(0, backupFiles.length - maxBackups + 1);
+      filesToRemove.forEach(file => {
+        try {
+          fs.unlinkSync(file);
+          console.log(`Removed old backup: ${file}`);
+        } catch (err) {
+          console.error(`Error removing old backup ${file}:`, err);
+        }
+      });
+    }
+    
+    // Synchronize with Supabase to remove deleted messages
+    await synchronizeBackupWithSupabase(messages);
+    
     // Convert to JSON string
     const data = JSON.stringify(messages, null, 2);
     
