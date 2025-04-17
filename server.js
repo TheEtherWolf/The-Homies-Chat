@@ -25,7 +25,8 @@ const {
     saveMessageToSupabase,
     loadMessagesFromSupabase,
     getSupabaseClient,
-    getUserIdByUsername
+    getUserIdByUsername,
+    markMessageAsDeleted
 } = require("./supabase-client");
 
 // Environment settings - DO NOT force development mode
@@ -944,7 +945,7 @@ io.on("connection", (socket) => {
             }
             
             // Mark message as deleted in Supabase
-            const success = await supabaseClient.markMessageAsDeleted(messageId);
+            const success = await markMessageAsDeleted(messageId);
             
             if (success) {
                 // Find and remove the message from channelMessages
