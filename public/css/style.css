@@ -529,13 +529,13 @@ body {
 
 .message.own-message .message-header {
   flex-direction: row-reverse;
-  padding-right: 0.5rem;
+  padding-right: 0
   padding-left: 0;
 }
 
 .message.own-message .message-author {
   margin-right: 0;
-  margin-left: 0.5rem;
+  margin-left: 0;
 }
 
 .message.own-message .message-text {
@@ -547,7 +547,7 @@ body {
 
 .message.own-message .message-avatar {
   margin-right: 0;
-  margin-left: 0.5rem;
+  margin-left: 0;
 }
 
 /* Message Actions */
