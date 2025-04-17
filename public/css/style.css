@@ -498,7 +498,7 @@ body {
 }
 
 .message-text {
-  padding: 8px 12px; /* Use pixel values for more precise control */
+  padding: 8px; /* Use equal padding on all sides */
   color: var(--text-light);
   word-break: break-word;
   font-size: 0.9375rem;
@@ -510,6 +510,7 @@ body {
   max-width: 80%;
   width: auto;
   box-sizing: border-box; /* Make sure padding is included in width calculation */
+  text-align: center; /* Center all text */
 }
 
 /* Own message style - right aligned with green bubble */
@@ -544,8 +545,7 @@ body {
   background-color: var(--own-message-bg);
   max-width: fit-content;  /* Make bubble fit the text content */
   width: max-content; /* Force the width to be exactly the size of the content */
-  text-align: center;  /* Center text within the bubble instead of right-align */
-  padding: 8px 12px; /* Exact same pixel values as other messages */
+  padding: 8px; /* Equal padding on all sides */
   box-sizing: border-box;
 }
 
