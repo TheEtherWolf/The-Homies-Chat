@@ -105,6 +105,9 @@ class ChatManager {
         // Load available channels from the server
         this.loadChannels();
         
+        // Initialize emoji picker functionality
+        this.initEmojiPicker();
+        
         this.isInitialized = true;
         console.log('[CHAT_DEBUG] ChatManager successfully initialized.');
     }
@@ -1458,6 +1461,193 @@ class ChatManager {
                 }
             }
         });
+    }
+
+    // Initialize emoji picker
+    initEmojiPicker() {
+        const emojiButton = document.getElementById('emoji-button');
+        const emojiPicker = document.querySelector('.emoji-picker');
+        const messageInput = document.getElementById('message-input');
+        const emojiCategories = document.querySelectorAll('.emoji-category');
+        const emojiCategoryContents = document.querySelectorAll('.emoji-category-content');
+        const emojiButtons = document.querySelectorAll('.emoji-btn');
+        const emojiSearchInput = document.getElementById('emoji-search-input');
+        
+        // Store recently used emojis (get from local storage if available)
+        let recentEmojis = JSON.parse(localStorage.getItem('recentEmojis')) || [];
+        
+        // Initialize recent emojis display
+        this.updateRecentEmojis();
+        
+        // Toggle emoji picker visibility
+        if (emojiButton) {
+            emojiButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                emojiPicker.classList.toggle('d-none');
+                
+                // Position the emoji picker properly
+                if (!emojiPicker.classList.contains('d-none')) {
+                    // Calculate position relative to the emoji button
+                    const buttonRect = emojiButton.getBoundingClientRect();
+                    const pickerHeight = emojiPicker.offsetHeight;
+                    
+                    // Position the picker above the button
+                    emojiPicker.style.bottom = (window.innerHeight - buttonRect.top + 10) + 'px';
+                    emojiPicker.style.right = (window.innerWidth - buttonRect.right + 10) + 'px';
+                }
+            });
+        }
+        
+        // Close the emoji picker when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!emojiPicker.classList.contains('d-none') && 
+                !emojiPicker.contains(e.target) && 
+                e.target !== emojiButton) {
+                emojiPicker.classList.add('d-none');
+            }
+        });
+        
+        // Switch between emoji categories
+        emojiCategories.forEach(category => {
+            category.addEventListener('click', () => {
+                // Remove active class from all categories
+                emojiCategories.forEach(cat => cat.classList.remove('active'));
+                // Add active class to clicked category
+                category.classList.add('active');
+                
+                // Hide all category contents
+                emojiCategoryContents.forEach(content => content.classList.remove('active'));
+                
+                // Show clicked category content
+                const categoryName = category.getAttribute('data-category');
+                const categoryContent = document.querySelector(`.emoji-category-content[data-category="${categoryName}"]`);
+                if (categoryContent) {
+                    categoryContent.classList.add('active');
+                }
+            });
+        });
+        
+        // Handle emoji button clicks
+        emojiButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const emoji = button.textContent;
+                
+                // Insert emoji at cursor position
+                this.insertEmojiAtCursor(emoji);
+                
+                // Add to recent emojis
+                this.addToRecentEmojis(emoji);
+                
+                // Update the recent emojis display
+                this.updateRecentEmojis();
+            });
+        });
+        
+        // Handle emoji search
+        if (emojiSearchInput) {
+            emojiSearchInput.addEventListener('input', () => {
+                const searchTerm = emojiSearchInput.value.toLowerCase();
+                
+                // If search is empty, reset to showing categories
+                if (!searchTerm) {
+                    emojiCategoryContents.forEach(content => {
+                        content.style.display = content.classList.contains('active') ? 'grid' : 'none';
+                    });
+                    return;
+                }
+                
+                // Hide all category contents
+                emojiCategoryContents.forEach(content => {
+                    content.style.display = 'none';
+                });
+                
+                // Show all categories for searching
+                const allEmojis = document.querySelectorAll('.emoji-btn');
+                allEmojis.forEach(emojiBtn => {
+                    const emoji = emojiBtn.textContent;
+                    // Simple contains search for now
+                    if (emoji.includes(searchTerm)) {
+                        emojiBtn.style.display = 'block';
+                    } else {
+                        emojiBtn.style.display = 'none';
+                    }
+                });
+            });
+        }
+    }
+    
+    // Insert emoji at the cursor position in message input
+    insertEmojiAtCursor(emoji) {
+        const messageInput = document.getElementById('message-input');
+        if (!messageInput) return;
+        
+        const startPos = messageInput.selectionStart;
+        const endPos = messageInput.selectionEnd;
+        const text = messageInput.value;
+        
+        // Insert emoji at cursor position
+        messageInput.value = text.substring(0, startPos) + emoji + text.substring(endPos);
+        
+        // Move cursor after the inserted emoji
+        messageInput.selectionStart = startPos + emoji.length;
+        messageInput.selectionEnd = startPos + emoji.length;
+        
+        // Focus on the input
+        messageInput.focus();
+    }
+    
+    // Add emoji to recent emojis list
+    addToRecentEmojis(emoji) {
+        // Get recent emojis from local storage
+        let recentEmojis = JSON.parse(localStorage.getItem('recentEmojis')) || [];
+        
+        // Remove emoji if it already exists to avoid duplicates
+        recentEmojis = recentEmojis.filter(e => e !== emoji);
+        
+        // Add emoji to the beginning of the array
+        recentEmojis.unshift(emoji);
+        
+        // Limit to 20 recent emojis
+        if (recentEmojis.length > 20) {
+            recentEmojis = recentEmojis.slice(0, 20);
+        }
+        
+        // Save back to local storage
+        localStorage.setItem('recentEmojis', JSON.stringify(recentEmojis));
+    }
+    
+    // Update the recent emojis display
+    updateRecentEmojis() {
+        const recentEmojiContent = document.querySelector('.emoji-category-content[data-category="recent"]');
+        if (!recentEmojiContent) return;
+        
+        // Get recent emojis from local storage
+        const recentEmojis = JSON.parse(localStorage.getItem('recentEmojis')) || [];
+        
+        // Clear existing content
+        recentEmojiContent.innerHTML = '';
+        
+        if (recentEmojis.length === 0) {
+            // Show a message when no recent emojis
+            const noEmojisMsg = document.createElement('div');
+            noEmojisMsg.className = 'text-center text-muted p-3';
+            noEmojisMsg.textContent = 'No recent emojis';
+            recentEmojiContent.appendChild(noEmojisMsg);
+        } else {
+            // Add each recent emoji
+            recentEmojis.forEach(emoji => {
+                const emojiBtn = document.createElement('button');
+                emojiBtn.className = 'emoji-btn';
+                emojiBtn.textContent = emoji;
+                
+                // Add click event to insert emoji
+                emojiBtn.addEventListener('click', () => {
+                    this.insertEmojiAtCursor(emoji);
+                });
+                
+                recentEmojiContent.appendChild(emojiBtn);
+            });
+        }
     }
 }
 
