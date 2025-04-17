@@ -64,11 +64,24 @@ class AuthManager {
             this.handleRegistration();
         });
         
-        // Set up logout
-        this.logoutButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.handleLogout();
-        });
+        // Set up logout - check if button exists first
+        if (this.logoutButton) {
+            this.logoutButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.handleLogout();
+            });
+        } else {
+            console.warn('[AUTH_DEBUG] Logout button not found in the DOM');
+            // Look for any element that might be serving as logout button
+            const possibleLogoutBtn = document.querySelector('[title="Logout"], .user-control-button');
+            if (possibleLogoutBtn) {
+                console.log('[AUTH_DEBUG] Found alternative logout button');
+                possibleLogoutBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.handleLogout();
+                });
+            }
+        }
         
         console.log('[AUTH_DEBUG] Calling checkSession from initialize...');
         this.checkSession();

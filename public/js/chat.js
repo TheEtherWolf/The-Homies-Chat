@@ -933,7 +933,7 @@ class ChatManager {
         // Only add avatar and header for first message in a group
         if (!isGroupedMessage) {
             // Get avatar URL (default or user's)
-            const avatarUrl = this.getUserAvatar(message.senderId) || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378';
+            const avatarUrl = message.avatarUrl || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378';
             
             // Format timestamp
             const timestamp = this.formatTimestamp(message.timestamp);
