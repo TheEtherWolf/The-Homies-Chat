@@ -546,6 +546,11 @@ class ChatManager {
             message.channel = 'general';
         }
         
+        // Generate a unique message ID if it doesn't have one
+        if (!message.id) {
+            message.id = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+        
         // Store the sender info in allUsers if not already present
         if (message.senderId && message.sender && !this.allUsers[message.senderId]) {
             this.allUsers[message.senderId] = {
@@ -560,6 +565,20 @@ class ChatManager {
         // Initialize channel if needed
         if (message.channel && !this.channelMessages[message.channel]) {
             this.channelMessages[message.channel] = [];
+        }
+        
+        // Check if this is a duplicate message we already have
+        const isDuplicate = message.channel && this.channelMessages[message.channel] && 
+            this.channelMessages[message.channel].some(existingMsg => 
+                (existingMsg.id && existingMsg.id === message.id) || 
+                (existingMsg.timestamp === message.timestamp && 
+                 existingMsg.sender === message.sender && 
+                 existingMsg.content === message.content)
+            );
+        
+        if (isDuplicate) {
+            console.log('[CHAT_DEBUG] Skipping duplicate message:', message);
+            return;
         }
         
         // Handle different message types
@@ -816,9 +835,18 @@ class ChatManager {
     
     // Display a message in the UI
     displayMessageInUI(message, channel) {
-        if (!message) {
-            console.error('[CHAT_DEBUG] Cannot display undefined message');
+        if (!message || !this.messagesContainer) {
+            console.error('[CHAT_DEBUG] Cannot display message: Invalid message or container');
             return;
+        }
+        
+        // Skip if the message is already displayed (check by ID if available)
+        if (message.id) {
+            const existingMessage = document.querySelector(`.message-item[data-message-id="${message.id}"]`);
+            if (existingMessage) {
+                console.log('[CHAT_DEBUG] Message already displayed, skipping:', message.id);
+                return;
+            }
         }
         
         console.log('[CHAT_DEBUG] Displaying message:', message);
@@ -832,6 +860,9 @@ class ChatManager {
         // Create message element
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message-item';
+        if (message.id) {
+            messageDiv.setAttribute('data-message-id', message.id);
+        }
         
         // Add appropriate class for own messages
         if (this.currentUser && message.senderId === this.currentUser.id) {
@@ -844,8 +875,22 @@ class ChatManager {
         const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
         const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
-        // Default avatar placeholder
-        const avatarUrl = message.avatarUrl || './img/default-avatar.png';
+        // Default avatar placeholder - check if path exists first
+        let avatarUrl = './img/default-avatar.png';
+        // Try to find the default avatar image in various folders
+        const possibleAvatarPaths = [
+            './img/default-avatar.png',
+            './images/default-avatar.png',
+            'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378'
+        ];
+        
+        // Set a default from Glitch CDN if local paths fail
+        avatarUrl = possibleAvatarPaths[2];
+        
+        // Override with user's avatar if available
+        if (message.avatarUrl) {
+            avatarUrl = message.avatarUrl;
+        }
         
         // Sanitize content to prevent XSS
         const content = message.content || message.message || '';
@@ -857,7 +902,7 @@ class ChatManager {
         // Build HTML - with defensive coding against missing values
         messageDiv.innerHTML = `
             <div class="message-avatar">
-                <img src="${avatarUrl}" alt="${senderName}" />
+                <img src="${avatarUrl}" alt="${senderName}" onerror="this.src='https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378';" />
             </div>
             <div class="message-content">
                 <div class="message-header">

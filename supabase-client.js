@@ -513,23 +513,43 @@ async function saveMessageToSupabase(message) {
     }
     
     // Ensure message has a sender name at minimum
-    const senderName = message.sender || message.username;
-    if (!senderName) {
-      console.error('Message missing sender name');
-      return false;
+    let senderName = message.sender || message.username;
+    let senderId = message.senderId || message.sender_id;
+    
+    // If we have a senderId but no sender name, try to look it up
+    if (senderId && !senderName) {
+      try {
+        const { data: userRecord } = await serviceSupabase
+          .from('users')
+          .select('username')
+          .eq('id', senderId)
+          .maybeSingle();
+        
+        if (userRecord && userRecord.username) {
+          senderName = userRecord.username;
+          console.log(`Found username ${senderName} for ID ${senderId}`);
+        }
+      } catch (err) {
+        console.error('Error looking up username by ID:', err);
+      }
     }
     
-    // CRITICAL: Get a valid user ID first, regardless of what's in the message
-    let senderId = await getUserIdByUsername(senderName);
+    // If we still don't have a sender name, use a default
+    if (!senderName) {
+      console.log('Using default sender name for message');
+      senderName = 'Anonymous User';
+    }
     
-    // If we couldn't get a valid sender ID, we can't save the message
+    // If we have a sender name but no ID, get or create the user
+    if (!senderId && senderName) {
+      senderId = await getUserIdByUsername(senderName);
+    }
+    
+    // If we still don't have a sender ID, we can't save the message
     if (!senderId) {
       console.error('Could not get or create valid user ID for sender:', senderName);
       return false;
     }
-    
-    // Use the validated sender ID instead of the one in the message
-    message.senderId = senderId;
     
     // Generate a valid UUID for the message ID if not provided
     const messageId = message.id || uuidv4();
@@ -537,14 +557,14 @@ async function saveMessageToSupabase(message) {
     // Format message to match Supabase schema exactly
     const formattedMessage = {
       id: messageId,
-      sender_id: senderId, // Use the validated sender ID
+      sender_id: senderId,
       content: message.message || message.content || "",
       created_at: new Date(message.timestamp || Date.now()).toISOString(),
       type: message.type || "text",
       file_url: message.fileUrl || null,
       file_type: message.fileType || null,
       file_size: message.fileSize || null,
-      channel: message.channel || "general" // Add channel support
+      channel: message.channel || "general"
     };
     
     console.log(`Saving message to Supabase from user ${senderName} (${senderId}) in channel ${formattedMessage.channel}`);
