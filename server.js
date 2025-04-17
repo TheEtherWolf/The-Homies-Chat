@@ -601,18 +601,7 @@ io.on("connection", (socket) => {
                 // Fetch messages for this specific channel from Supabase
                 const { data: messages, error } = await getSupabaseClient(true)
                     .from('messages')
-                    .select(`
-                        id,
-                        sender_id,
-                        content,
-                        created_at,
-                        type,
-                        file_url,
-                        file_type,
-                        file_size,
-                        channel,
-                        users(id, username)
-                    `)
+                    .select('*')
                     .eq('channel', channel)
                     .order('created_at', { ascending: true })
                     .limit(100);
@@ -620,18 +609,40 @@ io.on("connection", (socket) => {
                 if (error) {
                     console.error(`Error loading messages for channel ${channel}:`, error);
                 } else if (messages && messages.length > 0) {
+                    console.log(`Found ${messages.length} messages in the database for channel ${channel}`);
+                    
                     // Process the messages into the expected format
-                    const formattedMessages = messages.map(msg => ({
-                        id: msg.id,
-                        sender: msg.users?.username || 'Unknown User',
-                        senderId: msg.sender_id,
-                        content: msg.content,
-                        timestamp: msg.created_at,
-                        channel: msg.channel,
-                        type: msg.type,
-                        fileUrl: msg.file_url,
-                        fileType: msg.file_type,
-                        fileSize: msg.file_size
+                    const formattedMessages = await Promise.all(messages.map(async (msg) => {
+                        // Look up username if needed
+                        let username = 'Unknown User';
+                        if (msg.sender_id) {
+                            try {
+                                const { data: userRecord } = await getSupabaseClient(true)
+                                    .from('users')
+                                    .select('username')
+                                    .eq('id', msg.sender_id)
+                                    .maybeSingle();
+                                
+                                if (userRecord && userRecord.username) {
+                                    username = userRecord.username;
+                                }
+                            } catch (err) {
+                                console.warn(`Error looking up sender for message ${msg.id}:`, err);
+                            }
+                        }
+                        
+                        return {
+                            id: msg.id,
+                            sender: username,
+                            senderId: msg.sender_id,
+                            content: msg.content,
+                            timestamp: msg.created_at,
+                            channel: msg.channel,
+                            type: msg.type || 'text',
+                            fileUrl: msg.file_url,
+                            fileType: msg.file_type,
+                            fileSize: msg.file_size
+                        };
                     }));
                     
                     // Initialize channel if needed
@@ -652,7 +663,9 @@ io.on("connection", (socket) => {
                         new Date(a.timestamp) - new Date(b.timestamp)
                     );
                     
-                    console.log(`Loaded ${formattedMessages.length} messages for channel: ${channel}`);
+                    console.log(`Successfully processed ${formattedMessages.length} messages for channel: ${channel}`);
+                } else {
+                    console.log(`No messages found in database for channel: ${channel}`);
                 }
             }
             
