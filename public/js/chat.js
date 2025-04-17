@@ -434,7 +434,7 @@ class ChatManager {
         
         // Listen for channels list update
         this.socket.on('channels-list', (data) => {
-            console.log('[CHAT_DEBUG] Received channels list:', data.channels);
+            console.log('[CHAT_DEBUG] Received channels list:', data);
             
             // Update channels in UI
             if (data.channels && Array.isArray(data.channels)) {
@@ -954,8 +954,7 @@ class ChatManager {
                 <img src="${avatarUrl}" alt="${message.sender}" class="message-avatar">
                 <div class="message-content">
                     <div class="message-header">
-                        <span class="message-author">${this.sanitizeHTML(message.sender || 'Unknown User')}</span>
-                        <span class="message-timestamp">${timestamp}</span>
+                        <span class="message-author">${this.sanitizeHTML(message.sender || 'Unknown User')}</span>&nbsp;<span class="message-timestamp">${timestamp}</span>
                     </div>
             `;
         } else {
