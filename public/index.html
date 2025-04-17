@@ -223,14 +223,17 @@
                     </div>
                     <div class="user-details">
                         <div class="user-name" id="current-user">Username</div>
-                        <div class="user-id">@username</div>
+                        <div class="user-tag">@username</div>
                     </div>
                     <div class="user-controls">
-                        <button class="user-control-button" id="settings-button">
-                            <i class="bi bi-gear"></i>
+                        <button class="user-control-button" title="Mute">
+                            <i class="bi bi-mic-fill"></i>
                         </button>
-                        <button class="user-control-button" id="logout-btn">
-                            <i class="bi bi-box-arrow-right"></i>
+                        <button class="user-control-button" title="Deafen">
+                            <i class="bi bi-headphones"></i>
+                        </button>
+                        <button class="user-control-button" title="Settings" id="settings-button">
+                            <i class="bi bi-gear-fill"></i>
                         </button>
                     </div>
                 </div>
@@ -249,8 +252,8 @@
                 <!-- Messages Container -->
                 <div id="messages-container">
                     <!-- Messages will be added here by JS -->
-                    <!-- Example message -->
-                    <div class="message">
+                    <!-- Example message group -->
+                    <div class="message first-message">
                         <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="User Avatar" class="message-avatar">
                         <div class="message-content">
                             <div class="message-header">
@@ -259,6 +262,14 @@
                             </div>
                             <div class="message-text">
                                 Welcome to The Homies App! This is a group chat for all homies.
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Example of a grouped message (same sender, no avatar or header needed) -->
+                    <div class="message">
+                        <div class="message-content">
+                            <div class="message-text">
+                                Feel free to share anything with the group here.
                             </div>
                         </div>
                     </div>

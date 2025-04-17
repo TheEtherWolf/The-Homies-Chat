@@ -363,148 +363,166 @@ body {
   color: var(--text-light);
 }
 
-/* Messages Styling */
+/* Messages Styling - Discord Style */
 .message {
   display: flex;
-  margin-bottom: 16px;
-  padding: 2px 0;
+  padding: 0.125rem 1rem;
+  margin: 0;
+  position: relative;
+}
+
+.message.first-message {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+}
+
+.message:not(.first-message) {
+  padding-left: 4.5rem; /* Align with the username from first message */
 }
 
 .message:hover {
-  background-color: var(--hover-bg);
+  background-color: rgba(4, 4, 5, 0.07);
 }
 
 .message-avatar {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  margin-right: 16px;
-  overflow: hidden; /* Ensure image doesn't overflow the rounded container */
+  margin-right: 1rem;
+  overflow: hidden;
   object-fit: cover;
+  flex-shrink: 0;
+}
+
+.message:not(.first-message) .message-avatar {
+  display: none;
 }
 
 .message-content {
   flex-grow: 1;
+  min-width: 0; /* Fix for flex child overflow */
 }
 
 .message-header {
   display: flex;
   align-items: baseline;
-  margin-bottom: 4px;
+  margin-bottom: 0.25rem;
+}
+
+.message:not(.first-message) .message-header {
+  display: none;
 }
 
 .message-author {
   font-weight: 500;
-  margin-right: 8px;
+  font-size: 1rem;
+  margin-right: 0.5rem;
   color: white;
+  cursor: pointer;
+}
+
+.message-author:hover {
+  text-decoration: underline;
 }
 
 .message-timestamp {
   font-size: 0.75rem;
   color: var(--text-muted);
+  font-weight: 400;
 }
 
 .message-text {
   color: var(--text-light);
   word-break: break-word;
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
+  white-space: pre-wrap;
 }
 
+/* System Messages */
 .system-message {
   text-align: center;
-  margin: 8px 0;
-  padding: 8px;
+  margin: 1rem 0;
+  padding: 0.5rem;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  font-style: italic;
 }
 
-/* User Profile Area */
+/* User Profile Area - Discord Style */
 .user-profile-area {
   margin-top: auto;
-  padding: 8px;
-  background-color: rgba(0,0,0,0.2);
+  padding: 0.5rem 0.625rem;
+  background-color: var(--very-dark);
   display: flex;
   align-items: center;
+  border-top: 1px solid rgba(79, 84, 92, 0.48);
 }
 
 .user-avatar {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  margin-right: 8px;
+  margin-right: 0.5rem;
   position: relative;
+  flex-shrink: 0;
 }
 
 .user-status {
   position: absolute;
   bottom: -2px;
   right: -2px;
-  width: 10px;
-  height: 10px;
+  width: var(--status-dot-size);
+  height: var(--status-dot-size);
   border-radius: 50%;
   background-color: var(--success);
-  border: 2px solid var(--secondary-color);
+  border: 2px solid var(--very-dark);
 }
 
 .user-details {
   flex-grow: 1;
-  overflow: hidden;
+  min-width: 0; /* Ensure text truncation works */
 }
 
 .user-name {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 0.875rem;
+  line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: block;
 }
 
-.user-id {
-  font-size: 12px;
+.user-tag {
+  font-size: 0.75rem;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
 }
 
 .user-controls {
   display: flex;
+  margin-left: 0.25rem;
 }
 
 .user-control-button {
   background: none;
   border: none;
   color: var(--text-muted);
-  padding: 4px;
+  padding: 0.25rem;
+  margin-left: 0.125rem;
   cursor: pointer;
   transition: color 0.2s ease;
+  border-radius: 4px;
+  font-size: 1rem;
 }
 
 .user-control-button:hover {
   color: var(--text-light);
-}
-
-/* Emoji Picker */
-.emoji-picker {
-  background-color: var(--light-background);
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
-  padding: 12px;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-}
-
-.emoji-btn {
-  border: none;
-  background-color: transparent;
-  font-size: 20px;
-  padding: 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.1s ease;
-}
-
-.emoji-btn:hover {
-  background-color: var(--hover-bg);
+  background-color: rgba(79, 84, 92, 0.32);
 }
 
 /* User status indicators */

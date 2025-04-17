@@ -886,92 +886,137 @@ class ChatManager {
     }
     
     // Display a message in the UI
-    displayMessageInUI(message, channel) {
-        if (!message || !this.messagesContainer) {
-            console.error('[CHAT_DEBUG] Cannot display message: Invalid message or container');
-            return;
-        }
-        
-        // Skip if the message is already displayed (check by ID if available)
-        if (message.id) {
-            const existingMessage = document.querySelector(`.message-item[data-message-id="${message.id}"]`);
-            if (existingMessage) {
-                console.log('[CHAT_DEBUG] Message already displayed, skipping:', message.id);
-                return;
-            }
-        }
+    displayMessageInUI(message, channelId) {
+        if (!message) return;
         
         console.log('[CHAT_DEBUG] Displaying message:', message);
         
-        // Validate message has required properties
-        if (!message.sender && !message.content && !message.timestamp) {
-            console.error('[CHAT_DEBUG] Message missing required properties', message);
-            return;
+        const messagesContainer = document.getElementById('messages-container');
+        if (!messagesContainer) return;
+        
+        // Check if this is a grouped message (same sender as previous message within 5 minutes)
+        let isGroupedMessage = false;
+        const previousMessage = messagesContainer.lastElementChild;
+        
+        if (previousMessage && previousMessage.classList.contains('message')) {
+            const prevAuthor = previousMessage.querySelector('.message-author');
+            const prevTimestamp = previousMessage.getAttribute('data-timestamp');
+            
+            if (prevAuthor && prevTimestamp) {
+                const prevAuthorName = prevAuthor.textContent;
+                const prevTime = new Date(prevTimestamp).getTime();
+                const currentTime = new Date(message.timestamp).getTime();
+                const timeDiff = currentTime - prevTime;
+                
+                // If same sender and less than 5 minutes between messages, group them
+                if (prevAuthorName === message.sender && timeDiff < 5 * 60 * 1000) {
+                    isGroupedMessage = true;
+                }
+            }
         }
         
         // Create message element
         const messageDiv = document.createElement('div');
-        messageDiv.className = 'message-item';
-        if (message.id) {
-            messageDiv.setAttribute('data-message-id', message.id);
+        messageDiv.className = 'message';
+        messageDiv.setAttribute('data-message-id', message.id || '');
+        messageDiv.setAttribute('data-timestamp', message.timestamp || new Date().toISOString());
+        messageDiv.setAttribute('data-sender', message.sender || 'Unknown');
+        
+        // Add first-message class if not grouped
+        if (!isGroupedMessage) {
+            messageDiv.classList.add('first-message');
         }
         
-        // Add appropriate class for own messages
-        if (this.currentUser && message.senderId === this.currentUser.id) {
-            messageDiv.classList.add('own-message');
+        // Build message content
+        let messageHTML = '';
+        
+        // Only add avatar and header for first message in a group
+        if (!isGroupedMessage) {
+            // Get avatar URL (default or user's)
+            const avatarUrl = this.getUserAvatar(message.senderId) || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378';
+            
+            // Format timestamp
+            const timestamp = this.formatTimestamp(message.timestamp);
+            
+            messageHTML += `
+                <img src="${avatarUrl}" alt="${message.sender}" class="message-avatar">
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="message-author">${this.sanitizeHTML(message.sender || 'Unknown User')}</span>
+                        <span class="message-timestamp">${timestamp}</span>
+                    </div>
+            `;
         } else {
-            messageDiv.classList.add('other-message');
+            // For grouped messages, simplified structure
+            messageHTML += `
+                <div class="message-content">
+            `;
         }
         
-        // Format timestamp
-        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
-        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
-        // Default avatar placeholder - check if path exists first
-        let avatarUrl = './img/default-avatar.png';
-        // Try to find the default avatar image in various folders
-        const possibleAvatarPaths = [
-            './img/default-avatar.png',
-            './images/default-avatar.png',
-            'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378'
-        ];
-        
-        // Set a default from Glitch CDN if local paths fail
-        avatarUrl = possibleAvatarPaths[2];
-        
-        // Override with user's avatar if available
-        if (message.avatarUrl) {
-            avatarUrl = message.avatarUrl;
-        }
-        
-        // Sanitize content to prevent XSS
-        const content = message.content || message.message || '';
-        const sanitizedContent = this.sanitizeHTML(content);
-        
-        // Default to "Unknown User" if sender is missing
-        const senderName = message.sender || 'Unknown User';
-        
-        // Build HTML - with defensive coding against missing values
-        messageDiv.innerHTML = `
-            <div class="message-avatar">
-                <img src="${avatarUrl}" alt="${senderName}" onerror="this.src='https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378';" />
-            </div>
-            <div class="message-content">
-                <div class="message-header">
-                    <span class="message-sender">${senderName}</span>
-                    <span class="message-time">${timeString}</span>
+        // Message content - handle different message types
+        if (message.type === 'file') {
+            // Handle file type message
+            messageHTML += `
+                <div class="message-text">
+                    <div class="message-file">
+                        <a href="${message.fileUrl}" target="_blank" class="file-link">
+                            <i class="bi bi-file-earmark"></i> ${this.sanitizeHTML(message.content || 'Shared a file')}
+                        </a>
+                    </div>
                 </div>
-                <div class="message-text">${sanitizedContent || 'Empty message'}</div>
-            </div>
-        `;
+            `;
+        } else {
+            // Regular text message
+            messageHTML += `
+                <div class="message-text">
+                    ${this.sanitizeHTML(message.content || '')}
+                </div>
+            `;
+        }
         
-        // Add to the messages container
-        this.messagesContainer.appendChild(messageDiv);
+        // Close message-content div
+        messageHTML += `</div>`;
+        
+        // Set message HTML
+        messageDiv.innerHTML = messageHTML;
+        
+        // Add to container
+        messagesContainer.appendChild(messageDiv);
         
         // Scroll to bottom
-        this.scrollToBottom();
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
     
+    // Format timestamp in Discord style
+    formatTimestamp(timestamp) {
+        if (!timestamp) return 'Unknown time';
+        
+        const date = new Date(timestamp);
+        const now = new Date();
+        const isToday = date.toDateString() === now.toDateString();
+        const isYesterday = new Date(now - 86400000).toDateString() === date.toDateString();
+        
+        // Format hours and minutes
+        const hours = date.getHours();
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const hours12 = hours % 12 || 12;
+        const timeStr = `${hours12}:${minutes} ${ampm}`;
+        
+        // Format the date string
+        if (isToday) {
+            return `Today at ${timeStr}`;
+        } else if (isYesterday) {
+            return `Yesterday at ${timeStr}`;
+        } else {
+            // Format date as MM/DD/YYYY
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            const year = date.getFullYear();
+            return `${month}/${day}/${year} ${timeStr}`;
+        }
+    }
+
     // Helper function to sanitize HTML content to prevent XSS
     sanitizeHTML(html) {
         if (!html) return '';
