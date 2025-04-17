@@ -618,23 +618,75 @@ class ChatManager {
     handleMessageHistory(data) {
         console.log('[CHAT_DEBUG] Received message history:', data);
         
-        if (!data || !data.messages) return;
+        if (!data || !data.messages) {
+            console.error('[CHAT_DEBUG] Invalid message history data received:', data);
+            return;
+        }
         
-        if (data.type === 'dm' && data.userId) {
-            // DM history
-            this.dmConversations[data.userId] = data.messages;
+        // Get the channel from the data object
+        const channel = data.channel || 'general';
+        
+        console.log(`[CHAT_DEBUG] Processing ${data.messages.length} messages for channel ${channel}`);
+        
+        // Store messages in appropriate collection
+        if (channel.startsWith('dm_')) {
+            // DM history - extract user IDs from channel name
+            const userIds = channel.replace('dm_', '').split('_');
+            const otherUserId = userIds[0] === this.currentUser?.id ? userIds[1] : userIds[0];
             
-            if (this.currentDmRecipientId === data.userId) {
-                this.clearMessagesContainer();
-                data.messages.forEach(msg => this.displayMessageInUI(msg, 'dm'));
+            if (!this.dmConversations[otherUserId]) {
+                this.dmConversations[otherUserId] = [];
             }
-        } else if (data.type === 'channel' && data.channel) {
-            // Channel history
-            this.channelMessages[data.channel] = data.messages;
             
-            if (this.currentChannel === data.channel) {
+            // Add new messages, avoiding duplicates
+            data.messages.forEach(msg => {
+                const isDuplicate = this.dmConversations[otherUserId].some(existingMsg => 
+                    (existingMsg.id && existingMsg.id === msg.id) ||
+                    (existingMsg.timestamp === msg.timestamp && 
+                     existingMsg.sender === msg.sender && 
+                     existingMsg.content === msg.content));
+                
+                if (!isDuplicate) {
+                    this.dmConversations[otherUserId].push(msg);
+                }
+            });
+            
+            // Display if this is the active conversation
+            if (this.currentChannel === channel) {
                 this.clearMessagesContainer();
-                data.messages.forEach(msg => this.displayMessageInUI(msg, data.channel));
+                this.dmConversations[otherUserId].forEach(msg => 
+                    this.displayMessageInUI(msg, channel));
+            }
+        } else {
+            // Regular channel history
+            if (!this.channelMessages[channel]) {
+                this.channelMessages[channel] = [];
+            }
+            
+            // Add new messages, avoiding duplicates
+            data.messages.forEach(msg => {
+                const isDuplicate = this.channelMessages[channel].some(existingMsg => 
+                    (existingMsg.id && existingMsg.id === msg.id) ||
+                    (existingMsg.timestamp === msg.timestamp && 
+                     existingMsg.sender === msg.sender && 
+                     existingMsg.content === msg.content));
+                
+                if (!isDuplicate) {
+                    this.channelMessages[channel].push(msg);
+                }
+            });
+            
+            // Sort by timestamp
+            this.channelMessages[channel].sort((a, b) => 
+                new Date(a.timestamp) - new Date(b.timestamp)
+            );
+            
+            // Display if this is the active channel
+            if (this.currentChannel === channel) {
+                console.log(`[CHAT_DEBUG] Displaying ${this.channelMessages[channel].length} messages for current channel: ${channel}`);
+                this.clearMessagesContainer();
+                this.channelMessages[channel].forEach(msg => 
+                    this.displayMessageInUI(msg, channel));
             }
         }
     }
