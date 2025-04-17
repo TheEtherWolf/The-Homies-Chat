@@ -598,8 +598,63 @@ body {
   display: none;
 }
 
+/* Ensure the menu is visible in the viewport for own messages */
+.message.own-message .message-actions-menu {
+  right: auto; 
+  left: 0;
+}
+
+/* Position adjustment for menu when close to screen edge */
 .message-actions-menu.show {
   display: block;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Make sure the menu is positioned within the viewport */
+@media (max-width: 768px) {
+  .message-actions-menu {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 20%;
+    top: auto;
+    width: 80%;
+    max-width: 300px;
+  }
+}
+
+.message-actions-btn {
+  background: var(--very-dark);
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  padding: 0.25rem 0.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-speed) ease;
+  box-shadow: var(--box-shadow);
+}
+
+.message-actions-btn:hover {
+  color: var(--text-light);
+  background-color: var(--secondary-color);
+}
+
+.message-actions-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: var(--light-background);
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--box-shadow);
+  min-width: 150px;
+  z-index: 1000;
+  overflow: hidden;
+  display: none;
 }
 
 .message-action-item {

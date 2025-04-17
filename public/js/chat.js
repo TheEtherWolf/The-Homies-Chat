@@ -1072,6 +1072,32 @@ class ChatManager {
                         this.socket.emit('delete-message', { messageId }, (response) => {
                             if (response.success) {
                                 console.log(`[CHAT_DEBUG] Message deleted successfully: ${messageId}`);
+                                // Remove the message from UI immediately 
+                                messageElement.remove();
+                                
+                                // Remove from local cache in ALL channels
+                                for (const channelId in this.channelMessages) {
+                                    const index = this.channelMessages[channelId].findIndex(
+                                        msg => msg.id === messageId
+                                    );
+                                    
+                                    if (index !== -1) {
+                                        this.channelMessages[channelId].splice(index, 1);
+                                        console.log(`[CHAT_DEBUG] Removed deleted message from channel cache: ${channelId}`);
+                                    }
+                                }
+                                
+                                // Also check general messages
+                                if (this.generalChatMessages) {
+                                    const genIndex = this.generalChatMessages.findIndex(
+                                        msg => msg.id === messageId
+                                    );
+                                    
+                                    if (genIndex !== -1) {
+                                        this.generalChatMessages.splice(genIndex, 1);
+                                        console.log(`[CHAT_DEBUG] Removed deleted message from general chat cache`);
+                                    }
+                                }
                             } else {
                                 console.error(`[CHAT_DEBUG] Failed to delete message: ${response.message}`);
                                 alert(`Failed to delete message: ${response.message}`);
@@ -1385,6 +1411,8 @@ class ChatManager {
                     this.socket.emit('delete-message', { messageId }, (response) => {
                         if (response.success) {
                             console.log(`[CHAT_DEBUG] Message deleted successfully: ${messageId}`);
+                            // Remove the message from UI immediately
+                            messageElement.remove();
                         } else {
                             console.error(`[CHAT_DEBUG] Failed to delete message: ${response.message}`);
                             alert(`Failed to delete message: ${response.message}`);
@@ -1407,15 +1435,27 @@ class ChatManager {
                 console.log(`[CHAT_DEBUG] Removed deleted message from UI: ${data.messageId}`);
             }
             
-            // Remove from stored messages
-            if (data.channel && this.channelMessages[data.channel]) {
-                const index = this.channelMessages[data.channel].findIndex(
+            // Remove from stored messages in ALL channels (in case it appears in multiple places)
+            for (const channelId in this.channelMessages) {
+                const index = this.channelMessages[channelId].findIndex(
                     msg => msg.id === data.messageId
                 );
                 
                 if (index !== -1) {
-                    this.channelMessages[data.channel].splice(index, 1);
-                    console.log(`[CHAT_DEBUG] Removed deleted message from cache: ${data.messageId}`);
+                    this.channelMessages[channelId].splice(index, 1);
+                    console.log(`[CHAT_DEBUG] Removed deleted message from channel cache: ${channelId}`);
+                }
+            }
+            
+            // Also check general messages
+            if (this.generalChatMessages) {
+                const genIndex = this.generalChatMessages.findIndex(
+                    msg => msg.id === data.messageId
+                );
+                
+                if (genIndex !== -1) {
+                    this.generalChatMessages.splice(genIndex, 1);
+                    console.log(`[CHAT_DEBUG] Removed deleted message from general chat cache`);
                 }
             }
         });

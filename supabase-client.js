@@ -709,32 +709,49 @@ async function saveMessagesToSupabase(messages) {
 async function markMessageAsDeleted(messageId) {
   try {
     // Ensure Supabase is configured
-    if (!serviceSupabase || !SUPABASE_SERVICE_KEY) {
-      console.error('Supabase service client not configured, cannot delete message');
+    if (!serviceSupabase || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+      console.error('Supabase not configured, cannot delete message');
       return false;
     }
-    
+
     if (!messageId) {
-      console.error('Cannot delete message without message ID');
+      console.error('No message ID provided for deletion');
       return false;
     }
-    
-    console.log(`Marking message with ID ${messageId} as deleted`);
-    
-    // Update the message to set deleted flag
-    const { data, error } = await serviceSupabase
+
+    console.log(`Marking message ${messageId} as deleted in Supabase`);
+
+    // First check if the message exists
+    const { data: existingMessage, error: fetchError } = await serviceSupabase
       .from('messages')
-      .update({ 
-        deleted: true, 
-        deleted_at: new Date().toISOString() 
+      .select('id')
+      .eq('id', messageId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Error checking message existence:', fetchError);
+      return false;
+    }
+
+    if (!existingMessage) {
+      console.error(`Message ${messageId} not found in Supabase`);
+      return false;
+    }
+
+    // Update the message with deleted status
+    const { error } = await serviceSupabase
+      .from('messages')
+      .update({
+        deleted: true,
+        deleted_at: new Date().toISOString()
       })
       .eq('id', messageId);
-    
+
     if (error) {
       console.error('Error marking message as deleted:', error);
       return false;
     }
-    
+
     console.log(`Successfully marked message ${messageId} as deleted`);
     return true;
   } catch (error) {
