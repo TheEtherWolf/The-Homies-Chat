@@ -29,6 +29,7 @@ class ChatManager {
         this.emojiPicker = document.querySelector('.emoji-picker');
         this.emojiButtons = document.querySelectorAll('.emoji-btn');
         this.attachFileButton = document.getElementById('attach-file-button');
+        this.friendsList = []; // Store the user's friends list
 
         // --- State Variables ---
         this.currentDmRecipientId = null;
@@ -41,76 +42,46 @@ class ChatManager {
         this.isSocketConnected = this.socket ? this.socket.connected : false; // Track connection state
         this.inGeneralChat = false; // Flag to track if we're in the general chat
         this.currentChannel = 'general'; // Default channel
-        
-        // Add a default general chat and channel structure
-        this.generalChatMessages = [];
-        this.channelMessages = {
-            'general': [],
-            'announcements': [],
-            'memes': []
-        };
-
-        this.statusIcons = {
-            online: 'success',
-            away: 'warning',
-            busy: 'danger',
-            offline: 'text-muted'
-        };
-        
-        // Bind methods that need 'this' context
-        this.sendMessage = this.sendMessage.bind(this);
-        this.handleReconnect = this.handleReconnect.bind(this);
-        this.handleSocketConnect = this.handleSocketConnect.bind(this);
-        this.handleSocketDisconnect = this.handleSocketDisconnect.bind(this);
-        this.attachEventListeners = this.attachEventListeners.bind(this);
-        this.openGeneralChat = this.openGeneralChat.bind(this);
-        this.switchChannel = this.switchChannel.bind(this);
-        this.toggleEmojiPicker = this.toggleEmojiPicker.bind(this);
-        this.insertEmoji = this.insertEmoji.bind(this);
+        this.isDMMode = false; // Track if we're in DM mode or channels mode
     }
 
     // Initialize chat manager with user data
     initialize(user) {
         console.log('[CHAT_DEBUG] ChatManager initialize called with user:', user);
+        
         if (this.isInitialized) {
-            console.warn('[CHAT_DEBUG] ChatManager already initialized. Aborting.');
+            console.log('[CHAT_DEBUG] ChatManager already initialized, skipping...');
             return;
         }
-        if (!user || !user.id || !user.username) {
-             console.error('[CHAT_DEBUG] Initialization failed: Invalid user object provided.', user);
-             return;
+        
+        // Store the current user
+        this.currentUser = user;
+        
+        // Update UI with user name
+        if (this.currentUserDisplay) {
+            this.currentUserDisplay.textContent = user.username;
         }
         
-        this.currentUser = user; 
-        this.updateCurrentUserDisplay();
+        // Attach event listeners for UI interactions
         this.attachEventListeners();
-
+        console.log('[CHAT_DEBUG] All event listeners attached');
+        
+        // Set flag to indicate we need to fetch data when socket connects
         this.needsInitialDataFetch = true;
-        console.log('[CHAT_DEBUG] Set flag: needsInitialDataFetch = true');
-
-        // Check if socket is already connected
-        if (this.isSocketConnected) {
-            console.log('[CHAT_DEBUG] Socket already connected during init, triggering initial data fetch.');
-            this.performInitialDataFetch();
-        } else {
+        
+        // If socket is not connected, wait for connect event
+        if (!this.isSocketConnected) {
             console.log('[CHAT_DEBUG] Socket not connected during init, waiting for connect event.');
+            return;
         }
         
-        // Set up channel click handlers
-        this.setupChannelHandlers();
-        
-        // Open General chat by default
+        // Begin with the general channel
         this.switchChannel('general');
         
-        // Load available channels from the server
-        this.loadChannels();
+        // Get friends list
+        this.getFriendsList();
         
-        // Initialize emoji picker functionality
-        this.initEmojiPicker();
-        
-        // Add emoji button event listener directly
-        this.setupEmojiButtonDirectly();
-        
+        // Set initialization flag
         this.isInitialized = true;
         console.log('[CHAT_DEBUG] ChatManager successfully initialized.');
     }
@@ -184,6 +155,21 @@ class ChatManager {
     // Open a direct message conversation
     openDM(username) {
         console.log('[CHAT_DEBUG] Opening DM with:', username);
+        
+        // Prevent DMing yourself
+        if (username === this.currentUser.username) {
+            console.log('[CHAT_DEBUG] Cannot DM yourself');
+            alert('You cannot send a direct message to yourself.');
+            return;
+        }
+        
+        // Check if this user is in your friends list
+        const isFriend = this.friendsList.some(friend => friend.username === username);
+        if (!isFriend) {
+            console.log('[CHAT_DEBUG] Cannot DM non-friend');
+            this.showAddFriendModal(username);
+            return;
+        }
         
         // Find the user by username
         let recipientUser = null;
@@ -476,20 +462,22 @@ class ChatManager {
             });
         });
         
-        // --- Add DM Server Icon Click Handler ---
+        // --- Add Server Icon Click Handlers ---
         const dmServerIcon = document.getElementById('dm-server-icon');
         if (dmServerIcon) {
             dmServerIcon.addEventListener('click', () => {
                 console.log('[CHAT_DEBUG] DM server icon clicked');
-                // Show DM interface in sidebar
                 this.showDMInterface();
-                
-                // If we have DMs, open the first one
-                const firstDM = document.querySelector('.dm-item');
-                if (firstDM) {
-                    const username = firstDM.querySelector('span').textContent;
-                    this.openDM(username);
-                }
+            });
+        }
+
+        // Add group chat icon handler to go back to channels
+        const groupServerIcon = document.querySelector('.server-icon:first-of-type');
+        if (groupServerIcon) {
+            groupServerIcon.addEventListener('click', () => {
+                console.log('[CHAT_DEBUG] Group server icon clicked');
+                this.showChannelsInterface();
+                this.switchChannel('general');
             });
         }
         
@@ -717,7 +705,7 @@ class ChatManager {
             );
         
         if (isDuplicate) {
-            console.log('[CHAT_DEBUG] Skipping duplicate message:', message);
+            console.log(`[CHAT_DEBUG] Skipping duplicate message with ID: ${message.id}`);
             return;
         }
         
@@ -1466,22 +1454,6 @@ class ChatManager {
         }
     }
 
-    // Clear unread indicator for a DM
-    clearUnreadIndicator(userId) {
-        if (!userId) return;
-        
-        const dmItem = document.querySelector(`.dm-item[data-user-id="${userId}"]`);
-        if (dmItem) {
-            dmItem.classList.remove('unread');
-            
-            // Remove the unread dot if it exists
-            const unreadDot = dmItem.querySelector('.unread-dot');
-            if (unreadDot) {
-                unreadDot.remove();
-            }
-        }
-    }
-
     // Add event listener for message deletion request
     handleMessageDeletion() {
         // Add click event listener on messages container for delegation
@@ -1759,13 +1731,6 @@ class ChatManager {
         const emojiPicker = document.querySelector('.emoji-picker');
         const messageInput = document.getElementById('message-input');
         
-        // Log element availability
-        console.log('[CHAT_DEBUG] Direct element access:', {
-            emojiButton: emojiButton ? 'Found' : 'Not found',
-            emojiPicker: emojiPicker ? 'Found' : 'Not found',
-            messageInput: messageInput ? 'Found' : 'Not found'
-        });
-        
         if (!emojiButton || !emojiPicker) return;
         
         // Add click handler directly
@@ -1903,6 +1868,376 @@ class ChatManager {
         
         // Set a flag to indicate we're in DM mode
         this.isDMMode = true;
+        
+        // Show friends management UI
+        this.showFriendsManagerUI();
+    }
+    
+    // Show Channels Interface
+    showChannelsInterface() {
+        console.log('[CHAT_DEBUG] Showing channels interface');
+        
+        // Activate group server icon
+        document.querySelectorAll('.server-icon').forEach(icon => {
+            icon.classList.remove('active');
+        });
+        document.querySelector('.server-icon:first-of-type').classList.add('active');
+        
+        // Update sidebar to show channels list
+        document.querySelector('.channels-section').style.display = 'block';
+        document.querySelector('.sidebar-section').style.display = 'none';
+        
+        // Update chat header
+        this.chatTitle.innerHTML = '<i class="bi bi-hash me-2"></i> Text Channels';
+        
+        // Reset DM mode flag
+        this.isDMMode = false;
+        this.currentDmRecipientId = null;
+    }
+    
+    // Friends system functionality
+    
+    // Get the friends list from the server
+    getFriendsList() {
+        console.log('[CHAT_DEBUG] Getting friends list');
+        this.socket.emit('get-friends', (response) => {
+            if (response.success) {
+                console.log('[CHAT_DEBUG] Friends list received:', response.friends);
+                this.friendsList = response.friends;
+                this.updateFriendsUI();
+            } else {
+                console.error('[CHAT_DEBUG] Failed to get friends list:', response.message);
+            }
+        });
+    }
+    
+    // Update friends UI in sidebar
+    updateFriendsUI() {
+        const dmList = document.getElementById('dm-list');
+        if (!dmList) return;
+        
+        // Clear existing DM items
+        dmList.innerHTML = '';
+        
+        // Add UI for each friend
+        this.friendsList.forEach(friend => {
+            const dmItem = document.createElement('div');
+            dmItem.className = 'dm-item';
+            dmItem.innerHTML = `
+                <div class="dm-avatar">
+                    <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="${friend.username} Avatar">
+                    <div class="dm-status ${friend.status || 'offline'}"></div>
+                </div>
+                <span>${friend.username}</span>
+                <div class="dm-actions">
+                    <button class="dm-remove-btn" title="Remove Friend" data-friend-id="${friend.id}">
+                        <i class="bi bi-x-circle"></i>
+                    </button>
+                </div>
+            `;
+            
+            // Add click event to open the DM
+            dmItem.addEventListener('click', (e) => {
+                // Don't open DM if clicking remove button
+                if (e.target.closest('.dm-remove-btn')) return;
+                this.openDM(friend.username);
+            });
+            
+            // Add remove friend handler
+            const removeBtn = dmItem.querySelector('.dm-remove-btn');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.removeFriend(friend.id, friend.username);
+                });
+            }
+            
+            // Add to the list
+            dmList.appendChild(dmItem);
+        });
+        
+        // Add "Add Friend" button at the bottom
+        const addFriendItem = document.createElement('div');
+        addFriendItem.className = 'dm-item add-friend-item';
+        addFriendItem.innerHTML = `
+            <div class="dm-avatar">
+                <i class="bi bi-person-plus-fill"></i>
+            </div>
+            <span>Add Friend</span>
+        `;
+        
+        addFriendItem.addEventListener('click', () => {
+            this.showAddFriendModal();
+        });
+        
+        dmList.appendChild(addFriendItem);
+    }
+    
+    // Show add friend modal
+    showAddFriendModal(prefilledUsername = '') {
+        // Get or create the modal
+        let modal = document.getElementById('add-friend-modal');
+        
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'add-friend-modal';
+            modal.className = 'modal fade';
+            modal.tabIndex = '-1';
+            modal.setAttribute('aria-labelledby', 'addFriendModalLabel');
+            modal.setAttribute('aria-hidden', 'true');
+            
+            modal.innerHTML = `
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="addFriendModalLabel">Add Friend</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Enter your friend's username and their friend code to add them:</p>
+                            <div class="mb-3">
+                                <label for="friend-username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="friend-username" value="${prefilledUsername}">
+                            </div>
+                            <div class="mb-3">
+                                <label for="friend-code" class="form-label">Friend Code</label>
+                                <input type="text" class="form-control" id="friend-code" placeholder="e.g. ABC123XY">
+                            </div>
+                            <div class="alert alert-primary" role="alert">
+                                <strong>Your Friend Code:</strong> <span id="your-friend-code">Loading...</span>
+                                <button class="btn btn-sm btn-outline-primary ms-2" id="refresh-code-btn">
+                                    <i class="bi bi-arrow-repeat"></i>
+                                </button>
+                            </div>
+                            <div id="add-friend-message" class="alert alert-danger d-none" role="alert"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="add-friend-submit">Add Friend</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Initialize Bootstrap modal
+            const modalInstance = new bootstrap.Modal(modal);
+            
+            // Get friend code when modal opens
+            modal.addEventListener('shown.bs.modal', () => {
+                this.getFriendCode();
+            });
+            
+            // Add handlers
+            const addFriendSubmit = document.getElementById('add-friend-submit');
+            if (addFriendSubmit) {
+                addFriendSubmit.addEventListener('click', () => {
+                    const username = document.getElementById('friend-username').value.trim();
+                    const friendCode = document.getElementById('friend-code').value.trim();
+                    
+                    if (!username || !friendCode) {
+                        this.showAddFriendMessage('Username and friend code are required', 'danger');
+                        return;
+                    }
+                    
+                    this.addFriend(username, friendCode);
+                });
+            }
+            
+            // Add refresh code button handler
+            const refreshCodeBtn = document.getElementById('refresh-code-btn');
+            if (refreshCodeBtn) {
+                refreshCodeBtn.addEventListener('click', () => {
+                    this.regenerateFriendCode();
+                });
+            }
+        } else {
+            // Modal exists, update username if provided
+            if (prefilledUsername) {
+                const usernameInput = document.getElementById('friend-username');
+                if (usernameInput) {
+                    usernameInput.value = prefilledUsername;
+                }
+            }
+        }
+        
+        // Show the modal
+        const modalInstance = bootstrap.Modal.getInstance(modal) || new bootstrap.Modal(modal);
+        modalInstance.show();
+    }
+    
+    // Get your friend code from the server
+    getFriendCode() {
+        const codeSpan = document.getElementById('your-friend-code');
+        if (!codeSpan) return;
+        
+        codeSpan.textContent = 'Loading...';
+        
+        this.socket.emit('get-friend-code', (response) => {
+            if (response.success) {
+                codeSpan.textContent = response.friendCode;
+            } else {
+                codeSpan.textContent = 'Error loading code';
+                console.error('[CHAT_DEBUG] Failed to get friend code:', response.message);
+            }
+        });
+    }
+    
+    // Regenerate friend code
+    regenerateFriendCode() {
+        const codeSpan = document.getElementById('your-friend-code');
+        if (!codeSpan) return;
+        
+        codeSpan.textContent = 'Generating...';
+        
+        this.socket.emit('generate-friend-code', (response) => {
+            if (response.success) {
+                codeSpan.textContent = response.friendCode;
+            } else {
+                codeSpan.textContent = 'Error generating code';
+                console.error('[CHAT_DEBUG] Failed to generate friend code:', response.message);
+            }
+        });
+    }
+    
+    // Add a friend
+    addFriend(username, friendCode) {
+        this.showAddFriendMessage('Adding friend...', 'info');
+        
+        this.socket.emit('add-friend', { username, friendCode }, (response) => {
+            if (response.success) {
+                this.showAddFriendMessage('Friend added successfully!', 'success');
+                
+                // Add to friends list and update UI
+                this.friendsList.push(response.friend);
+                this.updateFriendsUI();
+                
+                // Close modal after a short delay
+                setTimeout(() => {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('add-friend-modal'));
+                    if (modal) modal.hide();
+                }, 1500);
+            } else {
+                this.showAddFriendMessage(response.message || 'Failed to add friend', 'danger');
+            }
+        });
+    }
+    
+    // Remove a friend
+    removeFriend(friendId, friendUsername) {
+        if (confirm(`Are you sure you want to remove ${friendUsername} from your friends list?`)) {
+            this.socket.emit('remove-friend', { friendId }, (response) => {
+                if (response.success) {
+                    // Remove from friends list
+                    this.friendsList = this.friendsList.filter(friend => friend.id !== friendId);
+                    this.updateFriendsUI();
+                    
+                    // If currently in DM with this user, go back to channel view
+                    if (this.currentDmRecipientId === friendId) {
+                        this.showChannelsInterface();
+                        this.switchChannel('general');
+                    }
+                } else {
+                    console.error('[CHAT_DEBUG] Failed to remove friend:', response.message);
+                    alert('Failed to remove friend: ' + (response.message || 'Unknown error'));
+                }
+            });
+        }
+    }
+    
+    // Show message in add friend modal
+    showAddFriendMessage(message, type = 'info') {
+        const msgDiv = document.getElementById('add-friend-message');
+        if (!msgDiv) return;
+        
+        msgDiv.textContent = message;
+        msgDiv.className = `alert alert-${type}`;
+        msgDiv.classList.remove('d-none');
+    }
+    
+    // Show friends manager UI in the main content when in DM mode without an active DM
+    showFriendsManagerUI() {
+        if (!this.currentDmRecipientId) {
+            this.clearMessagesContainer();
+            
+            const friendsManagerUI = document.createElement('div');
+            friendsManagerUI.className = 'friends-manager text-center mt-5';
+            friendsManagerUI.innerHTML = `
+                <div class="friends-header mb-4">
+                    <i class="bi bi-people-fill fs-1"></i>
+                    <h2>Friends</h2>
+                    <p>Add friends to start chatting!</p>
+                </div>
+                
+                <div class="add-friend-btn-container">
+                    <button class="btn btn-primary btn-lg" id="main-add-friend-btn">
+                        <i class="bi bi-person-plus-fill me-2"></i>
+                        Add Friend
+                    </button>
+                </div>
+                
+                <div class="friends-list-container mt-5">
+                    <h4 class="mb-3">Your Friends (${this.friendsList.length})</h4>
+                    <div class="friends-grid" id="friends-grid">
+                        ${this.friendsList.length === 0 ? 
+                            '<div class="no-friends-message">No friends yet. Add friends using their username and friend code.</div>' : 
+                            this.friendsList.map(friend => `
+                                <div class="friend-card" data-friend-id="${friend.id}">
+                                    <div class="friend-avatar">
+                                        <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="${friend.username} Avatar">
+                                        <div class="friend-status ${friend.status || 'offline'}"></div>
+                                    </div>
+                                    <div class="friend-info">
+                                        <div class="friend-username">${friend.username}</div>
+                                        <div class="friend-status-text">${friend.status || 'offline'}</div>
+                                    </div>
+                                    <div class="friend-actions">
+                                        <button class="btn btn-sm btn-primary friend-message-btn" data-username="${friend.username}">
+                                            <i class="bi bi-chat-fill"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger friend-remove-btn" data-friend-id="${friend.id}" data-username="${friend.username}">
+                                            <i class="bi bi-x-circle"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            `).join('')
+                        }
+                    </div>
+                </div>
+            `;
+            
+            this.messagesContainer.appendChild(friendsManagerUI);
+            
+            // Add event listeners
+            const addFriendBtn = document.getElementById('main-add-friend-btn');
+            if (addFriendBtn) {
+                addFriendBtn.addEventListener('click', () => {
+                    this.showAddFriendModal();
+                });
+            }
+            
+            // Add message button handlers
+            document.querySelectorAll('.friend-message-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const username = btn.getAttribute('data-username');
+                    if (username) {
+                        this.openDM(username);
+                    }
+                });
+            });
+            
+            // Add remove button handlers
+            document.querySelectorAll('.friend-remove-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const friendId = btn.getAttribute('data-friend-id');
+                    const username = btn.getAttribute('data-username');
+                    if (friendId && username) {
+                        this.removeFriend(friendId, username);
+                    }
+                });
+            });
+        }
     }
 }
 
