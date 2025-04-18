@@ -560,32 +560,6 @@ class ChatManager {
         console.log('[CHAT_DEBUG] All event listeners attached');
     }
 
-    initializeEventListeners() {
-        // Message input event listeners
-        this.messageInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                this.sendMessage();
-            }
-        });
-        
-        this.sendButton.addEventListener('click', () => {
-            this.sendMessage();
-        });
-        
-        // Setup channel switching
-        this.setupChannelSwitch();
-        
-        // Setup emoji picker
-        this.setupEmojiPicker();
-        
-        // Setup message deletion
-        this.handleMessageDeletion();
-        
-        // Setup global click handler for message action menus
-        this.setupGlobalClickHandler();
-    }
-
     // Handle socket connection
     handleSocketConnect() {
         console.log('[CHAT_DEBUG] Socket connected');
@@ -1937,7 +1911,7 @@ class ChatManager {
             `;
             
             // Add click event to open the DM
-            dmItem.addEventListener('click', (e) => {
+            dmItem.addEventListener('click', () => {
                 // Don't open DM if clicking remove button
                 if (e.target.closest('.dm-remove-btn')) return;
                 this.openDM(friend.username);
@@ -2154,6 +2128,28 @@ class ChatManager {
         msgDiv.textContent = message;
         msgDiv.className = `alert alert-${type}`;
         msgDiv.classList.remove('d-none');
+    }
+    
+    // Setup server icon handlers
+    setupServerIconHandlers() {
+        // Group chat server icon
+        const groupServerIcon = document.querySelector('.server-icon:first-of-type');
+        if (groupServerIcon) {
+            groupServerIcon.addEventListener('click', () => {
+                console.log('[CHAT_DEBUG] Group server icon clicked');
+                this.showChannelsInterface();
+                this.switchChannel('general');
+            });
+        }
+        
+        // DM server icon
+        const dmServerIcon = document.getElementById('dm-server-icon');
+        if (dmServerIcon) {
+            dmServerIcon.addEventListener('click', () => {
+                console.log('[CHAT_DEBUG] DM server icon clicked');
+                this.showDMInterface();
+            });
+        }
     }
     
     // Show friends manager UI in the main content when in DM mode without an active DM
