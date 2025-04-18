@@ -425,7 +425,7 @@ body {
 /* Messages Styling - Discord Style with Bubbles */
 .message {
   display: flex;
-  padding: 0.25rem 1rem 0.25rem 1rem; /* Equal padding left and right */
+  padding: 0.25rem 1rem; /* Equal padding left and right */
   position: relative;
   margin-bottom: 0.125rem;
 }
@@ -436,7 +436,7 @@ body {
 }
 
 .message:not(.first-message) {
-  padding-left: 4.5rem; /* Align with the username from first message */
+  padding-left: 4rem; /* Align with the username from first message - reduced */
 }
 
 .message:hover {
@@ -464,13 +464,17 @@ body {
 .message-content {
   flex-grow: 1;
   min-width: 0; /* Fix for flex child overflow */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* Align left for regular messages */
 }
 
 .message-header {
   display: flex;
   align-items: baseline;
   margin-bottom: 0.25rem;
-  padding-left: 0.5rem; /* Added padding for alignment with bubble */
+  padding-left: 0; /* Remove padding that was pushing content right */
+  width: 100%;
 }
 
 .message:not(.first-message) .message-header {
@@ -479,14 +483,7 @@ body {
 
 .message-author {
   font-weight: 500;
-  font-size: 1rem;
-  margin-right: 0.5rem;
-  color: white;
-  cursor: pointer;
-}
-
-.message-author:hover {
-  text-decoration: underline;
+  color: var(--secondary-color);
 }
 
 .message-timestamp {
@@ -507,38 +504,17 @@ body {
   line-height: 1.4;
   word-break: break-word;
   white-space: pre-wrap;
-  text-align: center; /* Center text for perfect symmetry */
   
   /* Sizing and spacing */
   display: inline-block;
   max-width: 80%;
   padding: 12px; /* Equal padding on all sides */
   box-sizing: border-box;
+  text-align: left; /* Left align text for regular messages */
   
-  /* Animation for new messages */
+  /* Animation */
   animation: messageFadeIn 0.3s ease;
   transform-origin: bottom left;
-}
-
-.message.own-message .message-text {
-  background-color: var(--own-message-bg);
-  max-width: fit-content;
-  transform-origin: bottom right; /* Animation starts from right for own messages */
-}
-
-.message-text:hover {
-  filter: brightness(1.05);
-}
-
-@keyframes messageFadeIn {
-  0% {
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 .message.new-message {
@@ -547,24 +523,27 @@ body {
 
 .message.own-message {
   flex-direction: row-reverse;
-  padding: 0.25rem 1rem 0.25rem 1rem; /* Equal padding left and right */
+  padding: 0.25rem 1rem; /* Equal padding left and right */
 }
 
 .message.own-message:not(.first-message) {
-  padding-left: 4.5rem; /* Match right padding for symmetry */
-  padding-right: 4.5rem;
+  padding-right: 4rem; /* Match left padding for symmetry */
+  padding-left: 1rem;
 }
 
 .message.own-message .message-content {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-end; /* Right-align content for own messages */
 }
 
-.message.own-message .message-header {
-  flex-direction: row-reverse;
-  padding-right: 0;
-  padding-left: 0;
+.message.own-message .message-text {
+  background-color: var(--own-message-bg);
+  max-width: fit-content;
+  text-align: left; /* Keep text left-aligned within the bubble */
+  transform-origin: bottom right; /* Animation starts from right for own messages */
+}
+
+.message-text:hover {
+  filter: brightness(1.05);
 }
 
 .message.own-message .message-author {
@@ -574,7 +553,7 @@ body {
 
 .message.own-message .message-avatar {
   margin-right: 0;
-  margin-left: 0;
+  margin-left: 0.5rem;
 }
 
 /* Message Actions */
@@ -1021,4 +1000,15 @@ body {
 .emoji-btn:hover {
   background-color: var(--hover-highlight);
   transform: scale(1.2);
+}
+
+@keyframes messageFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
