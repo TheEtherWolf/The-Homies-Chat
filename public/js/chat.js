@@ -1743,6 +1743,55 @@ class ChatManager {
             }
         });
     }
+    
+    // Check if a message is from the current user
+    isOwnMessage(message) {
+        if (!message) return false;
+        
+        // First check by sender ID if available
+        if (message.senderId && this.currentUser && this.currentUser.id) {
+            return message.senderId === this.currentUser.id;
+        }
+        
+        // Fall back to checking by username
+        if (message.sender && this.currentUser && this.currentUser.username) {
+            return message.sender === this.currentUser.username;
+        }
+        
+        // Third fallback check by sender_id (database format)
+        if (message.sender_id && this.currentUser && this.currentUser.id) {
+            return message.sender_id === this.currentUser.id;
+        }
+        
+        return false;
+    }
+    
+    // Check if message is first in a group
+    isFirstMessageInGroup(message) {
+        // Check if this is a grouped message (same sender as previous message within 5 minutes)
+        const messagesContainer = document.getElementById('messages-container');
+        if (!messagesContainer) return true;
+        
+        const previousMessage = messagesContainer.lastElementChild;
+        
+        if (previousMessage && previousMessage.classList.contains('message')) {
+            const prevSenderId = previousMessage.getAttribute('data-sender-id');
+            const prevTimestamp = previousMessage.getAttribute('data-timestamp');
+            
+            if (prevSenderId && prevTimestamp && message.senderId && message.timestamp) {
+                // Check if same sender and less than 5 minutes between messages
+                const prevTime = new Date(prevTimestamp).getTime();
+                const currentTime = new Date(message.timestamp).getTime();
+                const timeDiff = currentTime - prevTime;
+                
+                // Group messages that are within 5 minutes and from the same sender
+                return !(prevSenderId === message.senderId && timeDiff < 5 * 60 * 1000);
+            }
+        }
+        
+        // Default to first message when we can't determine grouping
+        return true;
+    }
 }
 
 // Export the ChatManager class
