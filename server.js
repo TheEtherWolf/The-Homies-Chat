@@ -1940,57 +1940,48 @@ async function setupFriendsTable() {
     try {
         const supabase = getSupabaseClient(true);
         
-        // Check if friends table exists
-        const { data: tables, error: tableError } = await supabase
-            .from('information_schema.tables')
-            .select('table_name')
-            .eq('table_schema', 'public')
-            .eq('table_name', 'friends');
+        // Check if friends table exists by trying to query it directly
+        const { data, error: checkError } = await supabase
+            .from('friends')
+            .select('count')
+            .limit(1);
             
-        if (tableError) {
-            console.error('Error checking for friends table:', tableError);
+        // If we get an error about the relation not existing, create the table through the Supabase dashboard
+        if (checkError && checkError.code === '42P01') {
+            console.log('Friends table does not exist. You need to create it in the Supabase dashboard.');
+            console.log('To create the table, go to your Supabase dashboard, SQL Editor, and run:');
+            console.log(`
+CREATE TABLE IF NOT EXISTS public.friends (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.users(id),
+  friend_id UUID NOT NULL REFERENCES public.users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  
+  -- Prevent duplicate friendships
+  CONSTRAINT unique_friendship UNIQUE (user_id, friend_id)
+);
+
+-- Add friend_code column to users table if it doesn't exist
+ALTER TABLE public.users 
+ADD COLUMN IF NOT EXISTS friend_code TEXT;
+
+-- Create index for faster friend lookups
+CREATE INDEX IF NOT EXISTS idx_friends_user_id ON public.friends(user_id);
+CREATE INDEX IF NOT EXISTS idx_friends_friend_id ON public.friends(friend_id);
+
+-- Add is_dm column to messages table
+ALTER TABLE public.messages 
+ADD COLUMN IF NOT EXISTS is_dm BOOLEAN DEFAULT false;
+
+-- Add recipient_id column for DM messages
+ALTER TABLE public.messages
+ADD COLUMN IF NOT EXISTS recipient_id UUID REFERENCES public.users(id);
+            `);
             return false;
         }
         
-        // Create friends table if it doesn't exist
-        if (!tables || tables.length === 0) {
-            console.log('Creating friends table');
-            
-            // Create the table
-            const { error: createError } = await supabase.rpc('create_table_if_not_exists', {
-                table_name: 'friends',
-                column_definitions: `
-                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                    user_id UUID NOT NULL REFERENCES users(id),
-                    friend_id UUID NOT NULL REFERENCES users(id),
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                    status VARCHAR(20) DEFAULT 'accepted',
-                    UNIQUE(user_id, friend_id)
-                `
-            });
-            
-            if (createError) {
-                console.error('Error creating friends table:', createError);
-                return false;
-            }
-            
-            // Create friend_codes column in users table if it doesn't exist
-            const { error: alterError } = await supabase.rpc('alter_table_if_column_not_exists', {
-                table_name: 'users',
-                column_name: 'friend_code',
-                column_definition: 'VARCHAR(12) DEFAULT NULL'
-            });
-            
-            if (alterError) {
-                console.error('Error adding friend_code column:', alterError);
-            }
-            
-            console.log('Friends table and friend_code column created successfully');
-            return true;
-        } else {
-            console.log('Friends table already exists');
-            return true;
-        }
+        console.log('Friends table exists');
+        return true;
     } catch (err) {
         console.error('Error in setupFriendsTable:', err);
         return false;
