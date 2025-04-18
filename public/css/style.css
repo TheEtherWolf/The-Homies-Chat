@@ -574,7 +574,7 @@ body {
 .message-actions {
   position: absolute;
   top: 0; /* Change from top: 0.25rem */
-  right: -30px; /* Position to the right of the message bubble */
+  right: -10px; /* Change from -30px to -10px to move closer */
   opacity: 0;
   transition: opacity var(--transition-speed) ease;
   z-index: 10;
@@ -582,11 +582,11 @@ body {
 
 .message.own-message .message-actions {
   right: auto;
-  left: -30px; /* Position to the left of own message bubble */
+  left: -10px; /* Change from -30px to -10px to move closer */
 }
 
 .message-actions-btn {
-  background: var(--very-dark);
+  background: rgba(35, 39, 42, 0.7); /* Semi-transparent dark background */
   border: none;
   border-radius: 50%; /* Make it circular */
   color: var(--text-muted);
@@ -644,39 +644,6 @@ body {
     width: 80%;
     max-width: 300px;
   }
-}
-
-.message-actions-btn {
-  background: var(--very-dark);
-  border: none;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-muted);
-  padding: 0.25rem 0.5rem;
-  font-size: 1rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-speed) ease;
-  box-shadow: var(--box-shadow);
-}
-
-.message-actions-btn:hover {
-  color: var(--text-light);
-  background-color: var(--secondary-color);
-}
-
-.message-actions-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  background-color: var(--light-background);
-  border-radius: var(--border-radius-sm);
-  box-shadow: var(--box-shadow);
-  min-width: 150px;
-  z-index: 1000;
-  overflow: hidden;
-  display: none;
 }
 
 .message-action-item {
