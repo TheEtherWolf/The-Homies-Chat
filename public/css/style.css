@@ -485,7 +485,7 @@ body {
 
 .message-author {
   font-weight: 500;
-  color: var(--secondary-color);
+  color: var(--text-light);
   font-size: 1rem;
 }
 
@@ -510,7 +510,7 @@ body {
   
   /* Sizing and spacing */
   display: inline-block;
-  max-width: 70%; /* Reduced max width for more symmetry */
+  max-width: 65%; /* Reduced max width for more symmetry */
   padding: 12px; /* Equal padding on all sides */
   box-sizing: border-box;
   text-align: left; /* Left align text for regular messages */
@@ -548,7 +548,7 @@ body {
 
 .message.own-message .message-text {
   background-color: var(--own-message-bg);
-  max-width: 70%; /* Match regular message max-width */
+  max-width: 65%; /* Match regular message max-width */
   text-align: left; /* Keep text left-aligned within the bubble */
   transform-origin: bottom right; /* Animation starts from right for own messages */
   margin-left: 0; /* Ensure no leftward bias */
@@ -562,6 +562,7 @@ body {
 .message.own-message .message-author {
   margin-right: 0px;
   margin-left: 0px;
+  color: var(--text-light);
 }
 
 .message.own-message .message-avatar {
