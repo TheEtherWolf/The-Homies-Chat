@@ -196,27 +196,72 @@ class ChatManager {
             }
         }
         
-        // If user not found in the list, create a temporary user
+        // If user not found in the list, create a persistent user record
         if (!recipientUser) {
-            console.log('[CHAT_DEBUG] User not found in list, creating temporary user');
+            console.log('[CHAT_DEBUG] User not found in list, fetching from database or creating permanent record');
             
-            // Generate temporary ID
-            const tempUserId = 'temp-' + Date.now();
+            // First try to fetch from database by username
+            this.socket.emit('find-user-by-username', { username }, (response) => {
+                if (response && response.success && response.user) {
+                    // User found in database
+                    recipientUser = response.user;
+                    this.allUsers[recipientUser.id] = recipientUser;
+                    this.continueOpeningDM(recipientUser);
+                } else {
+                    // User not in database, create a new persistent record
+                    this.socket.emit('create-user-record', { 
+                        username, 
+                        status: 'offline',
+                        isTemporary: false
+                    }, (response) => {
+                        if (response && response.success && response.user) {
+                            recipientUser = response.user;
+                            this.allUsers[recipientUser.id] = recipientUser;
+                            this.continueOpeningDM(recipientUser);
+                        } else {
+                            // Fallback to local temporary user if server creation fails
+                            this.createTemporaryUserAndOpenDM(username);
+                        }
+                    });
+                }
+            });
             
-            // Create temporary user
-            recipientUser = {
-                id: tempUserId,
-                username: username,
-                status: 'offline'
-            };
-            
-            // Add to user list
-            this.allUsers[tempUserId] = recipientUser;
-            
-            // Add to UI for future selection
-            this.updateUserList();
+            return; // Return here as the continuation will happen in the callbacks
         }
         
+        // If we already have the user, continue with opening the DM
+        this.continueOpeningDM(recipientUser);
+    }
+    
+    // Create a temporary user as fallback
+    createTemporaryUserAndOpenDM(username) {
+        console.log('[CHAT_DEBUG] Creating fallback temporary user for', username);
+        
+        // Store user ID in localStorage to make it somewhat persistent
+        let tempUserId = localStorage.getItem(`temp_user_${username}`);
+        
+        if (!tempUserId) {
+            tempUserId = 'temp-' + Date.now();
+            localStorage.setItem(`temp_user_${username}`, tempUserId);
+        }
+        
+        // Create temporary user
+        const recipientUser = {
+            id: tempUserId,
+            username: username,
+            status: 'offline',
+            isTemporary: true
+        };
+        
+        // Add to user list
+        this.allUsers[tempUserId] = recipientUser;
+        
+        // Continue with opening the DM
+        this.continueOpeningDM(recipientUser);
+    }
+    
+    // Continue opening the DM with a valid user object
+    continueOpeningDM(recipientUser) {
         // Create a consistent DM channel name (sorted IDs to ensure the same channel name regardless of sender/receiver)
         const userIds = [this.currentUser.id, recipientUser.id].sort();
         const dmChannelName = `dm_${userIds[0]}_${userIds[1]}`;
@@ -228,7 +273,7 @@ class ChatManager {
         
         // Update UI
         if (this.chatTitle) {
-            this.chatTitle.textContent = `@${username}`;
+            this.chatTitle.textContent = `@${recipientUser.username}`;
         }
         
         // Clear messages container
@@ -236,24 +281,58 @@ class ChatManager {
         
         // Display cached DM messages if available
         if (this.channelMessages[dmChannelName] && this.channelMessages[dmChannelName].length > 0) {
-            console.log(`[CHAT_DEBUG] Displaying ${this.channelMessages[dmChannelName].length} cached messages for DM with ${username}`);
+            console.log(`[CHAT_DEBUG] Displaying ${this.channelMessages[dmChannelName].length} cached messages for DM with ${recipientUser.username}`);
             this.channelMessages[dmChannelName].forEach(msg => this.displayMessageInUI(msg, dmChannelName));
         } else {
-            this.displaySystemMessage(`This is the beginning of your conversation with ${username}`);
+            this.displaySystemMessage(`This is the beginning of your conversation with ${recipientUser.username}`);
         }
         
         // Request DM history from server
         console.log(`[CHAT_DEBUG] Requesting messages for DM channel: ${dmChannelName}`);
-        this.socket.emit('get-messages', { channel: dmChannelName });
+        this.socket.emit('get-messages', { 
+            channel: dmChannelName,
+            isDM: true,
+            participants: [this.currentUser.id, recipientUser.id]
+        });
         
         // Mark conversation as active in UI
-        this.updateActiveDM(username);
+        this.updateActiveDM(recipientUser.username);
         
-        // Update input placeholder
-        if (this.messageInput) {
-            this.messageInput.placeholder = `Message @${username}`;
-            this.messageInput.disabled = false;
-            this.messageInput.focus();
+        // Add to the UI for easy access if not already there
+        this.addDMToSidebar(recipientUser);
+    }
+    
+    // Add a DM to the sidebar if it doesn't exist
+    addDMToSidebar(user) {
+        const dmList = document.getElementById('dm-list');
+        if (!dmList) return;
+        
+        // Check if this DM already exists in the sidebar
+        const existingDM = Array.from(dmList.querySelectorAll('.dm-item')).find(item => {
+            return item.querySelector('span').textContent === user.username;
+        });
+        
+        if (!existingDM) {
+            console.log(`[CHAT_DEBUG] Adding ${user.username} to DM sidebar`);
+            
+            // Create the DM item
+            const dmItem = document.createElement('div');
+            dmItem.className = 'dm-item';
+            dmItem.innerHTML = `
+                <div class="dm-avatar">
+                    <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="${user.username} Avatar">
+                    <div class="dm-status ${user.status || 'offline'}"></div>
+                </div>
+                <span>${user.username}</span>
+            `;
+            
+            // Add click event to open the DM
+            dmItem.addEventListener('click', () => {
+                this.openDM(user.username);
+            });
+            
+            // Add to the list
+            dmList.appendChild(dmItem);
         }
     }
     
@@ -827,54 +906,36 @@ class ChatManager {
     
     // Send a message
     sendMessage() {
-        if (!this.socket) {
-            console.error('[CHAT_DEBUG] Cannot send message: Socket not connected');
-            return;
-        }
+        if (!this.messageInput.value.trim()) return;
         
-        const messageContent = this.messageInput.value.trim();
-        if (!messageContent) {
-            console.log('[CHAT_DEBUG] Cannot send empty message');
-            return;
-        }
+        const messageText = this.messageInput.value.trim();
+        const timestamp = new Date().toISOString();
         
-        // Get the appropriate channel based on context
-        let channel = this.currentChannel;
+        // Clear input field
+        this.messageInput.value = '';
         
-        // If we're in a DM, make sure to use the DM channel format
-        if (this.currentDmRecipientId) {
-            const userIds = [this.currentUser.id, this.currentDmRecipientId].sort();
-            channel = `dm_${userIds[0]}_${userIds[1]}`;
-        }
+        // Determine if this is a DM or channel message
+        const isDM = this.currentChannel.startsWith('dm_');
         
-        console.log(`[CHAT_DEBUG] Sending message to channel: ${channel}`);
+        console.log(`[CHAT_DEBUG] Sending message to channel: ${this.currentChannel}`);
         
-        // Create message object
-        const messageObj = {
-            content: messageContent,
+        // Create the message object
+        const message = {
+            id: 'temp-' + Date.now(), // Temporary ID until server assigns a real one
+            content: messageText,
             sender: this.currentUser.username,
             senderId: this.currentUser.id,
-            timestamp: Date.now(),
-            channel: channel
+            timestamp: timestamp,
+            channel: this.currentChannel,
+            isDM: isDM,
+            recipientId: isDM ? this.currentDmRecipientId : null
         };
         
-        // Add to local messages cache
-        if (!this.channelMessages[channel]) {
-            this.channelMessages[channel] = [];
-        }
-        
-        // Add to local cache
-        this.channelMessages[channel].push(messageObj);
-        
-        // Display in UI
-        this.displayMessageInUI(messageObj, channel);
+        // Display message in UI immediately for responsiveness
+        this.displayMessageInUI(message, this.currentChannel);
         
         // Send to server
-        this.socket.emit('chat-message', messageObj);
-        
-        // Clear input
-        this.messageInput.value = '';
-        this.messageInput.focus();
+        this.socket.emit('send-message', message);
     }
     
     // Helper method to actually send the message

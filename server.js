@@ -595,88 +595,58 @@ io.on("connection", (socket) => {
         console.log(`Requested messages for channel: ${channel}`);
         
         try {
-            // Load messages from Supabase if not already loaded
-            if (!channelMessages[channel] || channelMessages[channel].length === 0) {
-                console.log(`Loading messages for channel: ${channel} from database`);
+            let messages = [];
+            
+            // Check if this is a DM channel request 
+            if (data.isDM) {
+                console.log(`Handling DM channel request for ${channel} with participants:`, data.participants);
                 
-                // Fetch messages for this specific channel from Supabase
-                const { data: messages, error } = await getSupabaseClient(true)
+                // Load DM messages from Supabase
+                const { data: dmMessages, error } = await getSupabaseClient()
+                    .from('messages')
+                    .select('*')
+                    .or(`recipientId.eq.${data.participants[0]},recipientId.eq.${data.participants[1]}`)
+                    .or(`senderId.eq.${data.participants[0]},senderId.eq.${data.participants[1]}`)
+                    .order('created_at', { ascending: true });
+                    
+                if (error) {
+                    console.error('Error loading DM messages:', error);
+                } else {
+                    // Filter messages to only include those between these two users
+                    messages = dmMessages.filter(msg => {
+                        return (
+                            (msg.senderId === data.participants[0] && msg.recipientId === data.participants[1]) ||
+                            (msg.senderId === data.participants[1] && msg.recipientId === data.participants[0])
+                        );
+                    });
+                    
+                    console.log(`Found ${messages.length} DM messages between users`);
+                }
+            } else {
+                // For regular channels, load from Supabase
+                const { data: channelMessages, error } = await getSupabaseClient()
                     .from('messages')
                     .select('*')
                     .eq('channel', channel)
-                    .order('created_at', { ascending: true })
-                    .limit(100);
+                    .order('created_at', { ascending: true });
                 
                 if (error) {
-                    console.error(`Error loading messages for channel ${channel}:`, error);
-                } else if (messages && messages.length > 0) {
-                    console.log(`Found ${messages.length} messages in the database for channel ${channel}`);
-                    
-                    // Process the messages into the expected format
-                    const formattedMessages = await Promise.all(messages.map(async (msg) => {
-                        // Look up username if needed
-                        let username = 'Unknown User';
-                        if (msg.sender_id) {
-                            try {
-                                const { data: userRecord } = await getSupabaseClient(true)
-                                    .from('users')
-                                    .select('username')
-                                    .eq('id', msg.sender_id)
-                                    .maybeSingle();
-                                
-                                if (userRecord && userRecord.username) {
-                                    username = userRecord.username;
-                                }
-                            } catch (err) {
-                                console.warn(`Error looking up sender for message ${msg.id}:`, err);
-                            }
-                        }
-                        
-                        return {
-                            id: msg.id,
-                            sender: username,
-                            senderId: msg.sender_id,
-                            content: msg.content,
-                            timestamp: msg.created_at,
-                            channel: msg.channel,
-                            type: msg.type || 'text',
-                            fileUrl: msg.file_url,
-                            fileType: msg.file_type,
-                            fileSize: msg.file_size
-                        };
-                    }));
-                    
-                    // Initialize channel if needed
-                    if (!channelMessages[channel]) {
-                        channelMessages[channel] = [];
-                    }
-                    
-                    // Add messages to channel, avoiding duplicates
-                    formattedMessages.forEach(msg => {
-                        const exists = channelMessages[channel].some(existing => existing.id === msg.id);
-                        if (!exists) {
-                            channelMessages[channel].push(msg);
-                        }
-                    });
-                    
-                    // Sort by timestamp
-                    channelMessages[channel].sort((a, b) => 
-                        new Date(a.timestamp) - new Date(b.timestamp)
-                    );
-                    
-                    console.log(`Successfully processed ${formattedMessages.length} messages for channel: ${channel}`);
+                    console.error('Error loading channel messages:', error);
                 } else {
-                    console.log(`No messages found in database for channel: ${channel}`);
+                    messages = channelMessages;
                 }
             }
             
-            // Send the messages to the client
-            socket.emit('message-history', {
-                channel,
-                messages: channelMessages[channel] || []
+            // Send messages to client
+            socket.emit('message-history', { 
+                channel, 
+                messages: messages.map(msg => ({
+                    ...msg,
+                    timestamp: msg.created_at || msg.timestamp
+                }))
             });
-        } catch (error) {
-            console.error(`Error loading messages for channel ${channel}:`, error);
+        } catch (err) {
+            console.error(`Error retrieving messages for channel ${channel}:`, err);
             socket.emit('message-history', { channel, messages: [] });
         }
     });
@@ -1351,6 +1321,188 @@ io.on("connection", (socket) => {
         
         // Also emit to this socket specifically
         socket.emit('channels-list', { channels });
+    });
+
+    // Add handlers for find-user-by-username and create-user-record
+    socket.on('find-user-by-username', async (data, callback) => {
+        if (!data || !data.username) {
+            callback({ success: false, message: 'Username is required' });
+            return;
+        }
+        
+        try {
+            // Try to find user in Supabase by username
+            const { data: users, error } = await getSupabaseClient(true)
+                .from('users')
+                .select('*')
+                .eq('username', data.username)
+                .limit(1);
+                
+            if (error) {
+                console.error('Error finding user by username:', error);
+                callback({ success: false, message: 'Database error' });
+                return;
+            }
+            
+            if (users && users.length > 0) {
+                // Found the user
+                callback({
+                    success: true,
+                    user: {
+                        id: users[0].id,
+                        username: users[0].username,
+                        status: users[0].status || 'offline'
+                    }
+                });
+            } else {
+                // User not found
+                callback({ success: false, message: 'User not found' });
+            }
+        } catch (err) {
+            console.error('Error in find-user-by-username:', err);
+            callback({ success: false, message: 'Server error' });
+        }
+    });
+    
+    socket.on('create-user-record', async (data, callback) => {
+        if (!data || !data.username) {
+            callback({ success: false, message: 'Username is required' });
+            return;
+        }
+        
+        try {
+            // First check if user already exists
+            const { data: existingUsers, error: findError } = await getSupabaseClient(true)
+                .from('users')
+                .select('id')
+                .eq('username', data.username)
+                .limit(1);
+                
+            if (findError) {
+                console.error('Error checking for existing user:', findError);
+                callback({ success: false, message: 'Database error' });
+                return;
+            }
+            
+            if (existingUsers && existingUsers.length > 0) {
+                // User already exists, return it
+                callback({
+                    success: true,
+                    user: {
+                        id: existingUsers[0].id,
+                        username: data.username,
+                        status: 'offline'
+                    }
+                });
+                return;
+            }
+            
+            // Create a new user record
+            const userId = uuidv4();
+            const { error: insertError } = await getSupabaseClient(true)
+                .from('users')
+                .insert({
+                    id: userId,
+                    username: data.username,
+                    status: 'offline',
+                    last_seen: new Date().toISOString()
+                });
+                
+            if (insertError) {
+                console.error('Error creating user record:', insertError);
+                callback({ success: false, message: 'Failed to create user' });
+                return;
+            }
+            
+            // Successfully created user
+            callback({
+                success: true,
+                user: {
+                    id: userId,
+                    username: data.username,
+                    status: 'offline'
+                }
+            });
+        } catch (err) {
+            console.error('Error in create-user-record:', err);
+            callback({ success: false, message: 'Server error' });
+        }
+    });
+
+    // Replace chat-message with send-message handler
+    socket.on('send-message', async (message) => {
+        if (!users[socket.id]) {
+            console.error('User not authenticated for message sending');
+            return;
+        }
+        
+        try {
+            // Validate the message
+            if (!message || !message.content) {
+                console.error('Invalid message format');
+                return;
+            }
+            
+            // Get sender information
+            const sender = users[socket.id];
+            
+            // Add server timestamp and uuid
+            const messageId = uuidv4();
+            const timestamp = new Date().toISOString();
+            
+            // Create full message object
+            const fullMessage = {
+                id: messageId,
+                content: message.content,
+                sender: sender.username,
+                senderId: sender.id,
+                timestamp: timestamp,
+                channel: message.channel,
+                isDM: message.isDM || false,
+                recipientId: message.recipientId || null
+            };
+            
+            // Save message to Supabase
+            const { error } = await getSupabaseClient(true)
+                .from('messages')
+                .insert({
+                    id: messageId,
+                    content: message.content,
+                    sender: sender.username,
+                    sender_id: sender.id,
+                    channel: message.channel,
+                    created_at: timestamp,
+                    recipient_id: message.recipientId || null,
+                    is_dm: message.isDM || false
+                });
+                
+            if (error) {
+                console.error('Error saving message to Supabase:', error);
+            }
+            
+            // Broadcast to the appropriate recipients
+            if (message.isDM && message.recipientId) {
+                // Find the recipient's socket
+                const recipientSocket = Object.keys(users).find(sid => 
+                    users[sid] && users[sid].id === message.recipientId
+                );
+                
+                // Send to sender and recipient
+                socket.emit('message', fullMessage);
+                
+                if (recipientSocket) {
+                    io.to(recipientSocket).emit('message', fullMessage);
+                }
+                
+                console.log(`DM sent from ${sender.username} to ${message.recipientId}`);
+            } else {
+                // Broadcast to all users in the channel
+                io.emit('message', fullMessage);
+                console.log(`Message broadcast to channel ${message.channel}`);
+            }
+        } catch (err) {
+            console.error('Error processing message:', err);
+        }
     });
 });
 
