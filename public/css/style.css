@@ -513,7 +513,7 @@ body {
   text-align: left; /* Left align text for regular messages */
   
   /* Animation */
-  animation: messageFadeIn 0.3s ease;
+  animation: messageFadeIn 0.9s ease;
   transform-origin: bottom left;
 }
 
