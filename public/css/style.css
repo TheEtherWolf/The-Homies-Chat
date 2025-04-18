@@ -426,7 +426,7 @@ body {
 .message {
   display: flex;
   padding: 0.25rem 1rem; /* Equal padding left and right */
-  position: center;
+  position: relative; /* Change from 'center' to 'relative' */
   margin-bottom: 0.125rem;
 }
 
@@ -573,8 +573,8 @@ body {
 /* Message Actions */
 .message-actions {
   position: absolute;
-  top: 0.25rem;
-  right: 1rem;
+  top: 0; /* Change from top: 0.25rem */
+  right: -30px; /* Position to the right of the message bubble */
   opacity: 0;
   transition: opacity var(--transition-speed) ease;
   z-index: 10;
@@ -582,16 +582,18 @@ body {
 
 .message.own-message .message-actions {
   right: auto;
-  left: 1rem;
+  left: -30px; /* Position to the left of own message bubble */
 }
 
 .message-actions-btn {
   background: var(--very-dark);
   border: none;
-  border-radius: var(--border-radius-sm);
+  border-radius: 50%; /* Make it circular */
   color: var(--text-muted);
-  padding: 0.25rem 0.5rem;
-  font-size: 1rem;
+  padding: 0.25rem; /* Reduce padding */
+  width: 28px; /* Set fixed width */
+  height: 28px; /* Set fixed height */
+  font-size: 0.9rem;
   cursor: pointer;
   display: flex;
   align-items: center;

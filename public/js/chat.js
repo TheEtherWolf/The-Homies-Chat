@@ -377,30 +377,58 @@ class ChatManager {
 
     // Attach all event listeners
     attachEventListeners() {
-        // DOM event listeners
-        if (this.sendButton) {
-            this.sendButton.addEventListener('click', this.sendMessage);
-        }
+        console.log('[CHAT_DEBUG] Attaching event listeners...');
         
-        if (this.messageInput) {
-            this.messageInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    this.sendMessage();
+        // --- Message Sending ---
+        this.sendButton.addEventListener('click', () => this.sendMessage());
+        
+        this.messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); // Prevent textarea newline
+                this.sendMessage();
+            }
+        });
+        
+        // --- Channel Switching ---
+        document.querySelectorAll('.channel-item').forEach(channel => {
+            channel.addEventListener('click', () => {
+                const channelName = channel.getAttribute('data-channel');
+                this.switchChannel(channelName);
+            });
+        });
+        
+        // --- Add DM Server Icon Click Handler ---
+        const dmServerIcon = document.getElementById('dm-server-icon');
+        if (dmServerIcon) {
+            dmServerIcon.addEventListener('click', () => {
+                console.log('[CHAT_DEBUG] DM server icon clicked');
+                // Show DM interface in sidebar
+                this.showDMInterface();
+                
+                // If we have DMs, open the first one
+                const firstDM = document.querySelector('.dm-item');
+                if (firstDM) {
+                    const username = firstDM.querySelector('span').textContent;
+                    this.openDM(username);
                 }
             });
         }
         
-        if (this.emojiButton) {
-            this.emojiButton.addEventListener('click', this.toggleEmojiPicker);
-        }
+        // --- DM Handling ---
+        document.querySelectorAll('.dm-item').forEach(dm => {
+            dm.addEventListener('click', () => {
+                const username = dm.querySelector('span').textContent;
+                this.openDM(username);
+            });
+        });
+        
+        // --- Emoji Picker ---
+        this.emojiButton.addEventListener('click', this.toggleEmojiPicker);
         
         // Add click handlers to all emoji buttons
-        if (this.emojiButtons) {
-            this.emojiButtons.forEach(btn => {
-                btn.addEventListener('click', () => this.insertEmoji(btn.textContent));
-            });
-        }
+        this.emojiButtons.forEach(btn => {
+            btn.addEventListener('click', () => this.insertEmoji(btn.textContent));
+        });
         
         // Close emoji picker when clicking outside
         document.addEventListener('click', (e) => {
@@ -410,6 +438,7 @@ class ChatManager {
             }
         });
         
+        // --- Settings and Logout ---
         if (this.settingsButton) {
             this.settingsButton.addEventListener('click', () => {
                 alert('Settings feature coming soon!');
@@ -1691,6 +1720,7 @@ class ChatManager {
                 
                 // Position picker
                 const buttonRect = emojiButton.getBoundingClientRect();
+                emojiPicker.style.position = 'absolute';
                 emojiPicker.style.bottom = (window.innerHeight - buttonRect.top + 5) + 'px';
                 emojiPicker.style.right = (window.innerWidth - buttonRect.right + 5) + 'px';
                 
@@ -1791,6 +1821,27 @@ class ChatManager {
         
         // Default to first message when we can't determine grouping
         return true;
+    }
+    
+    // Show DM Interface
+    showDMInterface() {
+        console.log('[CHAT_DEBUG] Showing DM interface');
+        
+        // Activate DM server icon
+        document.querySelectorAll('.server-icon').forEach(icon => {
+            icon.classList.remove('active');
+        });
+        document.getElementById('dm-server-icon').classList.add('active');
+        
+        // Update sidebar to show DM list
+        document.querySelector('.channels-section').style.display = 'none';
+        document.querySelector('.sidebar-section').style.display = 'block';
+        
+        // Update chat header
+        this.chatTitle.innerHTML = '<i class="bi bi-chat-square-text-fill me-2"></i> Direct Messages';
+        
+        // Set a flag to indicate we're in DM mode
+        this.isDMMode = true;
     }
 }
 
