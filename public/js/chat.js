@@ -108,6 +108,9 @@ class ChatManager {
         // Initialize emoji picker functionality
         this.initEmojiPicker();
         
+        // Add emoji button event listener directly
+        this.setupEmojiButtonDirectly();
+        
         this.isInitialized = true;
         console.log('[CHAT_DEBUG] ChatManager successfully initialized.');
     }
@@ -894,63 +897,55 @@ class ChatManager {
     }
     
     // Display a message in the UI
-    displayMessageInUI(message, channelId) {
+    displayMessageInUI(message, channel = 'general') {
         if (!message) return;
         
-        console.log('[CHAT_DEBUG] Displaying message:', message);
-        
+        // Check if container exists
         const messagesContainer = document.getElementById('messages-container');
         if (!messagesContainer) return;
         
-        // Check if this is a grouped message (same sender as previous message within 5 minutes)
-        let isGroupedMessage = false;
-        const previousMessage = messagesContainer.lastElementChild;
-        
-        if (previousMessage && previousMessage.classList.contains('message')) {
-            const prevAuthor = previousMessage.querySelector('.message-author');
-            const prevTimestamp = previousMessage.getAttribute('data-timestamp');
-            
-            if (prevAuthor && prevTimestamp) {
-                const prevAuthorName = prevAuthor.textContent;
-                const prevTime = new Date(prevTimestamp).getTime();
-                const currentTime = new Date(message.timestamp).getTime();
-                const timeDiff = currentTime - prevTime;
-                
-                // If same sender and less than 5 minutes between messages, group them
-                if (prevAuthorName === message.sender && timeDiff < 5 * 60 * 1000) {
-                    isGroupedMessage = true;
-                }
-            }
+        // Check for duplicate message (same ID)
+        if (message.id && document.querySelector(`.message[data-message-id="${message.id}"]`)) {
+            console.log(`[CHAT_DEBUG] Prevented duplicate message with ID: ${message.id}`);
+            return;
         }
         
         // Create message element
         const messageDiv = document.createElement('div');
-        messageDiv.className = 'message';
-        messageDiv.setAttribute('data-message-id', message.id || '');
-        messageDiv.setAttribute('data-timestamp', message.timestamp || new Date().toISOString());
-        messageDiv.setAttribute('data-sender', message.sender || 'Unknown');
-        messageDiv.setAttribute('data-sender-id', message.senderId || '');
         
-        // Add first-message class if not grouped
-        if (!isGroupedMessage) {
-            messageDiv.classList.add('first-message');
+        // Set message ID for future reference (e.g., deleting)
+        if (message.id) {
+            messageDiv.setAttribute('data-message-id', message.id);
         }
         
-        // Determine if this is the current user's message
-        const isOwnMessage = this.currentUser && message.senderId === this.currentUser.id;
+        // Is this an own message?
+        const isOwnMessage = this.isOwnMessage(message);
+        
+        // Determine message classes
+        let messageClasses = ['message', 'new-message']; // Add new-message class for animation
+        
         if (isOwnMessage) {
-            messageDiv.classList.add('own-message');
+            messageClasses.push('own-message');
         }
         
-        // Build message content
+        // Check if this should be a first message in a group (with avatar and header)
+        const isFirstMessage = this.isFirstMessageInGroup(message);
+        if (isFirstMessage) {
+            messageClasses.push('first-message');
+        }
+        
+        // Apply all classes to the message div
+        messageDiv.className = messageClasses.join(' ');
+        
+        // Build message HTML
         let messageHTML = '';
         
-        // Only add avatar and header for first message in a group
-        if (!isGroupedMessage) {
-            // Get avatar URL (default or user's)
+        // Only first message in a group gets avatar and header
+        if (isFirstMessage) {
+            // Get avatar URL - use default if not provided
             const avatarUrl = message.avatarUrl || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378';
             
-            // Format timestamp
+            // Format the timestamp
             const timestamp = this.formatTimestamp(message.timestamp);
             
             messageHTML += `
@@ -1021,6 +1016,11 @@ class ChatManager {
         
         // Scroll to bottom
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        
+        // Remove the 'new-message' class after animation completes to avoid replay
+        setTimeout(() => {
+            messageDiv.classList.remove('new-message');
+        }, 500);
     }
     
     // Setup message action handlers
@@ -1468,10 +1468,23 @@ class ChatManager {
         const emojiButton = document.getElementById('emoji-button');
         const emojiPicker = document.querySelector('.emoji-picker');
         const messageInput = document.getElementById('message-input');
+        
+        if (!emojiButton || !emojiPicker || !messageInput) {
+            console.error('[CHAT_DEBUG] Could not initialize emoji picker: Missing required elements');
+            return;
+        }
+        
         const emojiCategories = document.querySelectorAll('.emoji-category');
         const emojiCategoryContents = document.querySelectorAll('.emoji-category-content');
         const emojiButtons = document.querySelectorAll('.emoji-btn');
         const emojiSearchInput = document.getElementById('emoji-search-input');
+        
+        console.log('[CHAT_DEBUG] Initializing emoji picker with:', {
+            emojiButton: emojiButton,
+            emojiPicker: emojiPicker,
+            categoriesCount: emojiCategories.length,
+            buttonsCount: emojiButtons.length
+        });
         
         // Store recently used emojis (get from local storage if available)
         let recentEmojis = JSON.parse(localStorage.getItem('recentEmojis')) || [];
@@ -1480,30 +1493,27 @@ class ChatManager {
         this.updateRecentEmojis();
         
         // Toggle emoji picker visibility
-        if (emojiButton) {
-            emojiButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                emojiPicker.classList.toggle('d-none');
+        emojiButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[CHAT_DEBUG] Emoji button clicked');
+            
+            emojiPicker.classList.toggle('d-none');
+            
+            // Position the emoji picker properly
+            if (!emojiPicker.classList.contains('d-none')) {
+                // Calculate position relative to the emoji button
+                const buttonRect = emojiButton.getBoundingClientRect();
                 
-                // Position the emoji picker properly
-                if (!emojiPicker.classList.contains('d-none')) {
-                    // Calculate position relative to the emoji button
-                    const buttonRect = emojiButton.getBoundingClientRect();
-                    const pickerHeight = emojiPicker.offsetHeight;
-                    
-                    // Position the picker above the button
-                    emojiPicker.style.bottom = (window.innerHeight - buttonRect.top + 10) + 'px';
-                    emojiPicker.style.right = (window.innerWidth - buttonRect.right + 10) + 'px';
-                }
-            });
-        }
-        
-        // Close the emoji picker when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!emojiPicker.classList.contains('d-none') && 
-                !emojiPicker.contains(e.target) && 
-                e.target !== emojiButton) {
-                emojiPicker.classList.add('d-none');
+                // Position the picker above the button
+                emojiPicker.style.position = 'absolute';
+                emojiPicker.style.bottom = (window.innerHeight - buttonRect.top + 10) + 'px';
+                emojiPicker.style.right = (window.innerWidth - buttonRect.right + 10) + 'px';
+                
+                console.log('[CHAT_DEBUG] Showing emoji picker at position:', {
+                    bottom: emojiPicker.style.bottom,
+                    right: emojiPicker.style.right
+                });
             }
         });
         
@@ -1648,6 +1658,90 @@ class ChatManager {
                 recentEmojiContent.appendChild(emojiBtn);
             });
         }
+    }
+    
+    // Setup emoji button with direct DOM access
+    setupEmojiButtonDirectly() {
+        console.log('[CHAT_DEBUG] Setting up emoji button directly');
+        
+        // Get elements directly
+        const emojiButton = document.getElementById('emoji-button');
+        const emojiPicker = document.querySelector('.emoji-picker');
+        const messageInput = document.getElementById('message-input');
+        
+        // Log element availability
+        console.log('[CHAT_DEBUG] Direct element access:', {
+            emojiButton: emojiButton ? 'Found' : 'Not found',
+            emojiPicker: emojiPicker ? 'Found' : 'Not found',
+            messageInput: messageInput ? 'Found' : 'Not found'
+        });
+        
+        if (!emojiButton || !emojiPicker) return;
+        
+        // Add click handler directly
+        emojiButton.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('[CHAT_DEBUG] Emoji button clicked directly');
+            
+            // Toggle visibility
+            if (emojiPicker.classList.contains('d-none')) {
+                emojiPicker.classList.remove('d-none');
+                
+                // Position picker
+                const buttonRect = emojiButton.getBoundingClientRect();
+                emojiPicker.style.bottom = (window.innerHeight - buttonRect.top + 5) + 'px';
+                emojiPicker.style.right = (window.innerWidth - buttonRect.right + 5) + 'px';
+                
+                console.log('[CHAT_DEBUG] Emoji picker shown at', {
+                    bottom: emojiPicker.style.bottom,
+                    right: emojiPicker.style.right
+                });
+            } else {
+                emojiPicker.classList.add('d-none');
+                console.log('[CHAT_DEBUG] Emoji picker hidden');
+            }
+        };
+        
+        // Add all emoji buttons click handlers directly
+        const emojiButtons = document.querySelectorAll('.emoji-btn');
+        emojiButtons.forEach(btn => {
+            btn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const emoji = btn.textContent;
+                console.log('[CHAT_DEBUG] Emoji selected:', emoji);
+                
+                if (messageInput) {
+                    // Insert at cursor position
+                    const cursorPos = messageInput.selectionStart;
+                    const textBefore = messageInput.value.substring(0, cursorPos);
+                    const textAfter = messageInput.value.substring(messageInput.selectionEnd);
+                    
+                    messageInput.value = textBefore + emoji + textAfter;
+                    messageInput.selectionStart = cursorPos + emoji.length;
+                    messageInput.selectionEnd = cursorPos + emoji.length;
+                    messageInput.focus();
+                    
+                    // Add to recent emojis
+                    this.addToRecentEmojis(emoji);
+                }
+                
+                // Hide picker after selection
+                emojiPicker.classList.add('d-none');
+            };
+        });
+        
+        // Close picker when clicking outside
+        document.addEventListener('click', (e) => {
+            if (emojiPicker && !emojiPicker.classList.contains('d-none') && 
+                !emojiPicker.contains(e.target) && e.target !== emojiButton) {
+                emojiPicker.classList.add('d-none');
+                console.log('[CHAT_DEBUG] Emoji picker closed by outside click');
+            }
+        });
     }
 }
 

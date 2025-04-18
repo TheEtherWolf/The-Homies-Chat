@@ -498,17 +498,52 @@ body {
 }
 
 .message-text {
-  font-size: 0.9375rem;
-  line-height: 1.375rem;
+  /* Core appearance */
+  border-radius: 16px;
+  background-color: var(--other-message-bg);
+  
+  /* Text styling */
   color: var(--text-light);
+  font-size: 0.9375rem;
+  line-height: 1.4;
   word-break: break-word;
   white-space: pre-wrap;
-  border-radius: var(--border-radius);
-  background-color: var(--other-message-bg);
+  text-align: center; /* Center text for perfect symmetry */
+  
+  /* Sizing and spacing */
   display: inline-block;
   max-width: 80%;
-  padding: 10px;
+  padding: 12px; /* Equal padding on all sides */
   box-sizing: border-box;
+  
+  /* Animation for new messages */
+  animation: messageFadeIn 0.3s ease;
+  transform-origin: bottom left;
+}
+
+.message.own-message .message-text {
+  background-color: var(--own-message-bg);
+  max-width: fit-content;
+  transform-origin: bottom right; /* Animation starts from right for own messages */
+}
+
+.message-text:hover {
+  filter: brightness(1.05);
+}
+
+@keyframes messageFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message.new-message {
+  animation: messageFadeIn 0.3s ease;
 }
 
 .message.own-message {
@@ -536,13 +571,6 @@ body {
 .message.own-message .message-author {
   margin-right: 1;
   margin-left: 0;
-}
-
-.message.own-message .message-text {
-  background-color: var(--own-message-bg);
-  max-width: fit-content;
-  padding: 10px;
-  box-sizing: border-box;
 }
 
 .message.own-message .message-avatar {
@@ -904,7 +932,7 @@ body {
   }
 }
 
-/* Emoji Picker Styling */
+/* Emoji Picker Styling - Fixed positioning */
 .emoji-picker {
   background-color: var(--very-dark);
   border-radius: var(--border-radius);
@@ -912,9 +940,19 @@ body {
   width: 320px;
   max-height: 400px;
   z-index: 1000;
+  position: absolute; /* Explicitly set position */
   bottom: 80px;
   right: 80px;
   border: 1px solid var(--border-color);
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.emoji-picker.d-none {
+  display: none !important;
+  opacity: 0;
+  visibility: hidden;
 }
 
 .emoji-picker-header {
