@@ -78,7 +78,8 @@ class ChatManager {
         // Begin with the general channel
         this.switchChannel('general');
         
-        // Get friends list
+        // Get friend code and friends list
+        this.getFriendCode();
         this.getFriendsList();
         
         // Set initialization flag
@@ -1505,10 +1506,7 @@ class ChatManager {
         const emojiPicker = document.querySelector('.emoji-picker');
         const messageInput = document.getElementById('message-input');
         
-        if (!emojiButton || !emojiPicker || !messageInput) {
-            console.error('[CHAT_DEBUG] Could not initialize emoji picker: Missing required elements');
-            return;
-        }
+        if (!emojiButton || !emojiPicker) return;
         
         const emojiCategories = document.querySelectorAll('.emoji-category');
         const emojiCategoryContents = document.querySelectorAll('.emoji-category-content');
@@ -1637,8 +1635,6 @@ class ChatManager {
         // Move cursor after the inserted emoji
         messageInput.selectionStart = startPos + emoji.length;
         messageInput.selectionEnd = startPos + emoji.length;
-        
-        // Focus on the input
         messageInput.focus();
     }
     
@@ -1968,26 +1964,35 @@ class ChatManager {
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
-                            <p>Enter your friend's username and their friend code to add them:</p>
-                            <div class="mb-3">
-                                <label for="friend-username" class="form-label">Username</label>
-                                <input type="text" class="form-control" id="friend-username" value="${prefilledUsername}">
+                            <div class="my-friend-code mb-4">
+                                <h6>Your Friend Code</h6>
+                                <div class="d-flex align-items-center">
+                                    <div class="friend-code-display border rounded p-2 me-2 flex-grow-1">
+                                        <code id="current-friend-code">${this.currentUser.friendCode || 'Loading...'}</code>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary" id="regenerate-code-btn">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted">Share this code with friends so they can add you</small>
                             </div>
-                            <div class="mb-3">
-                                <label for="friend-code" class="form-label">Friend Code</label>
-                                <input type="text" class="form-control" id="friend-code" placeholder="e.g. ABC123XY">
+                            
+                            <div class="add-friend-form">
+                                <h6>Add a Friend</h6>
+                                <p>Enter your friend's username and their friend code to add them:</p>
+                                <div class="mb-3">
+                                    <label for="friend-username" class="form-label">Username</label>
+                                    <input type="text" class="form-control" id="friend-username" value="${prefilledUsername}">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="friend-code" class="form-label">Friend Code</label>
+                                    <input type="text" class="form-control" id="friend-code" placeholder="e.g. ABC12345">
+                                </div>
                             </div>
-                            <div class="alert alert-primary" role="alert">
-                                <strong>Your Friend Code:</strong> <span id="your-friend-code">Loading...</span>
-                                <button class="btn btn-sm btn-outline-primary ms-2" id="refresh-code-btn">
-                                    <i class="bi bi-arrow-repeat"></i>
-                                </button>
-                            </div>
-                            <div id="add-friend-message" class="alert alert-danger d-none" role="alert"></div>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                            <button type="button" class="btn btn-primary" id="add-friend-submit">Add Friend</button>
+                            <button type="button" class="btn btn-primary" id="add-friend-btn">Add Friend</button>
                         </div>
                     </div>
                 </div>
@@ -1995,105 +2000,96 @@ class ChatManager {
             
             document.body.appendChild(modal);
             
-            // Initialize Bootstrap modal
-            const modalInstance = new bootstrap.Modal(modal);
-            
-            // Get friend code when modal opens
-            modal.addEventListener('shown.bs.modal', () => {
+            // Get friend code if not already loaded
+            if (!this.currentUser.friendCode) {
                 this.getFriendCode();
-            });
+            } else {
+                this.updateFriendCodeDisplay();
+            }
             
-            // Add handlers
-            const addFriendSubmit = document.getElementById('add-friend-submit');
-            if (addFriendSubmit) {
-                addFriendSubmit.addEventListener('click', () => {
+            // Add event listeners
+            const addFriendBtn = document.getElementById('add-friend-btn');
+            if (addFriendBtn) {
+                addFriendBtn.addEventListener('click', () => {
                     const username = document.getElementById('friend-username').value.trim();
                     const friendCode = document.getElementById('friend-code').value.trim();
                     
-                    if (!username || !friendCode) {
-                        this.showAddFriendMessage('Username and friend code are required', 'danger');
-                        return;
+                    if (username && friendCode) {
+                        this.addFriend(username, friendCode);
+                    } else {
+                        alert('Please enter both username and friend code');
                     }
-                    
-                    this.addFriend(username, friendCode);
                 });
             }
             
-            // Add refresh code button handler
-            const refreshCodeBtn = document.getElementById('refresh-code-btn');
-            if (refreshCodeBtn) {
-                refreshCodeBtn.addEventListener('click', () => {
-                    this.regenerateFriendCode();
+            // Add regenerate code button handler
+            const regenerateBtn = document.getElementById('regenerate-code-btn');
+            if (regenerateBtn) {
+                regenerateBtn.addEventListener('click', () => {
+                    this.generateNewFriendCode();
                 });
             }
         } else {
-            // Modal exists, update username if provided
-            if (prefilledUsername) {
-                const usernameInput = document.getElementById('friend-username');
-                if (usernameInput) {
-                    usernameInput.value = prefilledUsername;
-                }
+            // Update existing modal
+            const usernameInput = document.getElementById('friend-username');
+            if (usernameInput && prefilledUsername) {
+                usernameInput.value = prefilledUsername;
             }
+            
+            // Update friend code display
+            this.updateFriendCodeDisplay();
         }
         
         // Show the modal
-        const modalInstance = bootstrap.Modal.getInstance(modal) || new bootstrap.Modal(modal);
-        modalInstance.show();
-    }
-    
-    // Get your friend code from the server
-    getFriendCode() {
-        const codeSpan = document.getElementById('your-friend-code');
-        if (!codeSpan) return;
-        
-        codeSpan.textContent = 'Loading...';
-        
-        this.socket.emit('get-friend-code', (response) => {
-            if (response.success) {
-                codeSpan.textContent = response.friendCode;
-            } else {
-                codeSpan.textContent = 'Error loading code';
-                console.error('[CHAT_DEBUG] Failed to get friend code:', response.message);
-            }
-        });
-    }
-    
-    // Regenerate friend code
-    regenerateFriendCode() {
-        const codeSpan = document.getElementById('your-friend-code');
-        if (!codeSpan) return;
-        
-        codeSpan.textContent = 'Generating...';
-        
-        this.socket.emit('generate-friend-code', (response) => {
-            if (response.success) {
-                codeSpan.textContent = response.friendCode;
-            } else {
-                codeSpan.textContent = 'Error generating code';
-                console.error('[CHAT_DEBUG] Failed to generate friend code:', response.message);
-            }
-        });
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
     }
     
     // Add a friend
     addFriend(username, friendCode) {
-        this.showAddFriendMessage('Adding friend...', 'info');
+        console.log('[CHAT_DEBUG] Adding friend:', username, friendCode);
+        
+        // Show loading state in the modal
+        const addFriendBtn = document.getElementById('add-friend-btn');
+        if (addFriendBtn) {
+            addFriendBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Adding...';
+            addFriendBtn.disabled = true;
+        }
         
         this.socket.emit('add-friend', { username, friendCode }, (response) => {
+            console.log('[CHAT_DEBUG] Add friend response:', response);
+            
+            // Reset button state
+            if (addFriendBtn) {
+                addFriendBtn.innerHTML = 'Add Friend';
+                addFriendBtn.disabled = false;
+            }
+            
             if (response.success) {
-                this.showAddFriendMessage('Friend added successfully!', 'success');
+                // Add friend to the list if not already there
+                const friendExists = this.friendsList.some(f => f.id === response.friend.id);
+                if (!friendExists) {
+                    this.friendsList.push(response.friend);
+                    this.updateFriendsUI();
+                }
                 
-                // Add to friends list and update UI
-                this.friendsList.push(response.friend);
-                this.updateFriendsUI();
+                // Show success message and close modal
+                alert(`${username} has been added to your friends list!`);
                 
-                // Close modal after a short delay
-                setTimeout(() => {
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('add-friend-modal'));
-                    if (modal) modal.hide();
-                }, 1500);
+                // Hide modal
+                const modal = document.getElementById('add-friend-modal');
+                if (modal) {
+                    const bsModal = bootstrap.Modal.getInstance(modal);
+                    if (bsModal) {
+                        bsModal.hide();
+                    }
+                }
+                
+                // Refresh friends list
+                this.getFriendsList();
             } else {
-                this.showAddFriendMessage(response.message || 'Failed to add friend', 'danger');
+                // Show error message
+                alert(`Failed to add friend: ${response.message}`);
             }
         });
     }
@@ -2233,6 +2229,51 @@ class ChatManager {
                     }
                 });
             });
+        }
+    }
+
+    // Get current user's friend code
+    getFriendCode() {
+        console.log('[CHAT_DEBUG] Getting friend code');
+        this.socket.emit('get-friend-code', (response) => {
+            if (response.success) {
+                console.log('[CHAT_DEBUG] Friend code received:', response.friendCode);
+                this.currentUser.friendCode = response.friendCode;
+                this.updateFriendCodeDisplay();
+            } else {
+                console.error('[CHAT_DEBUG] Failed to get friend code:', response.message);
+            }
+        });
+    }
+    
+    // Generate a new friend code
+    generateNewFriendCode() {
+        console.log('[CHAT_DEBUG] Generating new friend code');
+        
+        // Show loading state
+        const codeDisplay = document.getElementById('current-friend-code');
+        if (codeDisplay) {
+            codeDisplay.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split me-2"></i>Generating...</span>';
+        }
+        
+        this.socket.emit('generate-friend-code', (response) => {
+            if (response.success) {
+                console.log('[CHAT_DEBUG] New friend code generated:', response.friendCode);
+                this.currentUser.friendCode = response.friendCode;
+                this.updateFriendCodeDisplay();
+            } else {
+                console.error('[CHAT_DEBUG] Failed to generate friend code:', response.message);
+                // Restore previous code on error
+                this.updateFriendCodeDisplay();
+            }
+        });
+    }
+    
+    // Update the friend code display in UI
+    updateFriendCodeDisplay() {
+        const codeDisplay = document.getElementById('current-friend-code');
+        if (codeDisplay && this.currentUser && this.currentUser.friendCode) {
+            codeDisplay.textContent = this.currentUser.friendCode;
         }
     }
 }
