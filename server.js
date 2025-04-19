@@ -607,6 +607,7 @@ io.on("connection", (socket) => {
                     .select('*')
                     .or(`recipientId.eq.${data.participants[0]},recipientId.eq.${data.participants[1]}`)
                     .or(`senderId.eq.${data.participants[0]},senderId.eq.${data.participants[1]}`)
+                    .eq('is_deleted', false) // Only get messages that aren't deleted
                     .order('created_at', { ascending: true });
                     
                 if (error) {
@@ -628,6 +629,7 @@ io.on("connection", (socket) => {
                     .from('messages')
                     .select('*')
                     .eq('channel', channel)
+                    .eq('is_deleted', false) // Only get messages that aren't deleted
                     .order('created_at', { ascending: true });
                 
                 if (error) {
@@ -1473,7 +1475,8 @@ io.on("connection", (socket) => {
                     channel: message.channel,
                     created_at: timestamp,
                     recipient_id: message.recipientId || null,
-                    is_dm: message.isDM || false
+                    is_dm: message.isDM || false,
+                    is_deleted: false
                 });
                 
             if (error) {
@@ -1845,7 +1848,7 @@ async function setupChannelsTable() {
   try {
     console.log('Setting up channels table...');
     
-    // Check if channels table exists by trying to query it
+    // Check if channels table exists by trying to query it directly
     const { data, error: checkError } = await getSupabaseClient(true)
       .from('channels')
       .select('count')
@@ -1969,13 +1972,16 @@ ADD COLUMN IF NOT EXISTS friend_code TEXT;
 CREATE INDEX IF NOT EXISTS idx_friends_user_id ON public.friends(user_id);
 CREATE INDEX IF NOT EXISTS idx_friends_friend_id ON public.friends(friend_id);
 
--- Add is_dm column to messages table
+-- Add is_dm and recipient_id columns to messages table
 ALTER TABLE public.messages 
 ADD COLUMN IF NOT EXISTS is_dm BOOLEAN DEFAULT false;
 
--- Add recipient_id column for DM messages
 ALTER TABLE public.messages
 ADD COLUMN IF NOT EXISTS recipient_id UUID REFERENCES public.users(id);
+
+-- Add is_deleted column to messages table
+ALTER TABLE public.messages
+ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
             `);
             return false;
         }
@@ -2118,6 +2124,30 @@ async function saveAllMessages() {
         return await storage.saveMessages({ channels: channelMessages });
     } catch (error) {
         console.error('Error saving messages:', error);
+        return false;
+    }
+}
+
+// Mark a message as deleted in Supabase
+async function markMessageAsDeleted(messageId) {
+    try {
+        console.log(`Marking message as deleted in Supabase: ${messageId}`);
+        
+        // Update the message in Supabase to set is_deleted = true
+        const { error } = await getSupabaseClient(true)
+            .from('messages')
+            .update({ is_deleted: true })
+            .eq('id', messageId);
+            
+        if (error) {
+            console.error('Error marking message as deleted in Supabase:', error);
+            return false;
+        }
+        
+        console.log(`Successfully marked message ${messageId} as deleted`);
+        return true;
+    } catch (err) {
+        console.error('Error in markMessageAsDeleted:', err);
         return false;
     }
 }
