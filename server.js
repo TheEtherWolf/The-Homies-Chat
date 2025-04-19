@@ -2127,27 +2127,3 @@ async function saveAllMessages() {
         return false;
     }
 }
-
-// Mark a message as deleted in Supabase
-async function markMessageAsDeleted(messageId) {
-    try {
-        console.log(`Marking message as deleted in Supabase: ${messageId}`);
-        
-        // Update the message in Supabase to set is_deleted = true
-        const { error } = await getSupabaseClient(true)
-            .from('messages')
-            .update({ is_deleted: true })
-            .eq('id', messageId);
-            
-        if (error) {
-            console.error('Error marking message as deleted in Supabase:', error);
-            return false;
-        }
-        
-        console.log(`Successfully marked message ${messageId} as deleted`);
-        return true;
-    } catch (err) {
-        console.error('Error in markMessageAsDeleted:', err);
-        return false;
-    }
-}
