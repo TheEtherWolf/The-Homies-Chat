@@ -605,8 +605,8 @@ io.on("connection", (socket) => {
                 const { data: dmMessages, error } = await getSupabaseClient()
                     .from('messages')
                     .select('*')
-                    .or(`recipientId.eq.${data.participants[0]},recipientId.eq.${data.participants[1]}`)
-                    .or(`senderId.eq.${data.participants[0]},senderId.eq.${data.participants[1]}`)
+                    .or(`recipient_id.eq.${data.participants[0]},recipient_id.eq.${data.participants[1]}`)
+                    .or(`sender_id.eq.${data.participants[0]},sender_id.eq.${data.participants[1]}`)
                     .eq('is_deleted', false) // Only get messages that aren't deleted
                     .order('created_at', { ascending: true });
                     
@@ -616,8 +616,8 @@ io.on("connection", (socket) => {
                     // Filter messages to only include those between these two users
                     messages = dmMessages.filter(msg => {
                         return (
-                            (msg.senderId === data.participants[0] && msg.recipientId === data.participants[1]) ||
-                            (msg.senderId === data.participants[1] && msg.recipientId === data.participants[0])
+                            (msg.sender_id === data.participants[0] && msg.recipient_id === data.participants[1]) ||
+                            (msg.sender_id === data.participants[1] && msg.recipient_id === data.participants[0])
                         );
                     });
                     
@@ -643,8 +643,14 @@ io.on("connection", (socket) => {
             socket.emit('message-history', { 
                 channel, 
                 messages: messages.map(msg => ({
-                    ...msg,
-                    timestamp: msg.created_at || msg.timestamp
+                    id: msg.id,
+                    content: msg.content,
+                    sender: msg.sender,
+                    senderId: msg.sender_id,
+                    timestamp: msg.created_at || msg.timestamp,
+                    channel: msg.channel,
+                    recipientId: msg.recipient_id,
+                    isDM: msg.is_dm
                 }))
             });
         } catch (err) {
@@ -690,12 +696,16 @@ io.on("connection", (socket) => {
         if (!username && senderId) {
             try {
                 console.log(`Looking up username for sender ID: ${senderId}`);
-                const { data: userRecord } = await getSupabaseClient(true)
+                const { data: userRecord, error } = await getSupabaseClient(true)
                     .from('users')
                     .select('username')
                     .eq('id', senderId)
                     .maybeSingle();
                     
+                if (error) {
+                    console.error('Error looking up username by ID:', error);
+                }
+                
                 if (userRecord && userRecord.username) {
                     username = userRecord.username;
                     console.log(`Found username ${username} for sender ID ${senderId}`);
