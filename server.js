@@ -596,66 +596,97 @@ io.on("connection", (socket) => {
         
         try {
             let messages = [];
+            let error = null;
             
             // Check if this is a DM channel request 
             if (data.isDM) {
                 console.log(`Handling DM channel request for ${channel} with participants:`, data.participants);
                 
-                // Load DM messages from Supabase
-                const { data: dmMessages, error } = await getSupabaseClient()
-                    .from('messages')
-                    .select('*')
-                    .or(`recipient_id.eq.${data.participants[0]},recipient_id.eq.${data.participants[1]}`)
-                    .or(`sender_id.eq.${data.participants[0]},sender_id.eq.${data.participants[1]}`)
-                    .eq('is_deleted', false) // Only get messages that aren't deleted
-                    .order('created_at', { ascending: true });
-                    
-                if (error) {
-                    console.error('Error loading DM messages:', error);
-                } else {
-                    // Filter messages to only include those between these two users
-                    messages = dmMessages.filter(msg => {
-                        return (
-                            (msg.sender_id === data.participants[0] && msg.recipient_id === data.participants[1]) ||
-                            (msg.sender_id === data.participants[1] && msg.recipient_id === data.participants[0])
-                        );
-                    });
-                    
-                    console.log(`Found ${messages.length} DM messages between users`);
+                try {
+                    // Load DM messages from Supabase
+                    const result = await getSupabaseClient()
+                        .from('messages')
+                        .select('*')
+                        .or(`recipient_id.eq.${data.participants[0]},recipient_id.eq.${data.participants[1]}`)
+                        .or(`sender_id.eq.${data.participants[0]},sender_id.eq.${data.participants[1]}`)
+                        .order('created_at', { ascending: true });
+                        
+                    if (result.error) {
+                        console.error('Error loading DM messages:', result.error);
+                        error = result.error;
+                    } else {
+                        // Try to filter by is_deleted if column exists
+                        messages = result.data.filter(msg => {
+                            // First check if between these two users
+                            const isCorrectUsers = (
+                                (msg.sender_id === data.participants[0] && msg.recipient_id === data.participants[1]) ||
+                                (msg.sender_id === data.participants[1] && msg.recipient_id === data.participants[0])
+                            );
+                            
+                            // Then check if not deleted (if is_deleted field exists)
+                            const isNotDeleted = msg.is_deleted === undefined || msg.is_deleted === null || msg.is_deleted === false;
+                            
+                            return isCorrectUsers && isNotDeleted;
+                        });
+                        
+                        console.log(`Found ${messages.length} DM messages between users`);
+                    }
+                } catch (err) {
+                    console.error('Exception in DM message loading:', err);
+                    error = err;
                 }
             } else {
                 // For regular channels, load from Supabase
-                const { data: channelMessages, error } = await getSupabaseClient()
-                    .from('messages')
-                    .select('*')
-                    .eq('channel', channel)
-                    .eq('is_deleted', false) // Only get messages that aren't deleted
-                    .order('created_at', { ascending: true });
-                
-                if (error) {
-                    console.error('Error loading channel messages:', error);
-                } else {
-                    messages = channelMessages;
+                try {
+                    const result = await getSupabaseClient()
+                        .from('messages')
+                        .select('*')
+                        .eq('channel', channel)
+                        .order('created_at', { ascending: true });
+                    
+                    if (result.error) {
+                        console.error('Error loading channel messages:', result.error);
+                        error = result.error;
+                    } else {
+                        // Try to filter by is_deleted if column exists
+                        messages = result.data.filter(msg => {
+                            return msg.is_deleted === undefined || msg.is_deleted === null || msg.is_deleted === false;
+                        });
+                        
+                        console.log(`Found ${messages.length} messages for channel ${channel}`);
+                    }
+                } catch (err) {
+                    console.error('Exception in channel message loading:', err);
+                    error = err;
                 }
             }
+            
+            // Transform the messages for client consumption
+            const clientMessages = messages.map(msg => ({
+                id: msg.id,
+                content: msg.content,
+                sender: msg.sender,
+                senderId: msg.sender_id,
+                timestamp: msg.created_at || msg.timestamp,
+                channel: msg.channel || channel,
+                recipientId: msg.recipient_id,
+                isDM: msg.is_dm || data.isDM || false
+            }));
             
             // Send messages to client
             socket.emit('message-history', { 
                 channel, 
-                messages: messages.map(msg => ({
-                    id: msg.id,
-                    content: msg.content,
-                    sender: msg.sender,
-                    senderId: msg.sender_id,
-                    timestamp: msg.created_at || msg.timestamp,
-                    channel: msg.channel,
-                    recipientId: msg.recipient_id,
-                    isDM: msg.is_dm
-                }))
+                messages: clientMessages,
+                error: error ? error.message : null
             });
+            
         } catch (err) {
             console.error(`Error retrieving messages for channel ${channel}:`, err);
-            socket.emit('message-history', { channel, messages: [] });
+            socket.emit('message-history', { 
+                channel, 
+                messages: [],
+                error: err.message 
+            });
         }
     });
     

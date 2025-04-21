@@ -136,6 +136,7 @@ class ChatManager {
         // Display channel messages from cache if available
         if (this.channelMessages[channelName] && this.channelMessages[channelName].length > 0) {
             console.log(`[CHAT_DEBUG] Displaying ${this.channelMessages[channelName].length} cached messages for channel: ${channelName}`);
+            this.displaySystemMessage(`Channel: #${channelName}`);
             this.channelMessages[channelName].forEach(msg => this.displayMessageInUI(msg, channelName));
         } else {
             this.displaySystemMessage(`Welcome to #${channelName}`);
