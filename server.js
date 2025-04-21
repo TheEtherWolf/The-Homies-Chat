@@ -1308,7 +1308,7 @@ io.on("connection", (socket) => {
                 socketId: socket.id,
                 authenticated: true,
                 username: userData.username,
-                userId: userId // This might be different from userData.id
+                id: userId // Corrected key from userId to id
             };
             
             // Update user status in Supabase
