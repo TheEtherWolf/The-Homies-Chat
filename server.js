@@ -624,7 +624,8 @@ io.on("connection", (socket) => {
                             );
                             
                             // Then check if not deleted (if is_deleted field exists)
-                            const isNotDeleted = msg.is_deleted === undefined || msg.is_deleted === null || msg.is_deleted === false;
+                            const isNotDeleted = (msg.is_deleted === undefined || msg.is_deleted === null || msg.is_deleted === false) &&
+                                  (msg.deleted === undefined || msg.deleted === null || msg.deleted === false);
                             
                             return isCorrectUsers && isNotDeleted;
                         });
@@ -650,7 +651,8 @@ io.on("connection", (socket) => {
                     } else {
                         // Try to filter by is_deleted if column exists
                         messages = result.data.filter(msg => {
-                            return msg.is_deleted === undefined || msg.is_deleted === null || msg.is_deleted === false;
+                            return (msg.is_deleted === undefined || msg.is_deleted === null || msg.is_deleted === false) &&
+                                  (msg.deleted === undefined || msg.deleted === null || msg.deleted === false);
                         });
                         
                         console.log(`Found ${messages.length} messages for channel ${channel}`);
@@ -662,16 +664,33 @@ io.on("connection", (socket) => {
             }
             
             // Transform the messages for client consumption
-            const clientMessages = messages.map(msg => ({
-                id: msg.id,
-                content: msg.content,
-                sender: msg.sender,
-                senderId: msg.sender_id,
-                timestamp: msg.created_at || msg.timestamp,
-                channel: msg.channel || channel,
-                recipientId: msg.recipient_id,
-                isDM: msg.is_dm || data.isDM || false
-            }));
+            const clientMessages = messages.map(msg => {
+                // Use cached username from users object if available
+                let senderUsername = 'Unknown User';
+                
+                // Check if we can find the username from our active users
+                for (const socketId in users) {
+                    if (users[socketId] && users[socketId].userId === msg.sender_id) {
+                        senderUsername = users[socketId].username;
+                        break;
+                    }
+                }
+                
+                return {
+                    id: msg.id,
+                    content: msg.content,
+                    sender: senderUsername,
+                    senderId: msg.sender_id,
+                    timestamp: msg.created_at || msg.timestamp,
+                    channel: msg.channel || channel,
+                    recipientId: msg.recipient_id,
+                    isDM: msg.is_dm || data.isDM || false,
+                    type: msg.type,
+                    fileUrl: msg.file_url,
+                    fileType: msg.file_type,
+                    fileSize: msg.file_size
+                };
+            });
             
             // Send messages to client
             socket.emit('message-history', { 
@@ -1511,13 +1530,16 @@ io.on("connection", (socket) => {
                 .insert({
                     id: messageId,
                     content: message.content,
-                    sender: sender.username,
                     sender_id: sender.id,
                     channel: message.channel,
                     created_at: timestamp,
                     recipient_id: message.recipientId || null,
                     is_dm: message.isDM || false,
-                    is_deleted: false
+                    is_deleted: false,
+                    type: message.type || 'text',
+                    file_url: message.fileUrl || null,
+                    file_type: message.fileType || null,
+                    file_size: message.fileSize || null
                 });
                 
             if (error) {
