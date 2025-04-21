@@ -1508,6 +1508,13 @@ io.on("connection", (socket) => {
             // Get sender information
             const sender = users[socket.id];
             
+            // Validate sender has an ID before proceeding
+            if (!sender || !sender.id) {
+                console.error('Cannot send message: Invalid or missing sender ID');
+                socket.emit('error', { message: 'User session invalid. Please refresh the page.' });
+                return;
+            }
+            
             // Add server timestamp and uuid
             const messageId = uuidv4();
             const timestamp = new Date().toISOString();
@@ -1523,6 +1530,8 @@ io.on("connection", (socket) => {
                 isDM: message.isDM || false,
                 recipientId: message.recipientId || null
             };
+            
+            console.log(`Preparing to save message with sender_id: ${sender.id}`);
             
             // Save message to Supabase
             const { error } = await getSupabaseClient(true)
@@ -1544,6 +1553,8 @@ io.on("connection", (socket) => {
                 
             if (error) {
                 console.error('Error saving message to Supabase:', error);
+                socket.emit('error', { message: 'Failed to save message. Please try again.' });
+                return;
             }
             
             // Broadcast to the appropriate recipients
