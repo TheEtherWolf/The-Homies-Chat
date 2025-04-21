@@ -34,6 +34,7 @@ class ChatManager {
         // --- State Variables ---
         this.currentDmRecipientId = null;
         this.dmConversations = {}; // Cache messages: { 'recipientUserId': [messages] }
+        this.channelMessages = {}; // Cache messages for channels: { 'channelName': [messages] }
         this.allUsers = {}; // Store all fetched users: { 'userId': {username, id, status?, avatar_url?} }
         this.currentStatus = 'online';
         this.currentUser = null; // Store current user info { username, id }
@@ -870,6 +871,14 @@ class ChatManager {
     
     // Send a message
     sendMessage() {
+        // Ensure user is properly initialized before sending
+        if (!this.currentUser || !this.currentUser.id) {
+            console.error('[CHAT_ERROR] Cannot send message: Current user data is missing or incomplete.', this.currentUser);
+            // Optionally show a message to the user
+            this.addSystemMessage('Error: Cannot send message. User session not fully loaded. Please try again shortly or refresh.');
+            return;
+        }
+        
         if (!this.messageInput.value.trim()) return;
         
         const messageText = this.messageInput.value.trim();

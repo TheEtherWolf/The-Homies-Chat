@@ -1508,6 +1508,12 @@ io.on("connection", (socket) => {
             // Get sender information
             const sender = users[socket.id];
             
+            // --- DEBUG LOGGING START ---
+            console.log(`[DEBUG] send-message triggered by socket.id: ${socket.id}`);
+            console.log(`[DEBUG] Current users object keys: ${JSON.stringify(Object.keys(users))}`); // Log all connected socket IDs
+            console.log(`[DEBUG] User entry for this socket (${socket.id}): ${JSON.stringify(sender)}`); // Log the specific user entry
+            // --- DEBUG LOGGING END ---
+            
             // Validate sender has an ID before proceeding
             if (!sender || !sender.id) {
                 console.error('Cannot send message: Invalid or missing sender ID');
