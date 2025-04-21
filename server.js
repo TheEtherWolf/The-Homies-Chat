@@ -386,7 +386,7 @@ io.on("connection", (socket) => {
             socketId: socket.id,
             authenticated: false,
             username: null,
-            userId: null
+            id: null // Changed from userId to id for consistency
         };
     }
     
@@ -466,7 +466,7 @@ io.on("connection", (socket) => {
                 // Store user info in socket session
                 users[socket.id] = { 
                     username: user.username,
-                    userId: user.id
+                    id: user.id // Corrected key from userId to id
                 };
                 
                 // Mark user as active
@@ -517,7 +517,7 @@ io.on("connection", (socket) => {
                 // Notify user of successful login
                 callback({
                     success: true,
-                    userId: user.id,
+                    id: user.id, // Corrected key from userId to id
                     username: user.username
                 });
                 
@@ -561,7 +561,7 @@ io.on("connection", (socket) => {
         }
         
         // Update users mapping
-        users[socket.id] = { username, userId: null }; // Initialize with null userId
+        users[socket.id] = { username, id: null }; // Initialize with null id
         activeUsers.add(username);
         
         // Notify other users
@@ -584,7 +584,7 @@ io.on("connection", (socket) => {
     // For backward compatibility
     socket.on('set-username', (username) => {
         console.log(`Setting username: ${username} for socket: ${socket.id}`);
-        users[socket.id] = { username, userId: null }; // Initialize with null userId
+        users[socket.id] = { username, id: null }; // Initialize with null id
         activeUsers.add(username);
         updateUserList();
     });
@@ -670,7 +670,7 @@ io.on("connection", (socket) => {
                 
                 // Check if we can find the username from our active users
                 for (const socketId in users) {
-                    if (users[socketId] && users[socketId].userId === msg.sender_id) {
+                    if (users[socketId] && users[socketId].id === msg.sender_id) {
                         senderUsername = users[socketId].username;
                         break;
                     }
@@ -737,7 +737,7 @@ io.on("connection", (socket) => {
         if (!username || !senderId) {
             if (users[socket.id] && users[socket.id].username) {
                 username = users[socket.id].username;
-                senderId = users[socket.id].userId;
+                senderId = users[socket.id].id; // Corrected key from userId to id
                 console.log(`Using socket session user: ${username} (${senderId})`);
             }
         }
@@ -791,7 +791,7 @@ io.on("connection", (socket) => {
                     socketId: socket.id,
                     authenticated: true,
                     username: username,
-                    userId: senderId
+                    id: senderId // Corrected key from userId to id
                 };
                 console.log(`Updated socket session with user ${username} (${senderId})`);
             }
@@ -846,7 +846,7 @@ io.on("connection", (socket) => {
         }
         
         const username = users[socket.id].username;
-        let userId = users[socket.id].userId;
+        let userId = users[socket.id].id; // Corrected key from userId to id
         
         console.log(`DM from ${username} to ${data.recipientId}: ${data.message.substring(0, 20)}...`);
         
@@ -877,7 +877,7 @@ io.on("connection", (socket) => {
                 if (insertError) {
                     console.error('Error creating user record for DM sender:', insertError);
                     userId = uuidv4();
-                    users[socket.id].userId = userId;
+                    users[socket.id].id = userId; // Corrected key from userId to id
                     
                     // Try one more time with new ID
                     await getSupabaseClient(true)
@@ -924,7 +924,7 @@ io.on("connection", (socket) => {
         
         // Find the recipient socket by recipientId
         const recipientSocketId = Object.keys(users).find(id => 
-            users[id] && users[id].userId === data.recipientId
+            users[id] && users[id].id === data.recipientId
         );
         
         if (recipientSocketId) {
@@ -970,7 +970,7 @@ io.on("connection", (socket) => {
             console.log(`Attempting to delete message: ${messageId}`);
             
             // Check if user is authenticated
-            if (!users[socket.id] || !users[socket.id].userId) {
+            if (!users[socket.id] || !users[socket.id].id) { // Corrected key from userId to id
                 console.error('Cannot delete message: User not authenticated');
                 callback({ success: false, message: 'You must be logged in to delete messages' });
                 return;
@@ -1128,7 +1128,7 @@ io.on("connection", (socket) => {
                     socket.emit('register-success', {
                         message: 'Development mode: Registration successful!',
                         username: data.username,
-                        userId
+                        id: userId // Corrected key from userId to id
                     });
                 } catch (authError) {
                     console.error('Dev mode - Auth error:', authError);
@@ -1173,7 +1173,7 @@ io.on("connection", (socket) => {
             socket.emit('register-success', {
                 message: 'Registration successful!',
                 username: userData.username,
-                userId
+                id: userId // Corrected key from userId to id
             });
         } catch (error) {
             console.error('Error during verification:', error);
@@ -1358,7 +1358,7 @@ io.on("connection", (socket) => {
         }
         
         const { name, description, isPrivate } = data;
-        const userId = users[socket.id].userId;
+        const userId = users[socket.id].id; // Corrected key from userId to id
         
         console.log(`User ${users[socket.id].username} is creating channel: ${name}`);
         
@@ -1508,14 +1508,8 @@ io.on("connection", (socket) => {
             // Get sender information
             const sender = users[socket.id];
             
-            // --- DEBUG LOGGING START ---
-            console.log(`[DEBUG] send-message triggered by socket.id: ${socket.id}`);
-            console.log(`[DEBUG] Current users object keys: ${JSON.stringify(Object.keys(users))}`); // Log all connected socket IDs
-            console.log(`[DEBUG] User entry for this socket (${socket.id}): ${JSON.stringify(sender)}`); // Log the specific user entry
-            // --- DEBUG LOGGING END ---
-            
             // Validate sender has an ID before proceeding
-            if (!sender || !sender.id) {
+            if (!sender || !sender.id) { // Corrected key from userId to id
                 console.error('Cannot send message: Invalid or missing sender ID');
                 socket.emit('error', { message: 'User session invalid. Please refresh the page.' });
                 return;
@@ -1530,7 +1524,7 @@ io.on("connection", (socket) => {
                 id: messageId,
                 content: message.content,
                 sender: sender.username,
-                senderId: sender.id,
+                senderId: sender.id, // Corrected key from userId to id
                 timestamp: timestamp,
                 channel: message.channel,
                 isDM: message.isDM || false,
@@ -1545,7 +1539,7 @@ io.on("connection", (socket) => {
                 .insert({
                     id: messageId,
                     content: message.content,
-                    sender_id: sender.id,
+                    sender_id: sender.id, // Corrected key from userId to id
                     channel: message.channel,
                     created_at: timestamp,
                     recipient_id: message.recipientId || null,
@@ -1598,7 +1592,7 @@ io.on("connection", (socket) => {
         }
         
         try {
-            const userId = users[socket.id].id;
+            const userId = users[socket.id].id; // Corrected key from userId to id
             
             // Generate a random 8-character code
             const generateCode = () => {
@@ -1639,7 +1633,7 @@ io.on("connection", (socket) => {
         }
         
         try {
-            const userId = users[socket.id].id;
+            const userId = users[socket.id].id; // Corrected key from userId to id
             
             // Get from database
             const { data, error } = await getSupabaseClient(true)
@@ -1692,7 +1686,7 @@ io.on("connection", (socket) => {
         }
         
         try {
-            const userId = users[socket.id].id;
+            const userId = users[socket.id].id; // Corrected key from userId to id
             const username = users[socket.id].username;
             
             // Prevent adding yourself
@@ -1794,7 +1788,7 @@ io.on("connection", (socket) => {
         }
         
         try {
-            const userId = users[socket.id].id;
+            const userId = users[socket.id].id; // Corrected key from userId to id
             
             // Get all friends
             const { data: friends, error } = await getSupabaseClient(true)
@@ -1842,7 +1836,7 @@ io.on("connection", (socket) => {
         }
         
         try {
-            const userId = users[socket.id].id;
+            const userId = users[socket.id].id; // Corrected key from userId to id
             
             // Remove friendship in both directions
             const { error: removeError1 } = await getSupabaseClient(true)
