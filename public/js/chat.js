@@ -35,6 +35,7 @@ class ChatManager {
         this.currentDmRecipientId = null;
         this.dmConversations = {}; // Cache messages: { 'recipientUserId': [messages] }
         this.channelMessages = {}; // Cache messages for channels: { 'channelName': [messages] }
+        this.generalChatMessages = []; // Initialize general chat message array
         this.allUsers = {}; // Store all fetched users: { 'userId': {username, id, status?, avatar_url?} }
         this.currentStatus = 'online';
         this.currentUser = null; // Store current user info { username, id }
@@ -695,16 +696,26 @@ class ChatManager {
         // Handle different message types
         if (message.channel === 'general' || message.isGeneralMessage) {
             // General chat message
+            // Ensure generalChatMessages is initialized (should be in constructor, but good practice)
+            if (!Array.isArray(this.generalChatMessages)) {
+                console.warn('[CHAT_WARN] generalChatMessages was not an array. Initializing.');
+                this.generalChatMessages = [];
+            }
             this.generalChatMessages.push(message);
-            
+
             if (this.inGeneralChat || this.currentChannel === 'general') {
                 this.displayMessageInUI(message, 'general');
             }
         } else if (message.channel && message.channel.startsWith('dm_')) {
             // DM message - format is dm_userId1_userId2
             // Store in the channel messages
+            // Ensure the array exists before pushing
+            if (!Array.isArray(this.channelMessages[message.channel])) {
+                console.log(`[CHAT_DEBUG] Initializing message array for DM channel: ${message.channel}`);
+                this.channelMessages[message.channel] = [];
+            }
             this.channelMessages[message.channel].push(message);
-            
+
             const userIds = message.channel.replace('dm_', '').split('_');
             const otherUserId = userIds[0] === this.currentUser.id ? userIds[1] : userIds[0];
             
@@ -717,8 +728,13 @@ class ChatManager {
             }
         } else if (message.channel) {
             // Regular channel message
+            // Ensure the array exists before pushing
+            if (!Array.isArray(this.channelMessages[message.channel])) {
+                 console.log(`[CHAT_DEBUG] Initializing message array for channel: ${message.channel}`);
+                this.channelMessages[message.channel] = [];
+            }
             this.channelMessages[message.channel].push(message);
-            
+
             if (this.currentChannel === message.channel) {
                 this.displayMessageInUI(message, message.channel);
             }
