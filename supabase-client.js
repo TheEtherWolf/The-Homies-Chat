@@ -500,93 +500,64 @@ async function getUserIdByUsername(username) {
 /**
  * Save a single message to Supabase
  * @param {Object} message - The message to save
- * @returns {Promise<boolean>} Success status
+ * @returns {Promise<Object|null>} The inserted message row (with permanent ID) or null if failed
  */
 async function saveMessageToSupabase(message) {
   try {
     // Ensure Supabase is configured
     if (!serviceSupabase || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
       console.error('Supabase not configured, cannot save message');
-      return false;
+      return null;
     }
     
     // Skip empty messages
     if (!message.content && !message.message) {
       console.log('Skipping empty message save');
-      return false;
+      return null;
     }
     
     // Ensure message has a sender name at minimum
-    let senderName = message.sender || message.username;
-    let senderId = message.senderId || message.sender_id;
-    
-    // If we have a senderId but no sender name, try to look it up
-    if (senderId && !senderName) {
-      try {
-        const { data: userRecord } = await serviceSupabase
-          .from('users')
-          .select('username')
-          .eq('id', senderId)
-          .maybeSingle();
-        
-        if (userRecord && userRecord.username) {
-          senderName = userRecord.username;
-          console.log(`Found username ${senderName} for ID ${senderId}`);
-        }
-      } catch (err) {
-        console.error('Error looking up username by ID:', err);
-      }
+    const senderId = message.sender_id || message.senderId || null;
+    const senderName = message.sender || message.username || null;
+    if (!senderId && !senderName) {
+      console.error('Message missing sender info');
+      return null;
     }
-    
-    // If we still don't have a sender name, use a default
-    if (!senderName) {
-      console.log('Using default sender name for message');
-      senderName = 'Anonymous User';
-    }
-    
-    // If we have a sender name but no ID, get or create the user
-    if (!senderId && senderName) {
-      senderId = await getUserIdByUsername(senderName);
-    }
-    
-    // If we still don't have a sender ID, we can't save the message
-    if (!senderId) {
-      console.error('Could not get or create valid user ID for sender:', senderName);
-      return false;
-    }
-    
-    // Generate a valid UUID for the message ID if not provided
-    const messageId = message.id || uuidv4();
 
-    // Format message to match Supabase schema exactly
+    // Format message for DB
     const formattedMessage = {
-      id: messageId,
       sender_id: senderId,
-      content: message.message || message.content || "",
-      created_at: new Date(message.timestamp || Date.now()).toISOString(),
-      type: message.type || "text",
-      file_url: message.fileUrl || null,
-      file_type: message.fileType || null,
-      file_size: message.fileSize || null,
-      channel: message.channel || "general"
+      content: message.content || message.message,
+      channel: message.channel || "general",
+      type: message.type || 'text',
+      file_url: message.file_url || message.fileUrl || null,
+      file_type: message.file_type || message.fileType || null,
+      file_size: message.file_size || message.fileSize || null,
+      recipient_id: message.recipient_id || message.recipientId || null
     };
     
     console.log(`Saving message to Supabase from user ${senderName} (${senderId}) in channel ${formattedMessage.channel}`);
     
-    const { error } = await serviceSupabase
+    // Insert and return the inserted row
+    const { data, error } = await serviceSupabase
       .from('messages')
-      .upsert(formattedMessage);
+      .insert(formattedMessage)
+      .select('*')
+      .maybeSingle();
     
     if (error) {
       console.error('Error saving message to Supabase:', error);
-      return false;
+      return null;
     }
-
-    console.log(`Saved message to Supabase: ${formattedMessage.id}`);
-    return true;
+    if (!data) {
+      console.error('No data returned from Supabase after insert');
+      return null;
+    }
+    console.log(`Saved message to Supabase: ${data.id}`);
+    return data;
   } catch (error) {
     console.error('Error in saveMessageToSupabase:', error);
-    return false;
+    return null;
   }
 }
 
