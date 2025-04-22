@@ -29,7 +29,8 @@ class ChatManager {
         this.emojiPicker = document.querySelector('.emoji-picker');
         this.emojiButtons = document.querySelectorAll('.emoji-btn');
         this.attachFileButton = document.getElementById('attach-file-button');
-        this.friendsList = []; // Store the user's friends list
+        this.friendsList = []; // Deprecated
+        this.friendships = {}; // Stores { 'otherUserId': { friendship details } }
 
         // --- State Variables ---
         this.currentDmRecipientId = null;
@@ -67,26 +68,239 @@ class ChatManager {
         // Attach event listeners for UI interactions
         this.attachEventListeners();
         console.log('[CHAT_DEBUG] All event listeners attached');
-        
+
+        // Setup socket listeners (will handle connection logic and other specific listeners)
+        this._setupSocketListeners();
+
         // Set flag to indicate we need to fetch data when socket connects
         this.needsInitialDataFetch = true;
-        
-        // If socket is not connected, wait for connect event
-        if (!this.isSocketConnected) {
-            console.log('[CHAT_DEBUG] Socket not connected during init, waiting for connect event.');
-            return;
-        }
-        
+
         // Begin with the general channel
         this.switchChannel('general');
-        
-        // Get friend code and friends list
-        this.getFriendCode();
-        this.getFriendsList();
-        
+
         // Set initialization flag
         this.isInitialized = true;
         console.log('[CHAT_DEBUG] ChatManager successfully initialized.');
+    }
+
+    // Centralized method to setup all socket listeners
+    _setupSocketListeners() {
+        if (!this.socket) {
+            console.error("[CHAT_ERROR] Socket not available for setting up listeners.");
+            return;
+        }
+        console.log('[CHAT_DEBUG] Setting up core socket listeners...');
+
+        // Handle connection and registration
+        this.socket.on('connect', () => {
+            console.log('[CHAT_DEBUG] Socket connected.');
+            this.isSocketConnected = true;
+            if (this.currentUser && this.needsInitialDataFetch) {
+                console.log('[CHAT_DEBUG] Registering session...');
+                this.socket.emit('register-session', { 
+                    username: this.currentUser.username, 
+                    id: this.currentUser.id 
+                });
+                this.needsInitialDataFetch = false;
+            }
+        });
+
+        this.socket.on('disconnect', (reason) => {
+            console.warn(`[CHAT_DEBUG] Socket disconnected: ${reason}`);
+            this.isSocketConnected = false;
+            this.needsInitialDataFetch = true;
+        });
+
+        // Call specific listener setup methods here
+        // this._setupMessageListeners(); // Assume exists elsewhere or add later
+        // this._setupUserStatusListeners(); // Assume exists elsewhere or add later
+        // this._setupCallListeners(); // Assume exists elsewhere or add later
+        this._setupFriendSocketListeners(); // Call the friend listener setup
+        // this._setupChannelListeners(); // Assume exists elsewhere or add later
+
+    }
+
+    // Setup listeners specifically for friend-related events
+    _setupFriendSocketListeners() {
+        if (!this.socket) return;
+        console.log('[CHAT_DEBUG] Setting up FRIEND socket listeners...');
+
+        // Listen for the initial friend list pushed by the server
+        this.socket.on('friend-list', (friends) => {
+            console.log('[CHAT_DEBUG] Received friend-list:', friends);
+            this.friendships = {}; // Clear existing data
+
+            if (!this.currentUser || !this.currentUser.id) {
+                console.error('[CHAT_ERROR] Cannot process friend list without current user ID.');
+                return;
+            }
+
+            if (Array.isArray(friends)) {
+                friends.forEach(friendship => {
+                    // Determine the ID of the *other* user in the relationship
+                    const otherUserId = friendship.user_id_1 === this.currentUser.id 
+                                        ? friendship.user_id_2 
+                                        : friendship.user_id_1;
+                    
+                    // Use the other user's ID as the key in our friendships map
+                    this.friendships[otherUserId] = {
+                        friendship_id: friendship.id,
+                        friend_id: otherUserId,
+                        friend_username: friendship.friend_username, // Server should provide joined username
+                        friend_avatar_url: friendship.friend_avatar_url, // Server should provide joined avatar
+                        friend_status: friendship.friend_status, // Server should provide joined status
+                        friendship_status: friendship.status, // 'pending' or 'accepted'
+                        since: friendship.updated_at || friendship.created_at,
+                        // Determine if a pending request is incoming (sent *to* us)
+                        is_pending_incoming: friendship.status === 'pending' && friendship.user_id_2 === this.currentUser.id
+                    };
+                });
+            } else {
+                console.warn('[CHAT_WARN] Received non-array data for friend-list:', friends);
+            }
+
+            // Update the UI based on the processed list
+            this._updateFriendUI(); 
+        });
+
+        // Listen for new incoming friend requests
+        this.socket.on('friend-request-received', (requestData) => {
+            console.log('[CHAT_DEBUG] Received friend-request-received:', requestData);
+
+            if (!requestData || !requestData.senderId || !requestData.friendshipId) {
+                console.error('[CHAT_ERROR] Invalid data received for friend-request-received:', requestData);
+                return;
+            }
+
+            // Add/Update the friendships state with the pending request
+            this.friendships[requestData.senderId] = {
+                friendship_id: requestData.friendshipId,
+                friend_id: requestData.senderId,
+                friend_username: requestData.senderUsername || 'User', // Use provided username or default
+                friendship_status: 'pending', // Mark as pending
+                is_pending_incoming: true, // Mark as incoming
+                since: new Date().toISOString()
+                // Avatar/Status might be missing; UI should handle defaults
+            };
+
+            // Update the UI to reflect the new pending request
+            this._updateFriendUI();
+
+            // Show a notification to the user
+            // TODO: Replace alert with a better UI notification (e.g., toast, badge)
+            alert(`New friend request from ${requestData.senderUsername || 'a user'}!`);
+        });
+
+        // Listen for updates (e.g., request accepted, friend status change)
+        this.socket.on('friend-update', (friendshipData) => {
+            console.log('[CHAT_DEBUG] Received friend-update:', friendshipData);
+
+            if (!friendshipData || !friendshipData.friend_id) {
+                console.error('[CHAT_ERROR] Invalid data received for friend-update:', friendshipData);
+                return;
+            }
+
+            const friendId = friendshipData.friend_id;
+
+            // Update or add the entry in our local state using object spread
+            this.friendships[friendId] = { 
+                ...this.friendships[friendId], // Keep existing data if any
+                ...friendshipData // Overwrite with new data
+            };
+
+            // If this update marks the friendship as accepted, ensure is_pending_incoming is false
+            if (this.friendships[friendId].friendship_status === 'accepted') {
+                this.friendships[friendId].is_pending_incoming = false; 
+            }
+
+            // Update the UI
+            this._updateFriendUI(); 
+
+            // Optional: Notify user specifically about acceptance
+            if(friendshipData.friendship_status === 'accepted') {
+                console.log(`Friendship status with ${friendshipData.friend_username || friendId} updated to accepted.`);
+                // You might want a less intrusive notification than an alert here
+                // alert(`You are now friends with ${friendshipData.friend_username || friendId}!`); 
+            }
+        });
+
+        // Listen for when a friend is removed or request rejected/canceled
+        this.socket.on('friend-removed', (data) => {
+            console.log('[CHAT_DEBUG] Received friend-removed:', data);
+
+            if (!data || !data.friendId) {
+                console.error('[CHAT_ERROR] Invalid data received for friend-removed:', data);
+                return;
+            }
+
+            const removedFriendId = data.friendId; // ID of the *other* user involved
+
+            if (this.friendships[removedFriendId]) {
+                const removedUsername = this.friendships[removedFriendId].friend_username || 'User';
+                // Remove the friendship entry from our local state
+                delete this.friendships[removedFriendId];
+
+                // Update the UI
+                this._updateFriendUI();
+
+                // Notify the user
+                console.log(`Friendship with ${removedUsername} (${removedFriendId}) ended.`);
+                // TODO: Replace alert with a better UI notification
+                alert(`Friendship with ${removedUsername} ended.`);
+            } else {
+                console.warn(`[CHAT_WARN] Received friend-removed for ID ${removedFriendId}, but no matching friendship found.`);
+            }
+
+            // If currently chatting with the removed friend, switch back to general channel
+            if (this.isDMMode && this.currentDmRecipientId === removedFriendId) {
+                console.log(`Currently in DM with removed friend ${removedFriendId}, switching to general channel.`);
+                this.switchChannel('general'); 
+            }
+        });
+    }
+
+    // Placeholder for updating the actual friends UI
+    _updateFriendUI() {
+        console.log('[CHAT_DEBUG] Updating friend UI (placeholder)... Current friendships:', this.friendships);
+        // Logic to re-render DM list/friends section will go here.
+        this.populateDMList(); // Call the existing function for now
+    }
+
+    // Helper function to get a default avatar URL
+    getDefaultAvatar(userId) {
+        // Simple placeholder - replace with a proper default avatar or generation logic
+        // Maybe use a service like Gravatar or generate based on ID?
+        return 'img/Default-Avatar.png'; // Ensure this path is correct and image exists
+    }
+
+    // Populate the DM/Friends list in the sidebar (Minimal Version)
+    populateDMList() {
+        if (!this.dmListContainer) {
+            console.error("[CHAT_ERROR] DM List Container not found.");
+            return;
+        }
+        console.log('[CHAT_DEBUG] Populating DM/Friends list (Minimal) - Current friendships:', this.friendships);
+
+        // 1. Clear existing list content
+        this.dmListContainer.innerHTML = '';
+
+        // 2. Add a main header for the section
+        const friendsHeader = document.createElement('h3');
+        friendsHeader.textContent = 'Direct Messages';
+        friendsHeader.classList.add('sidebar-header');
+        this.dmListContainer.appendChild(friendsHeader);
+
+        // 3. Log the data (for now)
+        console.log('[CHAT_DEBUG] Friendships data:', JSON.stringify(this.friendships, null, 2));
+
+        // 4. Add placeholder message (will be replaced later)
+        const placeholderMsg = document.createElement('p');
+        placeholderMsg.textContent = 'Loading friends...';
+        placeholderMsg.classList.add('sidebar-placeholder');
+        this.dmListContainer.appendChild(placeholderMsg);
+
+        console.log('[CHAT_DEBUG] DM/Friends list cleared and header added.');
+        // Iteration and item creation will be added in the next step.
     }
 
     // Set up click handlers for channels
@@ -110,8 +324,13 @@ class ChatManager {
     // Switch to a specific channel
     switchChannel(channelName) {
         console.log(`[CHAT_DEBUG] Switching to channel: ${channelName}`);
-        
+
         // Update UI active state
+        // Deactivate all DMs first
+        const allDmItems = document.querySelectorAll('.dm-item');
+        allDmItems.forEach(item => item.classList.remove('active'));
+        
+        // Activate/deactivate channel items
         const allChannelItems = document.querySelectorAll('.channel-item');
         allChannelItems.forEach(item => {
             const itemName = item.getAttribute('data-channel') || item.querySelector('span').textContent.trim();
@@ -1753,16 +1972,15 @@ class ChatManager {
         const messageInput = document.getElementById('message-input');
         if (!messageInput) return;
         
-        const startPos = messageInput.selectionStart;
-        const endPos = messageInput.selectionEnd;
+        const cursorPos = messageInput.selectionStart;
         const text = messageInput.value;
         
         // Insert emoji at cursor position
-        messageInput.value = text.substring(0, startPos) + emoji + text.substring(endPos);
+        messageInput.value = text.substring(0, cursorPos) + emoji + text.substring(cursorPos);
         
         // Set cursor position after the inserted emoji
-        messageInput.selectionStart = startPos + emoji.length;
-        messageInput.selectionEnd = startPos + emoji.length;
+        messageInput.selectionStart = cursorPos + emoji.length;
+        messageInput.selectionEnd = cursorPos + emoji.length;
         messageInput.focus();
         
         // Hide emoji picker after selection
@@ -1902,7 +2120,7 @@ class ChatManager {
             }
         });
     }
-    
+
     // Check if a message is from the current user
     isOwnMessage(message) {
         if (!message) return false;
@@ -2243,7 +2461,7 @@ class ChatManager {
                     }
                 } else {
                     console.error('[CHAT_DEBUG] Failed to remove friend:', response.message);
-                    alert('Failed to remove friend: ' + (response.message || 'Unknown error'));
+                    alert(`Failed to remove friend: ${response.message}`);
                 }
             });
         }

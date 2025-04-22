@@ -16,17 +16,21 @@ const {
   resendVerificationEmail 
 } = require('./email-verification');
 
-const { 
-    registerUser, 
-    signInUser, 
-    signOutUser, 
-    getCurrentUser, 
+const {
+    getSupabaseClient,
+    registerUser,
+    signInUser,
+    signOutUser,
+    getCurrentUser,
     getAllUsers,
     saveMessageToSupabase,
     loadMessagesFromSupabase,
-    getSupabaseClient,
     getUserIdByUsername,
-    markMessageAsDeleted
+    markMessageAsDeleted,
+    sendFriendRequest,
+    acceptFriendRequest,
+    rejectOrRemoveFriend,
+    getFriendships
 } = require("./supabase-client");
 
 // Environment settings - DO NOT force development mode
@@ -940,7 +944,9 @@ io.on("connection", (socket) => {
             console.log(`DM saved successfully with ID: ${messageObj.id}`);
 
             // Find recipient socket(s)
-            const recipientSocketIds = Object.keys(users).filter(id => users[id] && users[id].id === recipientId);
+            const recipientSocketIds = Object.keys(users).filter(id => 
+                users[id] && users[id].id === recipientId
+            );
             
             // Send to recipient(s)
             recipientSocketIds.forEach(socketId => {
@@ -1336,6 +1342,21 @@ io.on("connection", (socket) => {
                 userStatus[userId].socketId = socket.id;
             }
             
+            // Fetch and emit friendships
+            try {
+                const friendships = await getFriendships(userId);
+                if (friendships) {
+                    console.log(`Emitting friend list to ${userData.username} (Found: ${friendships.length})`);
+                    socket.emit('friend-list', friendships);
+                } else {
+                     console.log(`No friendships found or error fetching for ${userData.username}`);
+                     socket.emit('friend-list', []); // Send empty list on error or none found
+                }
+            } catch (friendError) {
+                console.error(`Error fetching friendships for ${userId}:`, friendError);
+                socket.emit('friend-list', []); // Send empty list on error
+            }
+            
             // Return successful authentication with potentially updated ID
             socket.emit('auth-success', { 
                 username: userData.username, 
@@ -1568,8 +1589,8 @@ io.on("connection", (socket) => {
             // Broadcast to the appropriate recipients
             if (message.isDM && message.recipientId) {
                 // Find the recipient's socket
-                const recipientSocket = Object.keys(users).find(sid => 
-                    users[sid] && users[sid].id === message.recipientId
+                const recipientSocket = Object.keys(users).filter(id => 
+                    users[id] && users[id].id === message.recipientId
                 );
                 
                 // Send to sender and recipient
@@ -1682,155 +1703,36 @@ io.on("connection", (socket) => {
     });
     
     // Add friend by username and friend code
-    socket.on('add-friend', async (data, callback) => {
-        if (!users[socket.id] || !users[socket.id].authenticated) {
-            callback({ success: false, message: 'Not authenticated' });
-            return;
-        }
-        
-        if (!data || !data.username || !data.friendCode) {
-            callback({ success: false, message: 'Username and friend code required' });
-            return;
-        }
-        
-        try {
-            const userId = users[socket.id].id; // Corrected key from userId to id
-            const username = users[socket.id].username;
-            
-            // Prevent adding yourself
-            if (data.username === username) {
-                callback({ success: false, message: 'You cannot add yourself as a friend' });
-                return;
-            }
-            
-            // Find the user by username and friend code
-            const { data: foundUsers, error } = await getSupabaseClient(true)
-                .from('users')
-                .select('id, username')
-                .eq('username', data.username)
-                .eq('friend_code', data.friendCode)
-                .limit(1);
-                
-            if (error) {
-                console.error('Error finding user by friend code:', error);
-                callback({ success: false, message: 'Database error' });
-                return;
-            }
-            
-            if (!foundUsers || foundUsers.length === 0) {
-                callback({ success: false, message: 'User not found or invalid friend code' });
-                return;
-            }
-            
-            const friendId = foundUsers[0].id;
-            
-            // Check if already friends
-            const { data: existingFriends, error: checkError } = await getSupabaseClient(true)
-                .from('friends')
-                .select('id')
-                .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`)
-                .limit(1);
-                
-            if (checkError) {
-                console.error('Error checking existing friendship:', checkError);
-                callback({ success: false, message: 'Database error' });
-                return;
-            }
-            
-            if (existingFriends && existingFriends.length > 0) {
-                callback({ success: false, message: 'Already friends with this user' });
-                return;
-            }
-            
-            // Add friendship (in both directions for easier querying)
-            const { error: addError1 } = await getSupabaseClient(true)
-                .from('friends')
-                .insert({
-                    user_id: userId,
-                    friend_id: friendId
-                });
-                
-            const { error: addError2 } = await getSupabaseClient(true)
-                .from('friends')
-                .insert({
-                    user_id: friendId,
-                    friend_id: userId
-                });
-                
-            if (addError1 || addError2) {
-                console.error('Error adding friend:', addError1 || addError2);
-                callback({ success: false, message: 'Failed to add friend' });
-                return;
-            }
-            
-            callback({ 
-                success: true, 
-                friend: { 
-                    id: friendId, 
-                    username: foundUsers[0].username 
-                } 
-            });
-            
-            // Notify the other user if they're online
-            const friendSocketId = Object.keys(users).find(id => 
-                users[id] && users[id].id === friendId
-            );
-            
-            if (friendSocketId) {
-                io.to(friendSocketId).emit('friend-added', {
-                    id: userId,
-                    username
-                });
-            }
-        } catch (err) {
-            console.error('Error in add-friend:', err);
-            callback({ success: false, message: 'Server error' });
-        }
-    });
-    
+    // socket.on('add-friend', async (data, callback) => { ... }); // Entire handler removed
+
     // Get friends list
     socket.on('get-friends', async (callback) => {
-        if (!users[socket.id] || !users[socket.id].authenticated) {
-            callback({ success: false, message: 'Not authenticated' });
-            return;
+        // Check authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            return callback({ success: false, friends: [], message: 'Not authenticated' });
         }
-        
+
+        const userId = users[socket.id].id;
+
         try {
-            const userId = users[socket.id].id; // Corrected key from userId to id
+            // Use the new getFriendships function
+            const friendships = await getFriendships(userId);
             
-            // Get all friends
-            const { data: friends, error } = await getSupabaseClient(true)
-                .from('friends')
-                .select(`
-                    id,
-                    friend:friend_id (
-                        id,
-                        username,
-                        status
-                    )
-                `)
-                .eq('user_id', userId);
-                
-            if (error) {
-                console.error('Error getting friends list:', error);
-                callback({ success: false, message: 'Failed to retrieve friends' });
-                return;
+            if (friendships) {
+                // Friendships is already in the desired format (array of objects)
+                 console.log(`Retrieved ${friendships.length} friendships for user ${userId} via get-friends handler.`);
+                callback({ success: true, friends: friendships });
+            } else {
+                 // Handle case where getFriendships might return null or undefined on error
+                 console.error(`getFriendships returned null/undefined for user ${userId} in get-friends handler.`);
+                callback({ success: false, friends: [], message: 'Failed to retrieve friends list.' });
             }
-            
-            // Format the response
-            const formattedFriends = friends.map(f => ({
-                id: f.friend.id,
-                username: f.friend.username,
-                status: f.friend.status || 'offline'
-            }));
-            
-            callback({ success: true, friends: formattedFriends });
-        } catch (err) {
-            console.error('Error retrieving friends:', err);
-            callback({ success: false, message: 'Server error' });
+        } catch (error) {
+            console.error(`Error in get-friends handler for user ${userId}:`, error);
+            callback({ success: false, friends: [], message: 'Server error fetching friends list' });
         }
     });
-    
+
     // Remove friend
     socket.on('remove-friend', async (data, callback) => {
         if (!users[socket.id] || !users[socket.id].authenticated) {
@@ -1882,6 +1784,289 @@ io.on("connection", (socket) => {
             callback({ success: false, message: 'Server error' });
         }
     });
+    
+    // --- Friend Management Handlers ---
+
+    socket.on('send-friend-request', async (data, callback) => {
+        // Validate user authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            return callback({ success: false, message: 'Not authenticated' });
+        }
+        // Validate input data
+        if (!data || !data.recipientId || !isValidUUID(data.recipientId)) {
+             return callback({ success: false, message: 'Invalid recipient ID provided' });
+        }
+
+        const senderId = users[socket.id].id;
+        const recipientId = data.recipientId;
+
+        // Prevent adding self
+        if (senderId === recipientId) {
+            return callback({ success: false, message: 'Cannot add yourself as a friend' });
+        }
+
+        try {
+            // Check existing friendship status first to avoid unnecessary inserts/errors
+            const existingStatus = await getFriendshipStatus(senderId, recipientId);
+            if (existingStatus) {
+                if (existingStatus.status === 'accepted') {
+                    return callback({ success: false, message: 'Already friends' });
+                } else if (existingStatus.status === 'pending') {
+                     // Decide if re-sending should be allowed or considered an error
+                     return callback({ success: false, message: 'Friend request already pending' });
+                } 
+                // Handle 'blocked' case if implemented
+            }
+            
+            // Proceed to send the request via supabase-client function
+            const result = await sendFriendRequest(senderId, recipientId);
+            
+            if (result) {
+                 // Request sent successfully
+                callback({ success: true, friendship: result });
+                
+                // Notify the recipient if they are currently online
+                const recipientSocketId = Object.keys(users).find(id => users[id] && users[id].id === recipientId);
+                if (recipientSocketId) {
+                    io.to(recipientSocketId).emit('friend-request-received', { 
+                        senderId: senderId, 
+                        senderUsername: users[socket.id].username, 
+                        friendshipId: result.id 
+                    }); 
+                    console.log(`Notified ${recipientId} about incoming friend request from ${senderId}`);
+                }
+            } else {
+                // This might occur due to race conditions or unexpected DB errors not caught by getFriendshipStatus
+                console.error(`sendFriendRequest returned null/false between ${senderId} and ${recipientId} unexpectedly.`);
+                callback({ success: false, message: 'Failed to send friend request (database error)' });
+            }
+        } catch (error) {
+            console.error(`Error in send-friend-request handler for ${senderId} -> ${recipientId}:`, error);
+            callback({ success: false, message: 'Server error sending request' });
+        }
+    });
+
+    socket.on('accept-friend-request', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            return callback({ success: false, message: 'Not authenticated' });
+        }
+        // Validate input
+         if (!data || !data.requesterId || !isValidUUID(data.requesterId)) {
+             return callback({ success: false, message: 'Invalid requester ID provided' });
+        }
+
+        const acceptorId = users[socket.id].id;
+        const requesterId = data.requesterId;
+        const acceptorUser = users[socket.id]; // Get acceptor's details
+
+        try {
+            // Call Supabase client function to update the friendship status
+            const result = await acceptFriendRequest(acceptorId, requesterId);
+            
+            if (result) {
+                // Acceptance successful
+                callback({ success: true, friendship: result });
+                
+                // Find the requester's socket to notify them
+                const requesterSocketId = Object.keys(users).find(id => users[id] && users[id].id === requesterId);
+                let requesterUser = null;
+                if (requesterSocketId) {
+                    requesterUser = users[requesterSocketId];
+                } else {
+                    // Optional: Fetch requester details if not online (might be slow)
+                    // requesterUser = await getUserByUsername(null, requesterId); 
+                    console.log(`Requester ${requesterId} is not online to notify about accepted request.`);
+                }
+                                
+                // Prepare notification data for both users (consistent with getFriendships)
+                 const friendDataForRequester = {
+                    friendship_id: result.id,
+                    friend_id: acceptorUser.id,
+                    friend_username: acceptorUser.username,
+                    friend_avatar_url: acceptorUser.avatar_url, 
+                    friend_status: acceptorUser.status, 
+                    friendship_status: 'accepted',
+                    since: result.updated_at || new Date().toISOString() // Use updated_at if available
+                };
+                const friendDataForAcceptor = {
+                    friendship_id: result.id,
+                    friend_id: requesterId,
+                    friend_username: requesterUser?.username || 'Unknown', // Handle offline case
+                    friend_avatar_url: requesterUser?.avatar_url,
+                    friend_status: requesterUser?.status,
+                    friendship_status: 'accepted',
+                    since: result.updated_at || new Date().toISOString()
+                };
+
+                // Notify requester if online
+                if (requesterSocketId) {
+                    io.to(requesterSocketId).emit('friend-update', friendDataForRequester);
+                    console.log(`Notified ${requesterId} that their friend request was accepted by ${acceptorId}`);
+                }
+                // Notify self (acceptor)
+                 socket.emit('friend-update', friendDataForAcceptor);
+
+            } else {
+                 // Acceptance failed (e.g., request didn't exist or was already accepted/removed)
+                 console.warn(`acceptFriendRequest returned null/false for acceptor ${acceptorId}, requester ${requesterId}.`);
+                callback({ success: false, message: 'Failed to accept friend request (maybe already accepted or removed)' });
+            }
+        } catch (error) {
+            console.error(`Error in accept-friend-request handler for acceptor ${acceptorId}, requester ${requesterId}:`, error);
+            callback({ success: false, message: 'Server error accepting request' });
+        }
+    });
+
+    socket.on('reject-remove-friend', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            return callback({ success: false, message: 'Not authenticated' });
+        }
+        // Validate input
+         if (!data || !data.friendId || !isValidUUID(data.friendId)) {
+             return callback({ success: false, message: 'Invalid friend ID provided' });
+        }
+
+        const userId = users[socket.id].id;
+        const friendId = data.friendId;
+
+        try {
+            // Call Supabase client function to delete the friendship record
+            const success = await rejectOrRemoveFriend(userId, friendId);
+            
+            if (success) {
+                // Rejection/Removal successful
+                callback({ success: true });
+                
+                // Notify the other user involved, if they are online
+                 const friendSocketId = Object.keys(users).find(id => users[id] && users[id].id === friendId);
+                 if (friendSocketId) {
+                    // Notify the other user that the friendship/request was removed by 'userId'
+                    io.to(friendSocketId).emit('friend-removed', { friendId: userId });
+                    console.log(`Notified ${friendId} that they were removed/rejected by ${userId}`);
+                 }
+                 
+                 // Also notify the user who performed the action
+                 socket.emit('friend-removed', { friendId: friendId });
+                 
+            } else {
+                // Failure likely means the friendship didn't exist or couldn't be deleted
+                 console.warn(`rejectOrRemoveFriend returned false for user ${userId}, friend ${friendId}. Friendship might not exist.`);
+                callback({ success: false, message: 'Failed to reject/remove friend (already removed?)' });
+            }
+        } catch (error) {
+            console.error(`Error in reject-remove-friend handler for user ${userId}, friend ${friendId}:`, error);
+            callback({ success: false, message: 'Server error rejecting/removing friend' });
+        }
+    });
+
+    // TODO: Refactor existing 'get-friends' and 'add-friend' to use new system // <-- This TODO is now resolved by the changes above
+
+    // --- End Friend Management Handlers ---
+    
+    // Handle channel operations
+    socket.on('create-channel', async (data, callback) => {
+        // Check if user is authenticated
+        if (!users[socket.id] || !users[socket.id].authenticated) {
+            if (callback) callback({ success: false, error: 'You must be logged in to create channels' });
+            return;
+        }
+        
+        const { name, description, isPrivate } = data;
+        const userId = users[socket.id].id; // Corrected key from userId to id
+        
+        console.log(`User ${users[socket.id].username} is creating channel: ${name}`);
+        
+        // Create the channel
+        const result = await createChannel(name, userId, description, isPrivate);
+        
+        if (result.success) {
+            // Broadcast channel creation to all clients
+            io.emit('channel-created', result.channel);
+            
+            if (callback) callback({ success: true, channel: result.channel });
+        } else {
+            if (callback) callback(result); // Return the error
+        }
+    });
+    
+    // Get all available channels
+    socket.on('get-channels', async (callback) => {
+        const channels = await getAllChannels();
+        
+        if (callback) callback({ channels });
+        
+        // Also emit to this socket specifically
+        socket.emit('channels-list', { channels });
+    });
+
+    // Add migration on server start
+    async function addChannelColumnIfNeeded() {
+        try {
+            console.log('Ensuring messages are properly associated with channels...');
+            
+            // Get all messages that don't have a channel set
+            const { data: messagesWithoutChannel, error: queryError } = await getSupabaseClient(true)
+                .from('messages')
+                .select('id')
+                .is('channel', null);
+            
+            if (queryError) {
+                console.error('Error checking messages without channel:', queryError);
+                return;
+            }
+            
+            // If we found messages without a channel, update them
+            if (messagesWithoutChannel && messagesWithoutChannel.length > 0) {
+                console.log(`Found ${messagesWithoutChannel.length} messages without a channel, updating to 'general'`);
+                
+                // Update in batches to avoid timeouts
+                const batchSize = 100;
+                for (let i = 0; i < messagesWithoutChannel.length; i += batchSize) {
+                    const batch = messagesWithoutChannel.slice(i, i + batchSize);
+                    const ids = batch.map(msg => msg.id);
+                    
+                    const { error: updateError } = await getSupabaseClient(true)
+                        .from('messages')
+                        .update({ channel: 'general' })
+                        .in('id', ids);
+                    
+                    if (updateError) {
+                        console.error(`Error updating batch ${i} to ${i + batch.length}:`, updateError);
+                    }
+                }
+                
+                console.log('Finished updating messages without channels');
+            } else {
+                console.log('All messages have a channel assigned');
+            }
+        } catch (error) {
+            console.error('Database migration error:', error);
+        }
+    }
+
+    // Add back the throttledSave function that was accidentally removed
+    let saveTimeout = null;
+    function throttledSave() {
+        if (saveTimeout) {
+            clearTimeout(saveTimeout);
+        }
+        saveTimeout = setTimeout(async () => {
+            await saveAllMessages();
+        }, 5000); // Save every 5 seconds
+    }
+
+    // Save messages to storage
+    async function saveAllMessages() {
+        try {
+            return await storage.saveMessages({ channels: channelMessages });
+        } catch (error) {
+            console.error('Error saving messages:', error);
+            return false;
+        }
+    }
+
 });
 
 // Listen on the port provided by Glitch or default to 3000
@@ -2142,70 +2327,4 @@ async function getAllChannels() {
     console.error('Error in getAllChannels:', error);
     return [];
   }
-}
-
-// Add migration on server start
-async function addChannelColumnIfNeeded() {
-  try {
-    console.log('Ensuring messages are properly associated with channels...');
-    
-    // Get all messages that don't have a channel set
-    const { data: messagesWithoutChannel, error: queryError } = await getSupabaseClient(true)
-      .from('messages')
-      .select('id')
-      .is('channel', null);
-    
-    if (queryError) {
-      console.error('Error checking messages without channel:', queryError);
-      return;
-    }
-    
-    // If we found messages without a channel, update them
-    if (messagesWithoutChannel && messagesWithoutChannel.length > 0) {
-      console.log(`Found ${messagesWithoutChannel.length} messages without a channel, updating to 'general'`);
-      
-      // Update in batches to avoid timeouts
-      const batchSize = 100;
-      for (let i = 0; i < messagesWithoutChannel.length; i += batchSize) {
-        const batch = messagesWithoutChannel.slice(i, i + batchSize);
-        const ids = batch.map(msg => msg.id);
-        
-        const { error: updateError } = await getSupabaseClient(true)
-          .from('messages')
-          .update({ channel: 'general' })
-          .in('id', ids);
-        
-        if (updateError) {
-          console.error(`Error updating batch ${i} to ${i + batch.length}:`, updateError);
-        }
-      }
-      
-      console.log('Finished updating messages without channels');
-    } else {
-      console.log('All messages have a channel assigned');
-    }
-  } catch (error) {
-    console.error('Database migration error:', error);
-  }
-}
-
-// Add back the throttledSave function that was accidentally removed
-let saveTimeout = null;
-function throttledSave() {
-    if (saveTimeout) {
-        clearTimeout(saveTimeout);
-    }
-    saveTimeout = setTimeout(async () => {
-        await saveAllMessages();
-    }, 5000); // Save every 5 seconds
-}
-
-// Save messages to storage
-async function saveAllMessages() {
-    try {
-        return await storage.saveMessages({ channels: channelMessages });
-    } catch (error) {
-        console.error('Error saving messages:', error);
-        return false;
-    }
 }

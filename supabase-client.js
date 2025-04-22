@@ -731,6 +731,217 @@ async function markMessageAsDeleted(messageId) {
   }
 }
 
+// *** FRIENDSHIP FUNCTIONS ***
+
+/**
+ * Send a friend request from sender to recipient
+ * @param {string} senderId - UUID of the user sending the request
+ * @param {string} recipientId - UUID of the user receiving the request
+ * @returns {Promise<object|null>} The created friendship record or null on error/duplicate
+ */
+async function sendFriendRequest(senderId, recipientId) {
+    if (!serviceSupabase || !senderId || !recipientId || senderId === recipientId) {
+        console.error('Invalid input for sendFriendRequest');
+        return null;
+    }
+
+    // Ensure user_id_1 is the smaller ID
+    const [user_id_1, user_id_2] = [senderId, recipientId].sort();
+
+    try {
+        console.log(`Attempting to send friend request from ${senderId} to ${recipientId}`);
+        const { data, error } = await serviceSupabase
+            .from('friends')
+            .insert({
+                user_id_1: user_id_1,
+                user_id_2: user_id_2,
+                status: 'pending'
+                // created_at and updated_at should have defaults or triggers
+            })
+            .select()
+            .single();
+
+        if (error) {
+            // Handle potential duplicate entry error gracefully (e.g., P23505 unique_violation)
+            if (error.code === '23505') { 
+                 console.log(`Friendship between ${user_id_1} and ${user_id_2} already exists.`);
+                 // Optionally, fetch the existing record
+                 const existing = await getFriendshipStatus(user_id_1, user_id_2);
+                 return existing; 
+            } else {
+                console.error('Error sending friend request:', error);
+                return null;
+            }
+        }
+        
+        console.log('Friend request sent successfully:', data);
+        return data;
+    } catch (err) {
+        console.error('Exception in sendFriendRequest:', err);
+        return null;
+    }
+}
+
+/**
+ * Accept a friend request between two users
+ * @param {string} userId1 - UUID of the first user
+ * @param {string} userId2 - UUID of the second user
+ * @returns {Promise<object|null>} The updated friendship record or null on error
+ */
+async function acceptFriendRequest(userId1, userId2) {
+     if (!serviceSupabase || !userId1 || !userId2) {
+        console.error('Invalid input for acceptFriendRequest');
+        return null;
+    }
+    // Ensure order for lookup
+    const [u1, u2] = [userId1, userId2].sort();
+
+    try {
+        console.log(`Attempting to accept friend request between ${u1} and ${u2}`);
+        const { data, error } = await serviceSupabase
+            .from('friends')
+            .update({ status: 'accepted' })
+            .eq('user_id_1', u1)
+            .eq('user_id_2', u2)
+            .eq('status', 'pending') // Only accept pending requests
+            .select()
+            .single();
+        
+        if (error) {
+            console.error('Error accepting friend request:', error);
+            return null;
+        }
+        if (!data) {
+             console.log('No pending friend request found to accept.');
+             return null;
+        }
+        console.log('Friend request accepted:', data);
+        return data;
+    } catch (err) {
+        console.error('Exception in acceptFriendRequest:', err);
+        return null;
+    }
+}
+
+/**
+ * Reject a pending friend request or remove an accepted friendship
+ * @param {string} userId1 - UUID of the first user
+ * @param {string} userId2 - UUID of the second user
+ * @returns {Promise<boolean>} True if successful, false otherwise
+ */
+async function rejectOrRemoveFriend(userId1, userId2) {
+    if (!serviceSupabase || !userId1 || !userId2) {
+        console.error('Invalid input for rejectOrRemoveFriend');
+        return false;
+    }
+    // Ensure order for lookup
+    const [u1, u2] = [userId1, userId2].sort();
+
+    try {
+        console.log(`Attempting to delete friendship between ${u1} and ${u2}`);
+        const { error } = await serviceSupabase
+            .from('friends')
+            .delete()
+            .eq('user_id_1', u1)
+            .eq('user_id_2', u2);
+            // No status check needed - delete pending or accepted
+
+        if (error) {
+            console.error('Error rejecting/removing friend:', error);
+            return false;
+        }
+        
+        console.log(`Friendship between ${u1} and ${u2} removed/rejected.`);
+        return true;
+    } catch (err) {
+        console.error('Exception in rejectOrRemoveFriend:', err);
+        return false;
+    }
+}
+
+/**
+ * Get all friendships (pending, accepted) for a given user
+ * Includes the related user details (username, id)
+ * @param {string} userId - UUID of the user whose friends to fetch
+ * @returns {Promise<Array<object>|null>} Array of friendship objects or null on error
+ */
+async function getFriendships(userId) {
+     if (!serviceSupabase || !userId) {
+        console.error('Invalid input for getFriendships');
+        return null;
+    }
+    try {
+        console.log(`Fetching friendships for user ${userId}`);
+         // We need to join with the users table twice to get both users' info
+         // Query based on whether the user is user_id_1 or user_id_2
+        const { data, error } = await serviceSupabase
+            .from('friends')
+            .select(`
+                id, 
+                status, 
+                created_at, 
+                updated_at,
+                user1:user_id_1 ( id, username, avatar_url, status ),
+                user2:user_id_2 ( id, username, avatar_url, status )
+            `)
+            .or(`user_id_1.eq.${userId},user_id_2.eq.${userId}`) 
+            // Optional: filter specific statuses if needed, e.g., .in('status', ['accepted', 'pending'])
+            .order('updated_at', { ascending: false });
+            
+        if (error) {
+            console.error('Error fetching friendships:', error);
+            return null;
+        }
+
+        // Process data to return a simpler list of 'friend' users with friendship status
+        const friendships = data.map(f => {
+            const friendUser = f.user1.id === userId ? f.user2 : f.user1;
+            return {
+                friendship_id: f.id,
+                friend_id: friendUser.id,
+                friend_username: friendUser.username,
+                friend_avatar_url: friendUser.avatar_url,
+                friend_status: friendUser.status, // Friend's online status
+                friendship_status: f.status, // 'pending', 'accepted'
+                since: f.updated_at
+            };
+        });
+
+        console.log(`Found ${friendships.length} friendships for user ${userId}`);
+        return friendships;
+    } catch (err) {
+        console.error('Exception in getFriendships:', err);
+        return null;
+    }
+}
+
+/**
+ * Helper to get the status of a specific friendship
+ * @param {string} userId1 
+ * @param {string} userId2 
+ * @returns {Promise<object|null>} Friendship record or null
+ */
+async function getFriendshipStatus(userId1, userId2) {
+     if (!serviceSupabase || !userId1 || !userId2) return null;
+    const [u1, u2] = [userId1, userId2].sort();
+    try {
+        const { data, error } = await serviceSupabase
+            .from('friends')
+            .select('*')
+            .eq('user_id_1', u1)
+            .eq('user_id_2', u2)
+            .maybeSingle();
+        if (error) {
+            console.error('Error checking friendship status:', error);
+            return null;
+        }
+        return data;
+    } catch (err) {
+         console.error('Exception in getFriendshipStatus:', err);
+        return null;
+    }
+}
+
 module.exports = {
   getSupabaseClient,
   registerUser,
@@ -743,5 +954,9 @@ module.exports = {
   saveMessagesToSupabase,
   getUserIdByUsername,
   isValidUUID,
-  markMessageAsDeleted
+  markMessageAsDeleted,
+  sendFriendRequest,
+  acceptFriendRequest,
+  rejectOrRemoveFriend,
+  getFriendships
 };
