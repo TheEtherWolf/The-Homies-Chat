@@ -723,6 +723,7 @@ io.on("connection", (socket) => {
         const content = data.content || '';
         const channel = data.channel || 'general';
         const timestamp = data.timestamp || Date.now();
+        const tempId = data.tempId; // Capture tempId from client
         let senderId = data.senderId || null;
         let username = data.sender || null;
         
@@ -801,160 +802,168 @@ io.on("connection", (socket) => {
             return;
         }
         
-        // Create message object with the validated user info
+        // Create preliminary message object (will be updated after save)
         const messageObj = {
-            id: uuidv4(),
+            // id: uuidv4(), // ID will come from database
             sender: username,
             senderId: senderId,
             content: content,
             timestamp: timestamp,
-            channel: channel
+            channel: channel,
+            tempId: tempId // Include tempId if provided
         };
-        
-        console.log(`Processed message from ${username} (${senderId}) in channel: ${channel}`);
-        
-        // Add to the appropriate channel
-        if (!channelMessages[channel]) {
-            channelMessages[channel] = [];
-        }
-        channelMessages[channel].push(messageObj);
-        
-        // Broadcast to all connected clients
-        io.emit("chat-message", messageObj);
-        
-        // Store in database
+
+        // Try saving to database FIRST
+        let savedMessageData;
         try {
-            console.log(`Saving message to Supabase from user ${username} (${senderId}) in channel ${channel}`);
+            console.log(`Attempting to save message to Supabase from user ${username} (${senderId}) in channel ${channel}`);
             
-            // Save message to Supabase
-            await saveMessageToSupabase({
+            // Save message to Supabase and get the returned data (including the permanent ID)
+            savedMessageData = await saveMessageToSupabase({
                 sender_id: senderId,
                 content: content,
                 channel: channel
+                // Add any other relevant fields like type, file_url etc. if needed
             });
+
+            if (!savedMessageData || !savedMessageData.id) {
+                throw new Error('Failed to save message or retrieve ID from database.');
+            }
+
+            // Update message object with permanent ID from database
+            messageObj.id = savedMessageData.id;
+            messageObj.created_at = savedMessageData.created_at; // Use DB timestamp if available
+
+            console.log(`Message saved successfully with ID: ${messageObj.id}`);
+
+            // Add to the appropriate channel cache AFTER successful save
+            if (!channelMessages[channel]) {
+                channelMessages[channel] = [];
+            }
+            // Store the object with the permanent ID
+            channelMessages[channel].push(messageObj);
+
+            // Broadcast the confirmed message (with permanent ID and tempId) to all clients
+            io.emit("chat-message", messageObj);
+
         } catch (dbError) {
             console.error("Error saving message to database:", dbError);
-            // We still emit the message even if DB save fails
+            // Optionally notify the sender about the failure
+            socket.emit('message-error', { 
+                message: 'Failed to save message to database.', 
+                tempId: tempId // Include tempId so client can potentially retry or indicate failure
+            });
+            // Do NOT broadcast the message if save failed
+            return; // Stop further processing for this message
         }
     });
     
     // Direct message handler
     socket.on("direct-message", async (data) => {
-        if (!users[socket.id]) {
+        if (!users[socket.id] || !users[socket.id].authenticated) { // Added authentication check
             console.error('User not authenticated but trying to send DM');
+            // Optionally send an error back to the client
+            if (data.callback) { 
+                data.callback({ success: false, message: 'Authentication required.' });
+            }
             return;
         }
         
-        const username = users[socket.id].username;
-        let userId = users[socket.id].id; // Corrected key from userId to id
+        const senderUsername = users[socket.id].username;
+        const senderId = users[socket.id].id;
+        const recipientId = data.recipientId;
+        const messageContent = data.message;
+        const tempId = data.tempId; // Capture tempId from client
+
+        if (!recipientId || !messageContent || typeof messageContent !== 'string' || messageContent.trim() === '') {
+            console.error('Invalid DM data received:', data);
+            if (data.callback) { 
+                data.callback({ success: false, message: 'Invalid DM data.' });
+            }
+            return;
+        }
         
-        console.log(`DM from ${username} to ${data.recipientId}: ${data.message.substring(0, 20)}...`);
-        
-        // CRITICAL: First check and ensure this userId exists in the database
+        console.log(`DM from ${senderUsername} (${senderId}) to ${recipientId}: ${messageContent.substring(0, 20)}...`);
+
+        // Ensure recipient exists (optional but good practice)
         try {
-            const { data: userExists, error } = await getSupabaseClient(true)
+            const { data: recipientExists, error } = await getSupabaseClient(true)
                 .from('users')
                 .select('id')
-                .eq('id', userId)
+                .eq('id', recipientId)
                 .maybeSingle();
-                
-            if (error || !userExists) {
-                console.log(`User ID ${userId} doesn't exist in database. Creating user record.`);
-                // Create the user record BEFORE trying to save any messages
-                const { error: insertError } = await getSupabaseClient(true)
-                    .from('users')
-                    .insert({
-                        id: userId,
-                        username: username,
-                        email: `${username}@homies.app`,
-                        password: 'auto-created',
-                        created_at: new Date().toISOString(),
-                        last_seen: new Date().toISOString(),
-                        verified: true,
-                        status: 'online'
-                    });
-                
-                if (insertError) {
-                    console.error('Error creating user record for DM sender:', insertError);
-                    userId = uuidv4();
-                    users[socket.id].id = userId; // Corrected key from userId to id
-                    
-                    // Try one more time with new ID
-                    await getSupabaseClient(true)
-                        .from('users')
-                        .insert({
-                            id: userId,
-                            username: username,
-                            email: `${username}@homies.app`,
-                            password: 'auto-created',
-                            created_at: new Date().toISOString(),
-                            last_seen: new Date().toISOString(),
-                            verified: true,
-                            status: 'online'
-                        });
+            if (error || !recipientExists) {
+                console.warn(`Recipient user ${recipientId} not found.`);
+                if (data.callback) { 
+                    data.callback({ success: false, message: 'Recipient user not found.' });
                 }
+                // Decide if you want to proceed or stop here
+                // return; 
             }
-        } catch (userCheckError) {
-            console.error('Error checking/creating user before DM save:', userCheckError);
+        } catch(err) {
+             console.error('Error checking recipient existence:', err);
+             // Handle error appropriately
         }
-        
-        // Construct the message object
+
+        // Construct preliminary message object
         const messageObj = {
-            username: username,
-            message: data.message,
-            timestamp: data.timestamp || Date.now(),
-            senderId: userId,
-            recipientId: data.recipientId,
-            isDM: true // Flag this as a direct message
+            // id: uuidv4(), // ID will come from database
+            senderId: senderId,
+            recipientId: recipientId,
+            content: messageContent,
+            timestamp: Date.now(),
+            type: 'dm',
+            tempId: tempId // Include tempId if provided
         };
-        
-        // Make sure the DM structure exists
-        if (!channelMessages.dm) {
-            channelMessages.dm = [];
-        }
-        
-        // Store in DM list with a unique conversation identifier
-        const dmId = [userId, data.recipientId].sort().join('_');
-        if (!channelMessages[dmId]) {
-            channelMessages[dmId] = [];
-        }
-        
-        // Add message to the conversation
-        channelMessages[dmId].push(messageObj);
-        
-        // Find the recipient socket by recipientId
-        const recipientSocketId = Object.keys(users).find(id => 
-            users[id] && users[id].id === data.recipientId
-        );
-        
-        if (recipientSocketId) {
-            // Send directly to recipient
-            io.to(recipientSocketId).emit('direct-message', messageObj);
-        }
-        
-        // Also send back to sender for confirmation
-        socket.emit('direct-message', messageObj);
-        
-        // Store the message in Supabase
+
+        // Try saving DM to database FIRST
+        let savedMessageData;
         try {
-            const saved = await saveMessageToSupabase({
-                ...messageObj,
-                type: 'direct',
-                channel: dmId // Use the conversation ID as the channel
-            }).catch(err => {
-                console.error('Error saving DM to Supabase:', err);
-                return false;
+            console.log(`Attempting to save DM to Supabase from ${senderId} to ${recipientId}`);
+            savedMessageData = await saveMessageToSupabase({
+                sender_id: senderId,
+                recipient_id: recipientId, // Make sure your DB schema/function handles this
+                content: messageContent,
+                type: 'dm' // Ensure type is saved
+                // channel: null or specific DM identifier if needed
+            });
+
+            if (!savedMessageData || !savedMessageData.id) {
+                throw new Error('Failed to save DM or retrieve ID from database.');
+            }
+
+            // Update message object with permanent ID
+            messageObj.id = savedMessageData.id;
+            messageObj.created_at = savedMessageData.created_at;
+            messageObj.sender = senderUsername; // Add sender username for convenience
+
+            console.log(`DM saved successfully with ID: ${messageObj.id}`);
+
+            // Find recipient socket(s)
+            const recipientSocketIds = Object.keys(users).filter(id => users[id] && users[id].id === recipientId);
+            
+            // Send to recipient(s)
+            recipientSocketIds.forEach(socketId => {
+                io.to(socketId).emit('direct-message', messageObj);
+                console.log(`Sent DM ${messageObj.id} to recipient socket ${socketId}`);
             });
             
-            if (saved) {
-                console.log(`DM saved to Supabase for conversation ${dmId}`);
-            }
-        } catch (error) {
-            console.error('Failed to save DM to Supabase:', error);
+            // Send confirmation back to sender (including the final message object with IDs)
+            // Use a different event like 'dm-sent-confirmation' or similar
+            socket.emit('dm-sent-confirmation', messageObj); 
+            console.log(`Sent DM confirmation ${messageObj.id} back to sender socket ${socket.id}`);
+
+            // Optionally cache DMs server-side if needed
+            // Cache under a combined key like `${senderId}-${recipientId}` or `${recipientId}-${senderId}` sorted
+
+        } catch (dbError) {
+            console.error('Error saving DM to database:', dbError);
+            // Notify the sender about the failure
+            socket.emit('message-error', { 
+                message: 'Failed to send direct message.', 
+                tempId: tempId // Include tempId for client-side handling
+            });
         }
-        
-        // Save all messages (throttled)
-        throttledSave();
     });
     
     // Handle message deletion
@@ -1216,7 +1225,7 @@ io.on("connection", (socket) => {
                 .from('users')
                 .select('id, username')
                 .eq('username', userData.username)
-                .maybeSingle();
+                .limit(1);
                 
             if (lookupError) {
                 console.error('Error looking up user by username:', lookupError);
@@ -1253,8 +1262,7 @@ io.on("connection", (socket) => {
                             created_at: new Date().toISOString(),
                             last_seen: new Date().toISOString(),
                             verified: true,
-                            status: 'online',
-                            avatar_url: null
+                            status: 'online'
                         });
                         
                     if (createError) {
@@ -1396,7 +1404,7 @@ io.on("connection", (socket) => {
             // Try to find user in Supabase by username
             const { data: users, error } = await getSupabaseClient(true)
                 .from('users')
-                .select('*')
+                .select('id, username')
                 .eq('username', data.username)
                 .limit(1);
                 
@@ -1979,12 +1987,12 @@ ON CONFLICT (name) DO NOTHING;
       
       // If channel doesn't exist, create it
       if (!existingChannel && !lookupError) {
-        const { error: insertError } = await getSupabaseClient(true)
+        const { error } = await getSupabaseClient(true)
           .from('channels')
           .insert(channel);
         
-        if (insertError) {
-          console.error(`Error creating default channel ${channel.name}:`, insertError);
+        if (error) {
+          console.error(`Error creating default channel ${channel.name}:`, error);
         } else {
           console.log(`Created default channel: ${channel.name}`);
         }

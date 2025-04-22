@@ -559,6 +559,12 @@ class ChatManager {
         this.socket.on('user-list', this.handleUserList.bind(this));
         this.socket.on('general-messages', this.handleGeneralMessages.bind(this));
         this.socket.on('channel-messages', this.handleChannelMessages.bind(this));
+        this.socket.on('dm-sent-confirmation', (message) => this.handleMessageConfirmation(message));
+        this.socket.on('message-error', (errorData) => {
+            console.error('[CHAT_ERROR] Received message error from server:', errorData);
+            // --- Placeholder for error handling logic ---
+            // We will implement the logic to update the UI (e.g., mark message as failed) later.
+        });
         
         console.log('[CHAT_DEBUG] All event listeners attached');
     }
@@ -873,7 +879,7 @@ class ChatManager {
     sendMessage() {
         // Ensure user is properly initialized before sending
         if (!this.currentUser || !this.currentUser.id) {
-            console.error('[CHAT_ERROR] Cannot send message: Current user data is missing or incomplete.', this.currentUser);
+            console.error('[CHAT_DEBUG] Cannot send message: Current user data is missing or incomplete.', this.currentUser);
             // Optionally show a message to the user
             this.addSystemMessage('Error: Cannot send message. User session not fully loaded. Please try again shortly or refresh.');
             return;
@@ -907,8 +913,40 @@ class ChatManager {
         // Display message in UI immediately for responsiveness
         this.displayMessageInUI(message, this.currentChannel);
         
-        // Send to server
-        this.socket.emit('send-message', message);
+        // Optionally add a 'pending' class to the message element
+        const tempMsgElement = document.querySelector(`[data-message-id="${message.id}"]`);
+        if(tempMsgElement) tempMsgElement.classList.add('message-pending');
+
+        // Emit based on channel type
+        if (isDM) {
+            // Extract recipient ID from channel name
+            const recipientId = this.currentChannel.replace('dm_', '').split('_').find(id => id !== this.currentUser.id);
+            if (!recipientId) {
+                console.error('[CHAT_DEBUG] Could not determine recipient ID for DM.');
+                 // Optionally remove the pending message from UI if we can't even send it
+                 if(tempMsgElement) tempMsgElement.remove();
+                return;
+            }
+            
+            const dmPayload = {
+                recipientId: recipientId,
+                message: messageText,
+                tempId: message.id // Send the temporary ID
+                // timestamp will be added server-side if needed
+            };
+            this.socket.emit('direct-message', dmPayload);
+        } else {
+            // Channel message
+            const channelPayload = {
+                channel: this.currentChannel,
+                content: messageText,
+                sender: this.currentUser.username, // Include sender info
+                senderId: this.currentUser.id,
+                tempId: message.id // Send the temporary ID
+                // timestamp will be added server-side
+            };
+            this.socket.emit('chat-message', channelPayload);
+        }
     }
     
     // Helper method to actually send the message
@@ -960,33 +998,27 @@ class ChatManager {
     }
     
     // Display a message in the UI
-    displayMessageInUI(message, channel = 'general') {
-        if (!message) return;
-        
-        // Check if container exists
-        const messagesContainer = document.getElementById('messages-container');
-        if (!messagesContainer) return;
-        
-        // Check for duplicate message (same ID)
-        if (message.id && document.querySelector(`.message[data-message-id="${message.id}"]`)) {
-            console.log(`[CHAT_DEBUG] Prevented duplicate message with ID: ${message.id}`);
+    displayMessageInUI(message, contextChannel = 'general') {
+        // Ensure we have a valid message object
+        // Updated check for minimum required fields (id, sender, content, timestamp/created_at)
+        if (!message || typeof message !== 'object' || !message.id || typeof message.sender === 'undefined' || typeof message.content === 'undefined' || !(message.timestamp || message.created_at)) {
+            console.warn('[CHAT_DEBUG] Attempted to display invalid/incomplete message:', message);
             return;
         }
         
-        // Create message element
+        // Create message container
         const messageDiv = document.createElement('div');
         
-        // Set message ID for future reference (e.g., deleting)
-        if (message.id) {
-            messageDiv.setAttribute('data-message-id', message.id);
-        }
+        // Use message.id (which could be temp or permanent) for the data attribute
+        messageDiv.setAttribute('data-message-id', message.id);
+
+        // Basic classes
+        let messageClasses = ['message'];
         
         // Is this an own message?
         const isOwnMessage = this.isOwnMessage(message);
         
         // Determine message classes
-        let messageClasses = ['message', 'new-message']; // Add new-message class for animation
-        
         if (isOwnMessage) {
             messageClasses.push('own-message');
         }
@@ -1072,13 +1104,13 @@ class ChatManager {
         messageDiv.innerHTML = messageHTML;
         
         // Add to container
-        messagesContainer.appendChild(messageDiv);
+        this.messagesContainer.appendChild(messageDiv);
         
         // Setup message action handlers
         this.setupMessageActionHandlers(messageDiv);
         
         // Scroll to bottom
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
         
         // Remove the 'new-message' class after animation completes to avoid replay
         setTimeout(() => {
@@ -1086,6 +1118,76 @@ class ChatManager {
         }, 500);
     }
     
+    // Handle confirmation that a message was saved (received permanent ID)
+    handleMessageConfirmation(confirmedMessage) {
+        console.log('[CHAT_DEBUG] Received message confirmation:', confirmedMessage);
+        if (!confirmedMessage || !confirmedMessage.tempId || !confirmedMessage.id || confirmedMessage.id === confirmedMessage.tempId) {
+            console.warn('[CHAT_DEBUG] Invalid or unnecessary confirmation data:', confirmedMessage);
+            return;
+        }
+
+        // Find the temporary message element in the DOM using the tempId
+        const tempMessageElement = document.querySelector(`[data-message-id="${confirmedMessage.tempId}"]`);
+        
+        if (tempMessageElement) {
+            console.log(`[CHAT_DEBUG] Updating message element ID from ${confirmedMessage.tempId} to ${confirmedMessage.id}`);
+            // Update the data-message-id attribute to the permanent ID
+            tempMessageElement.setAttribute('data-message-id', confirmedMessage.id);
+            
+            // Remove pending/failed states and indicators
+            tempMessageElement.classList.remove('message-pending', 'message-failed');
+            const errorIndicator = tempMessageElement.querySelector('.message-error-indicator');
+            if (errorIndicator) errorIndicator.remove();
+            
+            // Update timestamp if server provided a definitive one (optional)
+            if(confirmedMessage.created_at) {
+                const timestampElement = tempMessageElement.querySelector('.message-timestamp');
+                if(timestampElement) {
+                     timestampElement.textContent = this.formatTimestamp(confirmedMessage.created_at);
+                     timestampElement.setAttribute('data-timestamp', confirmedMessage.created_at); // Store full timestamp if needed
+                }
+            }
+
+        } else {
+            console.warn(`[CHAT_DEBUG] Could not find message element with temporary ID: ${confirmedMessage.tempId} to update.`);
+            // The message might already have been removed or never displayed if there was an immediate error
+        }
+
+        // Update local cache (replace temp message with confirmed one)
+        const updateCache = (cache) => {
+            if (!cache) return; // Ensure cache exists
+            const index = cache.findIndex(msg => msg.id === confirmedMessage.tempId);
+            if (index !== -1) {
+                // Replace the temporary message object with the confirmed one from the server
+                // This ensures we have the permanent ID and correct server timestamp
+                cache[index] = confirmedMessage;
+                console.log(`[CHAT_DEBUG] Updated message ID ${confirmedMessage.tempId} -> ${confirmedMessage.id} in cache.`);
+            } else {
+                 console.warn(`[CHAT_DEBUG] Could not find message with temp ID ${confirmedMessage.tempId} in cache to update.`);
+                 // Maybe add the confirmed message if it wasn't found? Depends on desired behavior.
+                 // cache.push(confirmedMessage); 
+            }
+        };
+
+        // Determine which cache to update
+        if (confirmedMessage.type === 'dm') {
+            // DMs are cached under the *other* user's ID
+            const otherUserId = confirmedMessage.senderId === this.currentUser.id ? confirmedMessage.recipientId : confirmedMessage.senderId;
+            if (this.dmConversations[otherUserId]) {
+                 updateCache(this.dmConversations[otherUserId]);
+            }
+        } else if (confirmedMessage.channel) {
+            // Channel messages
+             if (this.channelMessages[confirmedMessage.channel]) {
+                updateCache(this.channelMessages[confirmedMessage.channel]);
+             }
+        } 
+        // Also check general chat if applicable (though unlikely to have temp IDs here unless implemented)
+        // if(this.generalChatMessages) {
+        //      updateCache(this.generalChatMessages);
+        // }
+    }
+
     // Setup message action handlers
     setupMessageActionHandlers(messageElement) {
         if (!messageElement) return;
@@ -1642,10 +1744,15 @@ class ChatManager {
         // Insert emoji at cursor position
         messageInput.value = text.substring(0, startPos) + emoji + text.substring(endPos);
         
-        // Move cursor after the inserted emoji
+        // Set cursor position after the inserted emoji
         messageInput.selectionStart = startPos + emoji.length;
         messageInput.selectionEnd = startPos + emoji.length;
         messageInput.focus();
+        
+        // Hide emoji picker after selection
+        if (this.emojiPicker) {
+            this.emojiPicker.classList.add('d-none');
+        }
     }
     
     // Add emoji to recent emojis list
