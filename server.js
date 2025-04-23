@@ -668,6 +668,11 @@ io.on("connection", (socket) => {
                         });
                         
                         console.log(`Found ${messages.length} messages for channel ${channel}`);
+                        
+                        // Add debug info about the messages
+                        if (messages.length > 0) {
+                            console.log('Sample message data:', JSON.stringify(messages[0], null, 2));
+                        }
                     }
                 } catch (err) {
                     console.error('Exception in channel message loading:', err);
@@ -857,7 +862,18 @@ io.on("connection", (socket) => {
 
             // Broadcast the confirmed message (with permanent ID and tempId) to all clients
             io.emit("chat-message", messageObj);
-
+            
+            // Send a specific confirmation to the sender with tempId->id mapping
+            // This helps the client update its UI and cache properly
+            socket.emit("message-sent", {
+                tempId: tempId, 
+                id: messageObj.id,
+                created_at: messageObj.created_at || savedMessageData.created_at,
+                channel: channel
+            });
+            
+            console.log(`Sent message confirmation for ID ${messageObj.id} (temp: ${tempId}) back to sender`);
+            
         } catch (dbError) {
             console.error("Error saving message to database:", dbError);
             // Optionally notify the sender about the failure

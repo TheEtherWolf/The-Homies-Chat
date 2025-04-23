@@ -294,9 +294,9 @@ async function signInUser(username, password) {
       };
     }
     
-    // If we're here, the user doesn't exist yet - let's auto-create one for simplicity during development
-    console.log(`User ${username} not found, auto-creating`);
-    return registerUser(username, password);
+    // If we're here, the user doesn't exist yet - let's NOT auto-create accounts for security
+    console.log(`User ${username} not found, rejecting login attempt`);
+    return null; // Return null instead of auto-creating account
   } catch (error) {
     console.error('Exception signing in user:', error);
     return null;

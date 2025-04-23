@@ -289,14 +289,47 @@ class ChatManager {
         friendsHeader.classList.add('sidebar-header');
         this.dmListContainer.appendChild(friendsHeader);
 
-        // 3. Log the data (for now)
+        // 3. Check if we have friendships data
+        const friendIds = Object.keys(this.friendships);
+        
+        if (friendIds.length === 0) {
+            // No friends yet, show placeholder
+            const placeholderMsg = document.createElement('p');
+            placeholderMsg.textContent = 'No friends yet';
+            placeholderMsg.classList.add('sidebar-placeholder');
+            this.dmListContainer.appendChild(placeholderMsg);
+            return;
+        }
+
+        // 4. Log the data (for now)
         console.log('[CHAT_DEBUG] Friendships data:', JSON.stringify(this.friendships, null, 2));
 
-        // 4. Add placeholder message (will be replaced later)
-        const placeholderMsg = document.createElement('p');
-        placeholderMsg.textContent = 'Loading friends...';
-        placeholderMsg.classList.add('sidebar-placeholder');
-        this.dmListContainer.appendChild(placeholderMsg);
+        // Loop through friendships and add accepted friends to the list
+        for (const friendId in this.friendships) {
+            const friendship = this.friendships[friendId];
+            
+            // Only show accepted friendships
+            if (friendship.friendship_status === 'accepted') {
+                const friendUsername = friendship.friend_username || 'Unknown User';
+                
+                // Create list item
+                const dmItem = document.createElement('div');
+                dmItem.className = 'sidebar-item dm-item';
+                dmItem.setAttribute('data-user-id', friendId);
+                
+                // Add content
+                dmItem.innerHTML = `<span>${this.sanitizeHTML(friendUsername)}</span>`;
+                
+                // Add click event handler
+                dmItem.addEventListener('click', () => {
+                    console.log(`[CHAT_DEBUG] DM item clicked: ${friendUsername}`);
+                    this.openDM(friendUsername);
+                });
+                
+                // Add to container
+                this.dmListContainer.appendChild(dmItem);
+            }
+        }
 
         console.log('[CHAT_DEBUG] DM/Friends list cleared and header added.');
         // Iteration and item creation will be added in the next step.
@@ -386,7 +419,7 @@ class ChatManager {
         }
         
         // Check if this user is in your friends list
-        const isFriend = this.friendsList.some(friend => friend.username === username);
+        const isFriend = this.friendships[username];
         if (!isFriend) {
             console.log('[CHAT_DEBUG] Cannot DM non-friend');
             this.showAddFriendModal(username);
@@ -778,7 +811,8 @@ class ChatManager {
         this.socket.on('user-list', this.handleUserList.bind(this));
         this.socket.on('general-messages', this.handleGeneralMessages.bind(this));
         this.socket.on('channel-messages', this.handleChannelMessages.bind(this));
-        this.socket.on('dm-sent-confirmation', (message) => this.handleMessageConfirmation(message));
+        this.socket.on('message-sent', this.handleMessageConfirmation.bind(this)); // Add for chat messages
+        this.socket.on('dm-sent-confirmation', this.handleMessageConfirmation.bind(this)); // Add for direct messages
         this.socket.on('message-error', (errorData) => {
             console.error('[CHAT_ERROR] Received message error from server:', errorData);
             // --- Placeholder for error handling logic ---
@@ -965,80 +999,47 @@ class ChatManager {
     
     // Handle message history
     handleMessageHistory(data) {
-        console.log('[CHAT_DEBUG] Received message history:', data);
+        console.log(`[CHAT_DEBUG] Received message history for ${data.channel}:`, data);
         
         if (!data || !data.messages) {
-            console.error('[CHAT_DEBUG] Invalid message history data received:', data);
+            console.warn('[CHAT_WARN] Received invalid message history data:', data);
             return;
         }
         
-        // Get the channel from the data object
-        const channel = data.channel || 'general';
+        // Clear the messages container if it's for the current channel
+        if (data.channel === this.currentChannel) {
+            this.clearMessagesContainer();
+            
+            // Add a channel header for context
+            this.displaySystemMessage(`Beginning of #${data.channel}`);
+        }
         
-        console.log(`[CHAT_DEBUG] Processing ${data.messages.length} messages for channel ${channel}`);
+        // Create a cache for this channel if it doesn't exist yet
+        if (!this.channelMessages[data.channel]) {
+            this.channelMessages[data.channel] = [];
+        } else {
+            // Clear existing cached messages for this channel to avoid duplicates
+            this.channelMessages[data.channel] = [];
+        }
         
-        // Store messages in appropriate collection
-        if (channel.startsWith('dm_')) {
-            // DM history - using channelMessages consistently
-            if (!this.channelMessages[channel]) { // Use channelMessages
-                this.channelMessages[channel] = []; // Use channelMessages
-            }
-
-            // Add new messages, avoiding duplicates
-            data.messages.forEach(msg => {
-                const isDuplicate = this.channelMessages[channel].some(existingMsg => // Use channelMessages
-                    (existingMsg.id && existingMsg.id === msg.id) ||
-                    (existingMsg.timestamp === msg.timestamp && 
-                     existingMsg.sender === msg.sender && 
-                     existingMsg.content === msg.content));
+        // Process and store messages
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+            console.log(`[CHAT_DEBUG] Processing ${data.messages.length} messages for ${data.channel}`);
+            
+            // Add messages to cache
+            this.channelMessages[data.channel] = data.messages;
+            
+            // Only display if it's for the current channel
+            if (data.channel === this.currentChannel) {
+                data.messages.forEach(message => {
+                    this.displayMessageInUI(message, data.channel);
+                });
                 
-                if (!isDuplicate) {
-                    this.channelMessages[channel].push(msg); // Use channelMessages
-                }
-            });
-            
-            // Sort by timestamp
-            this.channelMessages[channel].sort((a, b) => // Use channelMessages
-                new Date(a.timestamp) - new Date(b.timestamp)
-            );
-            
-            // Display if this is the active conversation
-            if (this.currentChannel === channel) {
-                this.clearMessagesContainer();
-                this.channelMessages[channel].forEach(msg => // Use channelMessages
-                    this.displayMessageInUI(msg, channel));
+                // Scroll to bottom after all messages are displayed
+                this.scrollToBottom();
             }
         } else {
-            // Regular channel history
-            if (!this.channelMessages[channel]) {
-                this.channelMessages[channel] = [];
-            }
-            
-            // Add new messages, avoiding duplicates
-            data.messages.forEach(msg => {
-                const isDuplicate = this.channelMessages[channel].some(existingMsg => 
-                    (existingMsg.id && existingMsg.id === msg.id) ||
-                    (existingMsg.timestamp === msg.timestamp && 
-                     existingMsg.sender === msg.sender && 
-                     existingMsg.content === msg.content));
-                
-                if (!isDuplicate) {
-                    this.channelMessages[channel].push(msg);
-                }
-            });
-            
-            // Sort by timestamp
-            this.channelMessages[channel].sort((a, b) => 
-                new Date(a.timestamp) - new Date(b.timestamp)
-            );
-            
-            // Display if this is the active channel
-            if (this.currentChannel === channel) {
-                console.log(`[CHAT_DEBUG] Displaying ${this.channelMessages[channel].length} messages for current channel: ${channel}`);
-                this.clearMessagesContainer();
-                this.channelMessages[channel].forEach(msg => 
-                    this.displayMessageInUI(msg, channel));
-            }
+            console.log(`[CHAT_DEBUG] No messages received for ${data.channel}`);
         }
     }
     
@@ -1367,11 +1368,26 @@ class ChatManager {
     // Handle confirmation that a message was saved (received permanent ID)
     handleMessageConfirmation(confirmedMessage) {
         console.log('[CHAT_DEBUG] Received message confirmation:', confirmedMessage);
-        if (!confirmedMessage || !confirmedMessage.tempId || !confirmedMessage.id || confirmedMessage.id === confirmedMessage.tempId) {
-            console.warn('[CHAT_DEBUG] Invalid or unnecessary confirmation data:', confirmedMessage);
+        
+        // More robust checks for valid confirmation data
+        if (!confirmedMessage) {
+            console.warn('[CHAT_DEBUG] Received empty message confirmation data');
             return;
         }
-
+        
+        // Handle messages without tempId (some older message may not have it)
+        if (!confirmedMessage.tempId) {
+            console.log('[CHAT_DEBUG] Message confirmation without tempId, treating as new message');
+            this.handleIncomingMessage(confirmedMessage);
+            return;
+        }
+        
+        // Skip if the IDs are the same (already confirmed)
+        if (confirmedMessage.id === confirmedMessage.tempId) {
+            console.log('[CHAT_DEBUG] Message already has permanent ID, skipping confirmation');
+            return;
+        }
+        
         // Find the temporary message element in the DOM using the tempId
         const tempMessageElement = document.querySelector(`[data-message-id="${confirmedMessage.tempId}"]`);
         
@@ -1399,39 +1415,53 @@ class ChatManager {
             // The message might already have been removed or never displayed if there was an immediate error
         }
 
-        // Update local cache (replace temp message with confirmed one)
-        const updateCache = (cache) => {
-            if (!cache) return; // Ensure cache exists
-            const index = cache.findIndex(msg => msg.id === confirmedMessage.tempId);
-            if (index !== -1) {
-                // Replace the temporary message object with the confirmed one from the server
-                // This ensures we have the permanent ID and correct server timestamp
-                cache[index] = confirmedMessage;
-                console.log(`[CHAT_DEBUG] Updated message ID ${confirmedMessage.tempId} -> ${confirmedMessage.id} in cache.`);
-            } else {
-                 console.warn(`[CHAT_DEBUG] Could not find message with temp ID ${confirmedMessage.tempId} in cache to update.`);
-                 // Maybe add the confirmed message if it wasn't found? Depends on desired behavior.
-                 // cache.push(confirmedMessage); 
+        // Update local cache
+        this._updateMessageCache(confirmedMessage);
+    }
+    
+    // Helper function to update messages in the cache
+    _updateMessageCache(confirmedMessage) {
+        if (!confirmedMessage || !confirmedMessage.tempId) return;
+        
+        let cache = null;
+        
+        // Determine which cache to update based on message type and channel
+        if (confirmedMessage.type === 'dm' || (confirmedMessage.channel && confirmedMessage.channel.startsWith('dm_'))) {
+            // For DMs, we need to find the right cache
+            if (confirmedMessage.recipientId) {
+                const otherUserId = confirmedMessage.senderId === this.currentUser.id ? 
+                    confirmedMessage.recipientId : confirmedMessage.senderId;
+                
+                if (this.dmConversations[otherUserId]) {
+                    cache = this.dmConversations[otherUserId];
+                }
             }
-        };
-
-        // Determine which cache to update
-        if (confirmedMessage.type === 'dm') {
-            // DMs are cached under the *other* user's ID
-            const otherUserId = confirmedMessage.senderId === this.currentUser.id ? confirmedMessage.recipientId : confirmedMessage.senderId;
-            if (this.dmConversations[otherUserId]) {
-                 updateCache(this.dmConversations[otherUserId]);
+            
+            // Fallback to channel cache if we have a channel name
+            if (!cache && confirmedMessage.channel && this.channelMessages[confirmedMessage.channel]) {
+                cache = this.channelMessages[confirmedMessage.channel];
             }
-        } else if (confirmedMessage.channel) {
-            // Channel messages
-             if (this.channelMessages[confirmedMessage.channel]) {
-                updateCache(this.channelMessages[confirmedMessage.channel]);
-             }
-        } 
-        // Also check general chat if applicable (though unlikely to have temp IDs here unless implemented)
-        // if(this.generalChatMessages) {
-        //      updateCache(this.generalChatMessages);
-        // }
+        } else if (confirmedMessage.channel === 'general' || confirmedMessage.isGeneralMessage) {
+            cache = this.generalChatMessages;
+        } else if (confirmedMessage.channel && this.channelMessages[confirmedMessage.channel]) {
+            cache = this.channelMessages[confirmedMessage.channel];
+        }
+        
+        if (!cache || !Array.isArray(cache)) {
+            console.warn(`[CHAT_DEBUG] No appropriate cache found for message ${confirmedMessage.tempId}`);
+            return;
+        }
+        
+        // Find and update the message in the cache
+        const index = cache.findIndex(msg => msg.id === confirmedMessage.tempId);
+        if (index !== -1) {
+            // Replace the temporary message with the confirmed one
+            cache[index] = confirmedMessage;
+            console.log(`[CHAT_DEBUG] Updated message ID ${confirmedMessage.tempId} -> ${confirmedMessage.id} in cache.`);
+        } else {
+            console.log(`[CHAT_DEBUG] Message with temp ID ${confirmedMessage.tempId} not found in cache, adding it.`);
+            cache.push(confirmedMessage);
+        }
     }
 
     // Setup message action handlers
@@ -1892,7 +1922,7 @@ class ChatManager {
             
             emojiPicker.classList.toggle('d-none');
             
-            // Position the emoji picker properly
+            // Position the emoji picker relative to the emoji button
             if (!emojiPicker.classList.contains('d-none')) {
                 // Calculate position relative to the emoji button
                 const buttonRect = emojiButton.getBoundingClientRect();
@@ -2235,7 +2265,7 @@ class ChatManager {
         this.socket.emit('get-friends', (response) => {
             if (response.success) {
                 console.log('[CHAT_DEBUG] Friends list received:', response.friends);
-                this.friendsList = response.friends;
+                this.friendships = response.friends;
                 this.updateFriendsUI();
             } else {
                 console.error('[CHAT_DEBUG] Failed to get friends list:', response.message);
@@ -2252,17 +2282,19 @@ class ChatManager {
         dmList.innerHTML = '';
         
         // Add UI for each friend
-        this.friendsList.forEach(friend => {
+        for (const friendId in this.friendships) {
+            const friendship = this.friendships[friendId];
+            
             const dmItem = document.createElement('div');
             dmItem.className = 'dm-item';
             dmItem.innerHTML = `
                 <div class="dm-avatar">
-                    <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="${friend.username} Avatar">
-                    <div class="dm-status ${friend.status || 'offline'}"></div>
+                    <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="${friendship.friend_username} Avatar">
+                    <div class="dm-status ${friendship.friend_status || 'offline'}"></div>
                 </div>
-                <span>${friend.username}</span>
+                <span>${friendship.friend_username}</span>
                 <div class="dm-actions">
-                    <button class="dm-remove-btn" title="Remove Friend" data-friend-id="${friend.id}">
+                    <button class="dm-remove-btn" title="Remove Friend" data-friend-id="${friendId}">
                         <i class="bi bi-x-circle"></i>
                     </button>
                 </div>
@@ -2272,7 +2304,7 @@ class ChatManager {
             dmItem.addEventListener('click', () => {
                 // Don't open DM if clicking remove button
                 if (e.target.closest('.dm-remove-btn')) return;
-                this.openDM(friend.username);
+                this.openDM(friendship.friend_username);
             });
             
             // Add remove friend handler
@@ -2280,13 +2312,13 @@ class ChatManager {
             if (removeBtn) {
                 removeBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    this.removeFriend(friend.id, friend.username);
+                    this.removeFriend(friendId, friendship.friend_username);
                 });
             }
             
             // Add to the list
             dmList.appendChild(dmItem);
-        });
+        }
         
         // Add "Add Friend" button at the bottom
         const addFriendItem = document.createElement('div');
@@ -2428,15 +2460,15 @@ class ChatManager {
             }
             
             if (response.success) {
-                // Add friend to the list if not already there
-                const friendExists = this.friendsList.some(f => f.id === response.friend.id);
-                if (!friendExists) {
-                    this.friendsList.push(response.friend);
-                    this.updateFriendsUI();
+                // Handle successful friend request
+                if (response.friend && response.friend.id) {
+                    // The server should provide the new friendship details
+                    // We'll refresh the friend list to get the updated data
+                    this._updateFriendUI();
                 }
                 
                 // Show success message and close modal
-                alert(`${username} has been added to your friends list!`);
+                alert(`Friend request sent to ${username}!`);
                 
                 // Hide modal
                 const modal = document.getElementById('add-friend-modal');
@@ -2448,7 +2480,7 @@ class ChatManager {
                 }
                 
                 // Refresh friends list
-                this.getFriendsList();
+                this.socket.emit('get-friend-list');
             } else {
                 // Show error message
                 alert(`Failed to add friend: ${response.message}`);
@@ -2462,7 +2494,7 @@ class ChatManager {
             this.socket.emit('remove-friend', { friendId }, (response) => {
                 if (response.success) {
                     // Remove from friends list
-                    this.friendsList = this.friendsList.filter(friend => friend.id !== friendId);
+                    delete this.friendships[friendId];
                     this.updateFriendsUI();
                     
                     // If currently in DM with this user, go back to channel view
@@ -2532,30 +2564,33 @@ class ChatManager {
                 </div>
                 
                 <div class="friends-list-container mt-5">
-                    <h4 class="mb-3">Your Friends (${this.friendsList.length})</h4>
+                    <h4 class="mb-3">Your Friends (${Object.keys(this.friendships).length})</h4>
                     <div class="friends-grid" id="friends-grid">
-                        ${this.friendsList.length === 0 ? 
+                        ${Object.keys(this.friendships).length === 0 ? 
                             '<div class="no-friends-message">No friends yet. Add friends using their username and friend code.</div>' : 
-                            this.friendsList.map(friend => `
-                                <div class="friend-card" data-friend-id="${friend.id}">
-                                    <div class="friend-avatar">
-                                        <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="${friend.username} Avatar">
-                                        <div class="friend-status ${friend.status || 'offline'}"></div>
+                            Object.keys(this.friendships).map(friendId => {
+                                const friendship = this.friendships[friendId];
+                                return `
+                                    <div class="friend-card" data-friend-id="${friendId}">
+                                        <div class="friend-avatar">
+                                            <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="${friendship.friend_username} Avatar">
+                                            <div class="friend-status ${friendship.friend_status || 'offline'}"></div>
+                                        </div>
+                                        <div class="friend-info">
+                                            <div class="friend-username">${friendship.friend_username}</div>
+                                            <div class="friend-status-text">${friendship.friend_status || 'offline'}</div>
+                                        </div>
+                                        <div class="friend-actions">
+                                            <button class="btn btn-sm btn-primary friend-message-btn" data-username="${friendship.friend_username}">
+                                                <i class="bi bi-chat-fill"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-danger friend-remove-btn" data-friend-id="${friendId}" data-username="${friendship.friend_username}">
+                                                <i class="bi bi-x-circle"></i>
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div class="friend-info">
-                                        <div class="friend-username">${friend.username}</div>
-                                        <div class="friend-status-text">${friend.status || 'offline'}</div>
-                                    </div>
-                                    <div class="friend-actions">
-                                        <button class="btn btn-sm btn-primary friend-message-btn" data-username="${friend.username}">
-                                            <i class="bi bi-chat-fill"></i>
-                                        </button>
-                                        <button class="btn btn-sm btn-danger friend-remove-btn" data-friend-id="${friend.id}" data-username="${friend.username}">
-                                            <i class="bi bi-x-circle"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            `).join('')
+                                `;
+                            }).join('')
                         }
                     </div>
                 </div>

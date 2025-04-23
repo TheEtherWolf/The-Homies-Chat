@@ -466,15 +466,27 @@ body {
 
 .message.own-message {
   justify-content: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message.own-message .message-content {
+  align-items: flex-end;
+}
+
+.message.own-message .message-header {
+  flex-direction: row-reverse;
+}
+
+.message.own-message .message-author {
+  margin-right: 0;
+  margin-left: 8px;
+  color: #0d6efd;
 }
 
 .message.own-message .message-text {
   background-color: #0d6efd;
   color: white;
-}
-
-.message.own-message .message-author {
-  color: #0d6efd;
+  text-align: right;
 }
 
 .message .message-avatar {
@@ -483,6 +495,11 @@ body {
   border-radius: 50%;
   margin-right: 16px;
   object-fit: cover;
+}
+
+.message.own-message .message-avatar {
+  margin-right: 0;
+  margin-left: 16px;
 }
 
 .message.first-message {
