@@ -138,32 +138,60 @@ async function connectToMega() {
  * @returns {Promise<Object>} The loaded messages
  */
 async function loadMessages() {
+  let supabaseMessages = null;
+  let loadError = null;
+
   try {
-    // Get messages from Supabase
-    const supabaseMessages = await loadMessagesFromSupabase();
+    // Try loading messages from Supabase
+    console.log('Attempting to load messages from Supabase...');
+    supabaseMessages = await loadMessagesFromSupabase(); // Calls supabase-client.js
+    console.log(`Supabase load attempt completed. Messages found: ${supabaseMessages ? supabaseMessages.length : 'null'}`);
+  } catch (error) {
+    console.error(`Error loading messages from Supabase: ${error.message}`);
+    loadError = error; // Store the error
+  }
+
+  // If Supabase load was successful (even if empty)
+  if (loadError === null) {
     if (supabaseMessages && supabaseMessages.length > 0) {
-      console.log(`Loaded ${supabaseMessages.length} messages from Supabase`);
+      console.log(`Successfully loaded ${supabaseMessages.length} messages from Supabase.`);
       // Transform to the expected format
       const channels = {};
-      
       supabaseMessages.forEach(msg => {
-        const channelId = msg.channelId || 'general';
+        const channelId = msg.channel || 'general'; // Use 'channel' field if present, else default
         if (!channels[channelId]) {
           channels[channelId] = [];
         }
-        channels[channelId].push(msg);
+        // Ensure message structure is consistent
+        channels[channelId].push({
+          id: msg.id,
+          sender_id: msg.sender_id,
+          content: msg.content,
+          created_at: msg.created_at,
+          type: msg.type,
+          file_url: msg.file_url,
+          file_type: msg.file_type,
+          file_size: msg.file_size,
+          recipient_id: msg.recipient_id, // Include recipient_id if present
+          channel: channelId // Ensure channel is set
+        });
       });
-      
       return { channels };
+    } else {
+      // Supabase load succeeded but returned no messages
+      console.log('Supabase load successful, but no messages found. Returning empty structure.');
+      return { channels: { general: [] } }; // Return empty, DO NOT fall back to backup
     }
-    
-    // If no messages in Supabase, check local backup
-    return loadFromBackup();
-  } catch (error) {
-    console.error(`Error loading messages: ${error}`);
-    
-    // Last resort: create a new empty messages object
-    return { channels: { general: [] } };
+  } else {
+    // Supabase load failed, now try the backup
+    console.warn('Supabase load failed. Falling back to local backup...');
+    try {
+      return await loadFromBackup(); // Call loadFromBackup only on Supabase error
+    } catch (backupError) {
+      console.error(`Error loading from backup as well: ${backupError.message}`);
+      // Last resort: return empty structure
+      return { channels: { general: [] } };
+    }
   }
 }
 

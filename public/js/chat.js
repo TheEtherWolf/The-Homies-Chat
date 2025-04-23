@@ -38,7 +38,6 @@ class ChatManager {
         this.channelMessages = {}; // Cache messages for channels: { 'channelName': [messages] }
         this.generalChatMessages = []; // Initialize general chat message array
         this.allUsers = {}; // Store all fetched users: { 'userId': {username, id, status?, avatar_url?} }
-        this.currentStatus = 'online';
         this.currentUser = null; // Store current user info { username, id }
         this.isInitialized = false;
         this.needsInitialDataFetch = false; // Flag to fetch users/status on connect
@@ -904,8 +903,7 @@ class ChatManager {
                 (existingMsg.id && existingMsg.id === message.id) || 
                 (existingMsg.timestamp === message.timestamp && 
                  existingMsg.sender === message.sender && 
-                 existingMsg.content === message.content)
-            );
+                 existingMsg.content === message.content));
         
         if (isDuplicate) {
             console.log(`[CHAT_DEBUG] Skipping duplicate message with ID: ${message.id}`);
@@ -976,31 +974,33 @@ class ChatManager {
         
         // Store messages in appropriate collection
         if (channel.startsWith('dm_')) {
-            // DM history - extract user IDs from channel name
-            const userIds = channel.replace('dm_', '').split('_');
-            const otherUserId = userIds[0] === this.currentUser?.id ? userIds[1] : userIds[0];
-            
-            if (!this.dmConversations[otherUserId]) {
-                this.dmConversations[otherUserId] = [];
+            // DM history - using channelMessages consistently
+            if (!this.channelMessages[channel]) { // Use channelMessages
+                this.channelMessages[channel] = []; // Use channelMessages
             }
-            
+
             // Add new messages, avoiding duplicates
             data.messages.forEach(msg => {
-                const isDuplicate = this.dmConversations[otherUserId].some(existingMsg => 
+                const isDuplicate = this.channelMessages[channel].some(existingMsg => // Use channelMessages
                     (existingMsg.id && existingMsg.id === msg.id) ||
                     (existingMsg.timestamp === msg.timestamp && 
                      existingMsg.sender === msg.sender && 
                      existingMsg.content === msg.content));
                 
                 if (!isDuplicate) {
-                    this.dmConversations[otherUserId].push(msg);
+                    this.channelMessages[channel].push(msg); // Use channelMessages
                 }
             });
+            
+            // Sort by timestamp
+            this.channelMessages[channel].sort((a, b) => // Use channelMessages
+                new Date(a.timestamp) - new Date(b.timestamp)
+            );
             
             // Display if this is the active conversation
             if (this.currentChannel === channel) {
                 this.clearMessagesContainer();
-                this.dmConversations[otherUserId].forEach(msg => 
+                this.channelMessages[channel].forEach(msg => // Use channelMessages
                     this.displayMessageInUI(msg, channel));
             }
         } else {
@@ -1234,6 +1234,12 @@ class ChatManager {
     
     // Display a message in the UI
     displayMessageInUI(message, contextChannel = 'general') {
+        // Prevent adding duplicate message elements to the DOM
+        if (this.messagesContainer.querySelector(`[data-message-id="${message.id}"]`)) {
+            console.log(`[CHAT_DEBUG] Message element with ID ${message.id} already exists. Skipping DOM append.`);
+            return;
+        }
+        
         // Ensure we have a valid message object
         // Updated check for minimum required fields (id, sender, content, timestamp/created_at)
         if (!message || typeof message !== 'object' || !message.id || typeof message.sender === 'undefined' || typeof message.content === 'undefined' || !(message.timestamp || message.created_at)) {
