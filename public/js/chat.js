@@ -897,15 +897,20 @@ class ChatManager {
             this.channelMessages[message.channel] = [];
         }
         
-        // Check if this is a duplicate message we already have
-        const isDuplicate = message.channel && this.channelMessages[message.channel] && 
+        // Check for duplicates in cache AND DOM
+        const isDuplicateInCache = message.channel && 
+            this.channelMessages[message.channel] && 
             this.channelMessages[message.channel].some(existingMsg => 
                 (existingMsg.id && existingMsg.id === message.id) || 
                 (existingMsg.timestamp === message.timestamp && 
                  existingMsg.sender === message.sender && 
                  existingMsg.content === message.content));
         
-        if (isDuplicate) {
+        // Check if message is already in the DOM
+        const isDuplicateInDOM = message.id && 
+            document.querySelector(`[data-message-id="${message.id}"]`) !== null;
+                
+        if (isDuplicateInCache || isDuplicateInDOM) {
             console.log(`[CHAT_DEBUG] Skipping duplicate message with ID: ${message.id}`);
             return;
         }

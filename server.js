@@ -461,6 +461,14 @@ io.on("connection", (socket) => {
         console.log(`Login attempt for user: ${username}`);
         
         try {
+            // Validate inputs first to prevent any security issues
+            if (!username || !password) {
+                return callback({ 
+                    success: false, 
+                    message: 'Username and password are required'
+                });
+            }
+
             // Attempt to sign in with simplified approach
             const user = await signInUser(username, password);
             

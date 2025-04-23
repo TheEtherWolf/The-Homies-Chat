@@ -425,147 +425,68 @@ body {
 /* Messages Styling - Discord Style with Bubbles */
 .message {
   display: flex;
-  padding: 0.25rem 1rem; /* Equal padding left and right */
-  position: relative; /* Change from 'center' to 'relative' */
-  margin-bottom: 0.125rem;
-}
-
-.message.first-message {
-  margin-top: 0.75rem;
-  padding-top: 0.5rem;
-}
-
-.message:not(.first-message) {
-  padding-left: 4rem; /* Align with the username from first message - reduced */
-}
-
-.message:hover {
-  background-color: var(--message-hover-bg);
-}
-
-.message:hover .message-actions {
-  opacity: 1;
-}
-
-.message-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  margin-right: 0.5rem; /* Reduced spacing */
-  overflow: hidden;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.message:not(.first-message) .message-avatar {
-  display: none;
+  margin-bottom: 4px;
+  position: relative;
+  padding: 8px 16px;
+  animation: fadeIn 0.3s ease-in-out;
 }
 
 .message-content {
-  flex-grow: 1;
-  min-width: 0; /* Fix for flex child overflow */
   display: flex;
   flex-direction: column;
-  align-items: center; /* Align left for regular messages */
-  padding: 0; /* Remove any padding that could create asymmetry */
-  margin: 0; /* Remove any margins that could create asymmetry */
+  max-width: 80%;
 }
 
 .message-header {
   display: flex;
   align-items: baseline;
-  margin-bottom: 0.25rem;
-  padding-left: 12px; /* Match the padding in the bubble */
-  width: 100%;
-}
-
-.message:not(.first-message) .message-header {
-  display: none;
+  margin-bottom: 4px;
 }
 
 .message-author {
-  font-weight: 500;
-  color: var(--text-light);
-  font-size: 1rem;
+  font-weight: bold;
+  color: #fff;
+  margin-right: 8px;
 }
 
 .message-timestamp {
   font-size: 0.75rem;
-  color: var(--text-muted);
-  font-weight: 400;
-  margin-left: 8px; /* Add space between name and timestamp */
+  color: #72767d;
 }
 
 .message-text {
-  /* Core appearance */
-  border-radius: 0;
-  background-color: transparent;
-  
-  /* Text styling */
-  color: var(--text-light);
-  font-size: 0.9375rem;
-  line-height: 1.4;
+  background-color: #36393f;
+  color: #dcddde;
+  padding: 10px;
+  border-radius: 8px;
   word-break: break-word;
-  white-space: pre-wrap;
-  
-  /* Sizing and spacing */
-  display: inline-block;
-  max-width: 65%; /* Reduced max width for more symmetry */
-  padding: 12px; /* Equal padding on all sides */
-  box-sizing: border-box;
-  margin-left: 0; /* Ensure no leftward bias */
-  margin-right: 0; /* Ensure no rightward bias */
-  
-  /* Animation */
-  animation: messageFadeIn 0.9s ease;
-  transform-origin: bottom left;
-}
-
-.message.new-message {
-  animation: messageFadeIn 0.9s ease;
+  line-height: 1.4;
+  margin-top: 2px;
 }
 
 .message.own-message {
-  flex-direction: row-reverse;
-  padding: 0.25rem 1rem; /* Equal padding left and right */
-}
-
-.message.own-message:not(.first-message) {
-  padding-right: 4rem; /* Exactly match left padding for symmetry */
-  padding-left: 1rem;
-}
-
-.message.own-message .message-content {
-  padding: 0; /* Remove any padding that could create asymmetry */
-  margin: 0; /* Remove any margins that could create asymmetry */
-}
-
-.message.own-message .message-header {
-  justify-content: flex-end; /* Push username and timestamp to the right */
-  padding-right: 12px; /* Match the padding in the bubble */
-  padding-left: 0;
+  justify-content: flex-end;
 }
 
 .message.own-message .message-text {
-  max-width: 65%; /* Match regular message max-width */
-  transform-origin: bottom right; /* Animation starts from right for own messages */
-  margin-left: 0; /* Ensure no leftward bias */
-  margin-right: 0; /* Ensure no rightward bias */
-}
-
-.message-text:hover {
-  filter: brightness(1.05);
+  background-color: #0d6efd;
+  color: white;
 }
 
 .message.own-message .message-author {
-  margin-right: 0px;
-  margin-left: 0px;
-  color: var(--text-light);
+  color: #0d6efd;
 }
 
-.message.own-message .message-avatar {
-  margin-right: 0;
-  margin-left: 0.5rem;
+.message .message-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-right: 16px;
+  object-fit: cover;
+}
+
+.message.first-message {
+  margin-top: 16px;
 }
 
 /* Message Actions */
