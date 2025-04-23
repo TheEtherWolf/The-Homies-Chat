@@ -20,8 +20,8 @@ ADD COLUMN IF NOT EXISTS user_id UUID DEFAULT gen_random_uuid();
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS friend_code VARCHAR(20);
 
--- Create the friendships table
-CREATE TABLE IF NOT EXISTS friendships (
+-- Create the friends table (switched from friendships based on error message)
+CREATE TABLE IF NOT EXISTS friends (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id_1 UUID REFERENCES users(id),
     user_id_2 UUID REFERENCES users(id),

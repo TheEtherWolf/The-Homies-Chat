@@ -875,7 +875,7 @@ async function getFriendships(userId) {
          // We need to join with the users table twice to get both users' info
          // Query based on whether the user is user_id_1 or user_id_2
         const { data, error } = await getSupabaseClient()
-            .from('friendships')
+            .from('friends')
             .select(`
                 id, 
                 user_id_1, 

@@ -1679,49 +1679,54 @@ io.on("connection", (socket) => {
     });
     
     // Get current user's friend code
-    socket.on('get-friend-code', async (callback) => {
-        if (!users[socket.id] || !users[socket.id].authenticated) {
+    socket.on('get-friend-code', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            console.log('User not authenticated for get-friend-code');
             callback({ success: false, message: 'Not authenticated' });
             return;
         }
-        
+
+        const userId = users[socket.id].id;
+        console.log(`Getting friend code for user ${userId}`);
+
         try {
-            const userId = users[socket.id].id; // Corrected key from userId to id
-            
-            // Get from database
-            const { data, error } = await getSupabaseClient(true)
+            // Query the users table to get the friend code
+            const { data: userData, error } = await getSupabaseClient(true)
                 .from('users')
                 .select('friend_code')
                 .eq('id', userId)
                 .single();
-                
+
             if (error) {
                 console.error('Error getting friend code:', error);
-                callback({ success: false, message: 'Failed to retrieve friend code' });
+                callback({ success: false, message: 'Database error' });
                 return;
             }
-            
-            // If no friend code exists, generate one
-            if (!data.friend_code) {
-                const friendCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+            if (!userData || !userData.friend_code) {
+                console.log('No friend code found, generating new one');
+                // Generate a new friend code and save it
+                const friendCode = generateCode();
                 
                 const { error: updateError } = await getSupabaseClient(true)
                     .from('users')
                     .update({ friend_code: friendCode })
                     .eq('id', userId);
-                    
+                
                 if (updateError) {
                     console.error('Error saving new friend code:', updateError);
-                    callback({ success: false, message: 'Failed to save new friend code' });
+                    callback({ success: false, message: 'Failed to generate friend code' });
                     return;
                 }
                 
                 callback({ success: true, friendCode });
             } else {
-                callback({ success: true, friendCode: data.friend_code });
+                console.log(`Found friend code for user ${userId}: ${userData.friend_code}`);
+                callback({ success: true, friendCode: userData.friend_code });
             }
         } catch (err) {
-            console.error('Error retrieving friend code:', err);
+            console.error('Error in get-friend-code:', err);
             callback({ success: false, message: 'Server error' });
         }
     });
