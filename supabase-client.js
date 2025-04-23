@@ -874,15 +874,17 @@ async function getFriendships(userId) {
         console.log(`Fetching friendships for user ${userId}`);
          // We need to join with the users table twice to get both users' info
          // Query based on whether the user is user_id_1 or user_id_2
-        const { data, error } = await serviceSupabase
-            .from('friends')
+        const { data, error } = await getSupabaseClient()
+            .from('friendships')
             .select(`
                 id, 
+                user_id_1, 
+                user_id_2, 
                 status, 
                 created_at, 
                 updated_at,
-                user1:user_id_1 ( id, username, avatar_url, status ),
-                user2:user_id_2 ( id, username, avatar_url, status )
+                users1:user_id_1 ( id, username, avatar_url, status ),
+                users2:user_id_2 ( id, username, avatar_url, status )
             `)
             .or(`user_id_1.eq.${userId},user_id_2.eq.${userId}`) 
             // Optional: filter specific statuses if needed, e.g., .in('status', ['accepted', 'pending'])
@@ -895,7 +897,7 @@ async function getFriendships(userId) {
 
         // Process data to return a simpler list of 'friend' users with friendship status
         const friendships = data.map(f => {
-            const friendUser = f.user1.id === userId ? f.user2 : f.user1;
+            const friendUser = f.users1.id === userId ? f.users2 : f.users1;
             return {
                 friendship_id: f.id,
                 friend_id: friendUser.id,

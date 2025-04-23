@@ -973,7 +973,8 @@ class ChatManager {
             this.channelMessages[message.channel].push(message);
 
             const userIds = message.channel.replace('dm_', '').split('_');
-            const otherUserId = userIds[0] === this.currentUser.id ? userIds[1] : userIds[0];
+            const otherUserId = userIds[0] === this.currentUser.id ? 
+                userIds[1] : userIds[0];
             
             // If this is the current conversation, display it
             if (this.currentChannel === message.channel) {
@@ -1246,29 +1247,30 @@ class ChatManager {
             return;
         }
         
-        // Ensure we have a valid message object
-        // Updated check for minimum required fields (id, sender, content, timestamp/created_at)
-        if (!message || typeof message !== 'object' || !message.id || typeof message.sender === 'undefined' || typeof message.content === 'undefined' || !(message.timestamp || message.created_at)) {
-            console.warn('[CHAT_DEBUG] Attempted to display invalid/incomplete message:', message);
-            return;
-        }
+        console.log(`[CHAT_DEBUG] Displaying message:`, message);
         
         // Create message container
-        const messageDiv = document.createElement('div');
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message';
+        messageElement.setAttribute('data-message-id', message.id || 'temp-' + Date.now());
         
-        // Use message.id (which could be temp or permanent) for the data attribute
-        messageDiv.setAttribute('data-message-id', message.id);
-
+        // Check if this is the user's own message
+        const isOwnMessage = this.isOwnMessage(message);
+        if (isOwnMessage) {
+            messageElement.classList.add('own-message');
+            console.log(`[CHAT_DEBUG] Adding own-message class to message ${message.id}`);
+        }
+        
         // Basic classes
         let messageClasses = ['message'];
         
         // Is this an own message?
-        const isOwnMessage = this.isOwnMessage(message);
+        // const isOwnMessage = this.isOwnMessage(message);
         
         // Determine message classes
-        if (isOwnMessage) {
-            messageClasses.push('own-message');
-        }
+        // if (isOwnMessage) {
+        //     messageClasses.push('own-message');
+        // }
         
         // Check if this should be a first message in a group (with avatar and header)
         const isFirstMessage = this.isFirstMessageInGroup(message);
@@ -1277,7 +1279,7 @@ class ChatManager {
         }
         
         // Apply all classes to the message div
-        messageDiv.className = messageClasses.join(' ');
+        messageElement.className = messageClasses.join(' ');
         
         // Build message HTML
         let messageHTML = '';
@@ -1348,20 +1350,20 @@ class ChatManager {
         `;
         
         // Set message HTML
-        messageDiv.innerHTML = messageHTML;
+        messageElement.innerHTML = messageHTML;
         
         // Add to container
-        this.messagesContainer.appendChild(messageDiv);
+        this.messagesContainer.appendChild(messageElement);
         
         // Setup message action handlers
-        this.setupMessageActionHandlers(messageDiv);
+        this.setupMessageActionHandlers(messageElement);
         
         // Scroll to bottom
         this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
         
         // Remove the 'new-message' class after animation completes to avoid replay
         setTimeout(() => {
-            messageDiv.classList.remove('new-message');
+            messageElement.classList.remove('new-message');
         }, 500);
     }
     

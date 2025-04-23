@@ -425,10 +425,27 @@ body {
 /* Messages Styling - Discord Style with Bubbles */
 .message {
   display: flex;
-  margin-bottom: 4px;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 1rem;
   position: relative;
-  padding: 8px 16px;
-  animation: fadeIn 0.3s ease-in-out;
+}
+
+.message.own-message {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+.message-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-right: 0.75rem;
+  flex-shrink: 0;
+}
+
+.message.own-message .message-avatar {
+  margin-right: 0;
+  margin-left: 0.75rem;
 }
 
 .message-content {
@@ -437,69 +454,48 @@ body {
   max-width: 80%;
 }
 
+.message.own-message .message-content {
+  align-items: flex-end;
+}
+
 .message-header {
   display: flex;
   align-items: baseline;
-  margin-bottom: 4px;
-}
-
-.message-author {
-  font-weight: bold;
-  color: #fff;
-  margin-right: 8px;
-}
-
-.message-timestamp {
-  font-size: 0.75rem;
-  color: #72767d;
-}
-
-.message-text {
-  background-color: #36393f;
-  color: #dcddde;
-  padding: 10px;
-  border-radius: 8px;
-  word-break: break-word;
-  line-height: 1.4;
-  margin-top: 2px;
-}
-
-.message.own-message {
-  justify-content: flex-end;
-  flex-direction: row-reverse;
-}
-
-.message.own-message .message-content {
-  align-items: flex-end;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
 }
 
 .message.own-message .message-header {
   flex-direction: row-reverse;
 }
 
+.message-author {
+  font-weight: 600;
+  margin-right: 0.5rem;
+  color: var(--text-normal);
+}
+
 .message.own-message .message-author {
   margin-right: 0;
-  margin-left: 8px;
-  color: #0d6efd;
+  margin-left: 0.5rem;
+}
+
+.message-timestamp {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.message-text {
+  background-color: var(--background-primary);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  color: var(--text-normal);
+  word-break: break-word;
 }
 
 .message.own-message .message-text {
-  background-color: #0d6efd;
-  color: white;
-  text-align: right;
-}
-
-.message .message-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  margin-right: 16px;
-  object-fit: cover;
-}
-
-.message.own-message .message-avatar {
-  margin-right: 0;
-  margin-left: 16px;
+  background-color: var(--background-accent);
+  color: #fff;
 }
 
 .message.first-message {
