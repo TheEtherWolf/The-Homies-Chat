@@ -1888,6 +1888,76 @@ class ChatManager {
             codeDisplay.textContent = this.currentUser.friendCode;
         }
     }
+
+    // Show DM interface (switch to DM mode)
+    showDMInterface() {
+        console.log('[CHAT_DEBUG] Switching to DM interface');
+        
+        // Update UI state
+        this.isDMMode = true;
+        
+        // Update server icons active state
+        document.querySelectorAll('.server-icon').forEach(icon => icon.classList.remove('active'));
+        const dmIcon = document.getElementById('dm-server-icon');
+        if (dmIcon) dmIcon.classList.add('active');
+        
+        // Update sidebar content
+        const channelsHeader = document.getElementById('channels-header');
+        const channelsList = document.getElementById('channels-list');
+        
+        if (channelsHeader) channelsHeader.style.display = 'none';
+        if (channelsList) channelsList.style.display = 'none';
+        
+        // Show DM section
+        const dmSection = document.querySelector('.sidebar-section');
+        if (dmSection) dmSection.style.display = 'block';
+        
+        // Refresh DM list
+        this.populateDMList();
+        
+        // If we have DMs, open the first one
+        const firstDM = document.querySelector('.dm-item');
+        if (firstDM) {
+            const username = firstDM.querySelector('span').textContent.trim();
+            if (username) {
+                this.openDM(username);
+            } else {
+                // Display a welcome message if no DMs
+                this.clearMessagesContainer();
+                this.displaySystemMessage("Welcome to your Direct Messages! Click on a friend to start chatting.");
+                if (this.chatTitle) this.chatTitle.textContent = "Direct Messages";
+            }
+        } else {
+            // No DMs yet
+            this.clearMessagesContainer();
+            this.displaySystemMessage("You don't have any direct messages yet. Add friends to start chatting!");
+            if (this.chatTitle) this.chatTitle.textContent = "Direct Messages";
+        }
+    }
+    
+    // Show Channels interface (switch to channels mode)
+    showChannelsInterface() {
+        console.log('[CHAT_DEBUG] Switching to Channels interface');
+        
+        // Update UI state
+        this.isDMMode = false;
+        
+        // Update server icons active state
+        document.querySelectorAll('.server-icon').forEach(icon => icon.classList.remove('active'));
+        const serverIcon = document.querySelector('.server-icon:first-of-type');
+        if (serverIcon) serverIcon.classList.add('active');
+        
+        // Update sidebar content
+        const channelsHeader = document.getElementById('channels-header');
+        const channelsList = document.getElementById('channels-list');
+        
+        if (channelsHeader) channelsHeader.style.display = 'flex';
+        if (channelsList) channelsList.style.display = 'block';
+        
+        // Hide DM section
+        const dmSection = document.querySelector('.sidebar-section');
+        if (dmSection) dmSection.style.display = 'none';
+    }
 }
 
 // Export the ChatManager class
