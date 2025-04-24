@@ -772,6 +772,15 @@ class ChatManager {
             });
         }
         
+        // Send friend request button
+        const sendFriendRequestBtn = document.getElementById('send-friend-request-btn');
+        if (sendFriendRequestBtn) {
+            sendFriendRequestBtn.addEventListener('click', () => {
+                console.log('[CHAT_DEBUG] Send friend request button clicked');
+                this.sendFriendRequest();
+            });
+        }
+        
         // Accept friend request button in notification modal
         const acceptFriendRequestBtn = document.getElementById('accept-friend-request-btn');
         if (acceptFriendRequestBtn) {
