@@ -110,6 +110,27 @@ class ChatManager {
             this.needsInitialDataFetch = true;
         });
 
+        // --- NEW: Listen for message-history from server ---
+        this.socket.on('message-history', (data) => {
+            console.log('[CHAT_DEBUG] Received message-history:', data);
+            if (!data || !data.channel || !Array.isArray(data.messages)) {
+                this.displaySystemMessage('No messages found for this channel.');
+                return;
+            }
+            // Cache messages for this channel
+            this.channelMessages[data.channel] = data.messages;
+            // If this is the current channel, render messages
+            if (this.currentChannel === data.channel) {
+                this.clearMessagesContainer();
+                if (data.messages.length === 0) {
+                    this.displaySystemMessage('No messages yet. Start the conversation!');
+                } else {
+                    data.messages.forEach(msg => this.displayMessageInUI(msg, data.channel));
+                }
+                this.scrollToBottom();
+            }
+        });
+
         // Call specific listener setup methods here
         // this._setupMessageListeners(); // Assume exists elsewhere or add later
         // this._setupUserStatusListeners(); // Assume exists elsewhere or add later
@@ -339,7 +360,9 @@ class ChatManager {
     setupChannelHandlers() {
         const channelItems = document.querySelectorAll('.channel-item');
         channelItems.forEach(item => {
-            const channelName = item.querySelector('span').textContent.trim();
+            // Update: Always use hashtag version for channel name
+            let channelName = item.querySelector('span').textContent.trim();
+            if (!channelName.startsWith('#')) channelName = `#${channelName}`;
             item.addEventListener('click', () => this.switchChannel(channelName));
         });
         
@@ -355,6 +378,8 @@ class ChatManager {
     
     // Switch to a specific channel
     switchChannel(channelName) {
+        // Always normalize channel name to have hashtag
+        if (!channelName.startsWith('#')) channelName = `#${channelName}`;
         console.log(`[CHAT_DEBUG] Switching to channel: ${channelName}`);
 
         // Update UI active state
@@ -365,7 +390,8 @@ class ChatManager {
         // Activate/deactivate channel items
         const allChannelItems = document.querySelectorAll('.channel-item');
         allChannelItems.forEach(item => {
-            const itemName = item.getAttribute('data-channel') || item.querySelector('span').textContent.trim();
+            let itemName = item.getAttribute('data-channel') || item.querySelector('span').textContent.trim();
+            if (!itemName.startsWith('#')) itemName = `#${itemName}`;
             if (itemName === channelName) {
                 item.classList.add('active');
             } else {
@@ -380,7 +406,7 @@ class ChatManager {
         
         // Update state
         this.currentChannel = channelName;
-        this.inGeneralChat = (channelName === 'general');
+        this.inGeneralChat = (channelName === '#general');
         this.currentDmRecipientId = null;
         
         // Clear message container
@@ -389,10 +415,10 @@ class ChatManager {
         // Display channel messages from cache if available
         if (this.channelMessages[channelName] && this.channelMessages[channelName].length > 0) {
             console.log(`[CHAT_DEBUG] Displaying ${this.channelMessages[channelName].length} cached messages for channel: ${channelName}`);
-            this.displaySystemMessage(`Channel: #${channelName}`);
+            this.displaySystemMessage(`Channel: ${channelName}`);
             this.channelMessages[channelName].forEach(msg => this.displayMessageInUI(msg, channelName));
         } else {
-            this.displaySystemMessage(`Welcome to #${channelName}`);
+            this.displaySystemMessage(`Welcome to ${channelName}`);
         }
         
         // Always request fresh messages from server
@@ -401,7 +427,7 @@ class ChatManager {
         
         // Update input placeholder
         if (this.messageInput) {
-            this.messageInput.placeholder = `Message #${channelName}`;
+            this.messageInput.placeholder = `Message ${channelName}`;
             this.messageInput.disabled = false;
             this.messageInput.focus();
         }
@@ -1119,76 +1145,22 @@ class ChatManager {
     
     // Send a message
     sendMessage() {
-        // Ensure user is properly initialized before sending
-        if (!this.currentUser || !this.currentUser.id) {
-            console.error('[CHAT_DEBUG] Cannot send message: Current user data is missing or incomplete.', this.currentUser);
-            // Optionally show a message to the user
-            this.addSystemMessage('Error: Cannot send message. User session not fully loaded. Please try again shortly or refresh.');
+        if (!this.messageInput) return;
+        let message = this.messageInput.value.trim();
+        // Prevent blank, whitespace, or empty messages
+        if (!message || message.length === 0) {
+            this.addSystemMessage('Cannot send an empty message.');
             return;
         }
-        
-        if (!this.messageInput.value.trim()) return;
-        
-        const messageText = this.messageInput.value.trim();
-        const timestamp = new Date().toISOString();
-        
-        // Clear input field
-        this.messageInput.value = '';
-        
-        // Determine if this is a DM or channel message
-        const isDM = this.currentChannel.startsWith('dm_');
-        
-        console.log(`[CHAT_DEBUG] Sending message to channel: ${this.currentChannel}`);
-        
-        // Create the message object
-        const message = {
-            id: 'temp-' + Date.now(), // Temporary ID until server assigns a real one
-            content: messageText,
-            sender: this.currentUser.username,
-            senderId: this.currentUser.id,
-            timestamp: timestamp,
-            channel: this.currentChannel,
-            isDM: isDM,
-            recipientId: isDM ? this.currentDmRecipientId : null
-        };
-        
-        // Display message in UI immediately for responsiveness
-        this.displayMessageInUI(message, this.currentChannel);
-        
-        // Optionally add a 'pending' class to the message element
-        const tempMsgElement = document.querySelector(`[data-message-id="${message.id}"]`);
-        if(tempMsgElement) tempMsgElement.classList.add('message-pending');
-
-        // Emit based on channel type
-        if (isDM) {
-            // Extract recipient ID from channel name
-            const recipientId = this.currentChannel.replace('dm_', '').split('_').find(id => id !== this.currentUser.id);
-            if (!recipientId) {
-                console.error('[CHAT_DEBUG] Could not determine recipient ID for DM.');
-                 // Optionally remove the pending message from UI if we can't even send it
-                 if(tempMsgElement) tempMsgElement.remove();
-                return;
-            }
-            
-            const dmPayload = {
-                recipientId: recipientId,
-                message: messageText,
-                tempId: message.id // Send the temporary ID
-                // timestamp will be added server-side if needed
-            };
-            this.socket.emit('direct-message', dmPayload);
-        } else {
-            // Channel message
-            const channelPayload = {
-                channel: this.currentChannel,
-                content: messageText,
-                sender: this.currentUser.username, // Include sender info
-                senderId: this.currentUser.id,
-                tempId: message.id // Send the temporary ID
-                // timestamp will be added server-side
-            };
-            this.socket.emit('chat-message', channelPayload);
+        // Add further validation if needed (e.g., max length)
+        if (message.length > 2000) {
+            this.addSystemMessage('Message too long. 2000 characters max.');
+            return;
         }
+        // Sanitize message to prevent XSS
+        message = this.sanitizeHTML(message);
+        this._sendMessageNow(message);
+        this.messageInput.value = '';
     }
     
     // Helper method to actually send the message
@@ -1381,12 +1353,6 @@ class ChatManager {
         if (!confirmedMessage.tempId) {
             console.log('[CHAT_DEBUG] Message confirmation without tempId, treating as new message');
             this.handleIncomingMessage(confirmedMessage);
-            return;
-        }
-        
-        // Skip if the IDs are the same (already confirmed)
-        if (confirmedMessage.id === confirmedMessage.tempId) {
-            console.log('[CHAT_DEBUG] Message already has permanent ID, skipping confirmation');
             return;
         }
         
