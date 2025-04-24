@@ -425,81 +425,99 @@ body {
 /* Messages Styling - Discord Style with Bubbles */
 .message {
   display: flex;
-  margin-bottom: 0.5rem;
-  padding: 0.5rem 1rem;
   position: relative;
+  padding: 0.5rem 1rem;
+  margin: 0.25rem 0;
+  transition: background 0.2s;
+  border-radius: 4px;
+  max-width: 90%;
 }
 
+/* Default message positioning (other people's messages) */
+.message {
+  align-self: flex-start;
+  margin-right: auto;
+}
+
+/* Your own messages positioning */
 .message.own-message {
+  align-self: flex-end;
+  margin-left: auto;
   flex-direction: row-reverse;
-  justify-content: flex-start;
 }
 
-.message-avatar {
-  width: 40px;
-  height: 40px;
+/* Message text bubbles */
+.message-text {
+  background: #6c47c7; /* Purple for other people's messages */
+  color: #fff;
+  padding: 0.5rem 0.85rem;
+  border-radius: 18px 18px 18px 2px; /* Pointed toward the left (middle) */
+  font-size: 1rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  margin-bottom: 2px;
+  margin-top: 2px;
+  max-width: 420px;
+  word-break: break-word;
+  transition: background 0.2s;
+  text-align: left;
+}
+
+/* Your own message bubbles */
+.message.own-message .message-text {
+  background: #3ba55c; /* Green for your messages */
+  border-radius: 18px 18px 2px 18px; /* Pointed toward the right (middle) */
+  text-align: right;
+}
+
+/* Message container */
+#messages-container {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  overflow-y: auto;
+  height: calc(100vh - 140px);
+  background-color: var(--content-background);
+}
+
+/* Avatar positioning */
+.message .message-avatar {
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  margin-right: 0.75rem;
-  flex-shrink: 0;
+  margin-right: 12px;
+  margin-left: 0;
+  object-fit: cover;
+  background: #22223b;
+  border: 2px solid var(--border-color);
 }
 
 .message.own-message .message-avatar {
+  margin-left: 12px;
   margin-right: 0;
-  margin-left: 0.75rem;
 }
 
-.message-content {
+/* Message header (username and timestamp) */
+.message .message-header {
   display: flex;
-  flex-direction: column;
-  max-width: 80%;
-}
-
-.message.own-message .message-content {
-  align-items: flex-end;
-}
-
-.message-header {
-  display: flex;
-  align-items: baseline;
-  margin-bottom: 0.25rem;
-  font-size: 0.85rem;
-}
-
-.message.own-message .message-header {
-  flex-direction: row-reverse;
+  align-items: center;
+  margin-bottom: 2px;
 }
 
 .message-author {
   font-weight: 600;
   margin-right: 0.5rem;
-  color: var(--text-normal);
-}
-
-.message.own-message .message-author {
-  margin-right: 0;
-  margin-left: 0.5rem;
+  color: var(--text-light);
 }
 
 .message-timestamp {
   font-size: 0.75rem;
   color: var(--text-muted);
+  margin-left: 0.25rem;
 }
 
-.message-text {
-  background-color: var(--background-primary);
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.5rem;
-  color: var(--text-normal);
-  word-break: break-word;
-}
-
-.message.own-message .message-text {
-  background-color: var(--background-accent);
-  color: #fff;
-}
-
-.message.first-message {
-  margin-top: 16px;
+.message.own-message .message-timestamp {
+  margin-left: 0;
+  margin-right: 0.25rem;
 }
 
 /* Message Actions */
@@ -1057,8 +1075,7 @@ body {
 
 .friend-info {
   flex-grow: 1;
-  min-width: 0;
-  text-align: left;
+  min-width: 0; /* Ensure text truncation works */
 }
 
 .friend-username {
@@ -1085,4 +1102,25 @@ body {
   padding: 24px;
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* Messages container */
+#messages-container {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  overflow-y: auto;
+  height: calc(100vh - 140px);
+  background-color: var(--content-background);
+}
+
+/* Add responsive styles back */
+@media (max-width: 600px) {
+  .message {
+    max-width: 98%;
+  }
+  .message-text {
+    max-width: 95vw;
+    font-size: 0.97rem;
+  }
 }
