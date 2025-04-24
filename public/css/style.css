@@ -430,20 +430,30 @@ body {
   margin: 0.25rem 0;
   transition: background 0.2s;
   border-radius: 4px;
-  max-width: 90%;
+  max-width: 80%;
+  width: auto;
 }
 
 /* Default message positioning (other people's messages) */
 .message {
   align-self: flex-start;
   margin-right: auto;
+  margin-left: 0;
 }
 
 /* Your own messages positioning */
 .message.own-message {
   align-self: flex-end;
   margin-left: auto;
+  margin-right: 0;
   flex-direction: row-reverse;
+}
+
+/* Message content container */
+.message-content {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
 }
 
 /* Message text bubbles */

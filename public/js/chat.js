@@ -1213,54 +1213,36 @@ class ChatManager {
         
         console.log(`[CHAT_DEBUG] Displaying message:`, message);
         
-        // Create message container
-        const messageElement = document.createElement('div');
-        messageElement.className = 'message';
-        messageElement.setAttribute('data-message-id', message.id || 'temp-' + Date.now());
+        // Get current user from session storage
+        let currentUser = this.currentUser;
+        if (!currentUser) {
+            try {
+                currentUser = JSON.parse(sessionStorage.getItem('user'));
+                this.currentUser = currentUser; // Store for future use
+            } catch (e) {
+                console.error('[CHAT_DEBUG] Error getting user from session storage:', e);
+            }
+        }
         
         // Check if this is the user's own message
-        const isOwnMessage = (msg) => {
-            if (!this.currentUser || !msg) return false;
-            
-            // Get current user from session storage if not already set
-            if (!this.currentUser) {
-                try {
-                    this.currentUser = JSON.parse(sessionStorage.getItem('user'));
-                } catch (e) {
-                    console.error('[CHAT_DEBUG] Error getting user from session storage:', e);
-                    return false;
-                }
-            }
-            
-            const isOwn = (
-                msg.senderId === this.currentUser.id ||
-                msg.username === this.currentUser.username ||
-                msg.sender === this.currentUser.username
-            );
-            
-            console.log(`[CHAT_DEBUG] Message ownership check: ${isOwn ? 'OWN' : 'OTHER'} message`, {
-                msgSenderId: msg.senderId,
-                msgUsername: msg.username,
-                msgSender: msg.sender,
-                currentUserId: this.currentUser.id,
-                currentUsername: this.currentUser.username
-            });
-            
-            return isOwn;
-        };
+        const isOwn = currentUser && (
+            message.senderId === currentUser.id ||
+            message.username === currentUser.username ||
+            message.sender === currentUser.username
+        );
         
-        // Check if this is the user's own message and add class
-        const isOwn = isOwnMessage(message);
-        if (isOwn) {
-            messageElement.classList.add('own-message');
-            console.log(`[CHAT_DEBUG] Adding own-message class to message ${message.id}`);
-        }
+        console.log(`[CHAT_DEBUG] Message ownership check: ${isOwn ? 'OWN' : 'OTHER'} message`, {
+            msgSenderId: message.senderId,
+            msgUsername: message.username,
+            msgSender: message.sender,
+            currentUserId: currentUser?.id,
+            currentUsername: currentUser?.username
+        });
         
-        // Basic classes
-        let messageClasses = ['message'];
-        if (isOwn) {
-            messageClasses.push('own-message');
-        }
+        // Create message container
+        const messageElement = document.createElement('div');
+        messageElement.className = isOwn ? 'message own-message' : 'message';
+        messageElement.setAttribute('data-message-id', message.id || 'temp-' + Date.now());
         
         // Check if this should be a first message in a group (with avatar and header)
         const isFirstMessageInGroup = (message) => {
@@ -1270,7 +1252,13 @@ class ChatManager {
         };
         const isFirstMessage = isFirstMessageInGroup(message);
         if (isFirstMessage) {
-            messageClasses.push('first-message');
+            messageElement.classList.add('first-message');
+        }
+        
+        // Basic classes
+        let messageClasses = ['message'];
+        if (isOwn) {
+            messageClasses.push('own-message');
         }
         
         // Apply all classes to the message div
