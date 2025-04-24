@@ -1252,7 +1252,12 @@ class ChatManager {
         // }
         
         // Check if this should be a first message in a group (with avatar and header)
-        const isFirstMessage = this.isFirstMessageInGroup(message);
+        const isFirstMessageInGroup = (message) => {
+            // For now, always treat every message as a first in group
+            // You can later enhance this with logic to group messages by sender/time
+            return true;
+        };
+        const isFirstMessage = isFirstMessageInGroup(message);
         if (isFirstMessage) {
             messageClasses.push('first-message');
         }
