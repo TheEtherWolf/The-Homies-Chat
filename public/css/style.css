@@ -540,6 +540,10 @@ body {
   z-index: 10;
 }
 
+.message:hover .message-actions {
+  opacity: 1; /* Show the actions menu when hovering over a message */
+}
+
 .message.own-message .message-actions {
   right: auto;
   left: -10px; /* Change from -30px to -10px to move closer */
@@ -607,16 +611,13 @@ body {
 }
 
 .message-action-item {
-  padding: 0.5rem 1rem;
-  color: var(--text-light);
+  padding: 8px 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  transition: background-color var(--transition-speed) ease;
-}
-
-.message-action-item:hover {
-  background-color: var(--secondary-color);
+  gap: 8px;
+  color: var(--text-light);
+  transition: background-color 0.2s ease;
 }
 
 .message-action-item i {
@@ -625,12 +626,16 @@ body {
   text-align: center;
 }
 
+.message-action-item:hover {
+  background-color: var(--secondary-color);
+}
+
 .message-action-item.danger {
   color: var(--danger);
 }
 
 .message-action-item.danger:hover {
-  background-color: rgba(237, 66, 69, 0.1);
+  background-color: rgba(220, 53, 69, 0.1);
 }
 
 /* System Messages */
