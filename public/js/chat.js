@@ -1227,8 +1227,15 @@ class ChatManager {
         messageElement.setAttribute('data-message-id', message.id || 'temp-' + Date.now());
         
         // Check if this is the user's own message
-        const isOwnMessage = this.isOwnMessage(message);
-        if (isOwnMessage) {
+        const isOwnMessage = (message) => {
+            if (!this.currentUser || !message) return false;
+            return (
+                message.senderId === this.currentUser.id ||
+                message.username === this.currentUser.username
+            );
+        };
+        
+        if (isOwnMessage(message)) {
             messageElement.classList.add('own-message');
             console.log(`[CHAT_DEBUG] Adding own-message class to message ${message.id}`);
         }
@@ -1312,7 +1319,7 @@ class ChatManager {
                     <div class="message-action-item" data-action="copy">
                         <i class="bi bi-clipboard"></i> Copy Message
                     </div>
-                    ${isOwnMessage ? `
+                    ${isOwnMessage(message) ? `
                     <div class="message-action-item danger" data-action="delete">
                         <i class="bi bi-trash"></i> Delete Message
                     </div>
