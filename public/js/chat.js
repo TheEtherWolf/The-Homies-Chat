@@ -113,22 +113,7 @@ class ChatManager {
         // --- NEW: Listen for message-history from server ---
         this.socket.on('message-history', (data) => {
             console.log('[CHAT_DEBUG] Received message-history:', data);
-            if (!data || !data.channel || !Array.isArray(data.messages)) {
-                this.displaySystemMessage('No messages found for this channel.');
-                return;
-            }
-            // Cache messages for this channel
-            this.channelMessages[data.channel] = data.messages;
-            // If this is the current channel, render messages
-            if (this.currentChannel === data.channel) {
-                this.clearMessagesContainer();
-                if (data.messages.length === 0) {
-                    this.displaySystemMessage('No messages yet. Start the conversation!');
-                } else {
-                    data.messages.forEach(msg => this.displayMessageInUI(msg, data.channel));
-                }
-                this.scrollToBottom();
-            }
+            this.handleMessageHistory(data);
         });
 
         // Call specific listener setup methods here
@@ -1026,47 +1011,49 @@ class ChatManager {
     
     // Handle message history
     handleMessageHistory(data) {
-        console.log(`[CHAT_DEBUG] Received message history for ${data.channel}:`, data);
+        console.log('[CHAT_DEBUG] Received message-history:', data);
         
-        if (!data || !data.messages) {
-            console.warn('[CHAT_WARN] Received invalid message history data:', data);
+        if (!data || !data.channel || !Array.isArray(data.messages)) {
+            console.log('[CHAT_DEBUG] Invalid message history data:', data);
+            this.displaySystemMessage('No messages found for this channel.');
             return;
         }
         
-        // Clear the messages container if it's for the current channel
-        if (data.channel === this.currentChannel) {
+        // Normalize channel name to include hashtag for public channels
+        let channelName = data.channel;
+        if (!channelName.startsWith('#') && !channelName.startsWith('dm_')) {
+            channelName = `#${channelName}`;
+        }
+        
+        console.log(`[CHAT_DEBUG] Processing ${data.messages.length} messages for channel: ${channelName}`);
+        
+        // Cache messages for this channel
+        this.channelMessages[channelName] = data.messages;
+        
+        // If this is the current channel, render messages
+        if (this.currentChannel === channelName) {
             this.clearMessagesContainer();
             
-            // Add a channel header for context
-            this.displaySystemMessage(`Beginning of #${data.channel}`);
-        }
-        
-        // Create a cache for this channel if it doesn't exist yet
-        if (!this.channelMessages[data.channel]) {
-            this.channelMessages[data.channel] = [];
-        } else {
-            // Clear existing cached messages for this channel to avoid duplicates
-            this.channelMessages[data.channel] = [];
-        }
-        
-        // Process and store messages
-        if (Array.isArray(data.messages) && data.messages.length > 0) {
-            console.log(`[CHAT_DEBUG] Processing ${data.messages.length} messages for ${data.channel}`);
-            
-            // Add messages to cache
-            this.channelMessages[data.channel] = data.messages;
-            
-            // Only display if it's for the current channel
-            if (data.channel === this.currentChannel) {
-                data.messages.forEach(message => {
-                    this.displayMessageInUI(message, data.channel);
+            if (data.messages.length === 0) {
+                this.displaySystemMessage('No messages yet. Start the conversation!');
+            } else {
+                data.messages.forEach(msg => {
+                    // Ensure message has proper format
+                    const formattedMsg = {
+                        id: msg.id,
+                        sender: msg.sender || msg.username || 'Unknown User',
+                        username: msg.username || msg.sender || 'Unknown User',
+                        senderId: msg.sender_id || msg.senderId,
+                        content: msg.content || msg.message || '',
+                        timestamp: msg.created_at || msg.timestamp,
+                        channel: channelName
+                    };
+                    
+                    this.displayMessageInUI(formattedMsg);
                 });
-                
-                // Scroll to bottom after all messages are displayed
-                this.scrollToBottom();
             }
-        } else {
-            console.log(`[CHAT_DEBUG] No messages received for ${data.channel}`);
+            
+            this.scrollToBottom();
         }
     }
     
@@ -1178,12 +1165,16 @@ class ChatManager {
                 return;
             }
             
+            // Generate a temporary ID for this message
+            const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            
             // Prepare message data
             const messageData = {
                 username: user.username,
                 senderId: user.id,
                 message: message,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                tempId: tempId // Add tempId to track this message
             };
             
             if (this.inGeneralChat) {
@@ -1203,8 +1194,9 @@ class ChatManager {
                 this.socket.emit('chat-message', messageData);
             }
             
-            // Add to UI immediately for instant feedback
-            this.displayMessageInUI(messageData, true);
+            // Add to UI immediately for instant feedback with the temp ID
+            messageData.id = tempId; // Set the ID to the temp ID for DOM tracking
+            this.displayMessageInUI(messageData);
         } catch (error) {
             console.error('[CHAT_DEBUG] Error sending message:', error);
             this.addSystemMessage('Error sending message. Please try again.');
@@ -1349,94 +1341,55 @@ class ChatManager {
     
     // Handle confirmation that a message was saved (received permanent ID)
     handleMessageConfirmation(confirmedMessage) {
-        console.log('[CHAT_DEBUG] Received message confirmation:', confirmedMessage);
+        console.log('[CHAT_DEBUG] Message confirmation received:', confirmedMessage);
         
-        // More robust checks for valid confirmation data
-        if (!confirmedMessage) {
-            console.warn('[CHAT_DEBUG] Received empty message confirmation data');
+        if (!confirmedMessage || (!confirmedMessage.tempId && !confirmedMessage.id)) {
+            console.warn('[CHAT_DEBUG] Invalid message confirmation data');
             return;
         }
         
-        // Handle messages without tempId (some older message may not have it)
-        if (!confirmedMessage.tempId) {
-            console.log('[CHAT_DEBUG] Message confirmation without tempId, treating as new message');
-            this.handleIncomingMessage(confirmedMessage);
-            return;
-        }
-        
-        // Find the temporary message element in the DOM using the tempId
-        const tempMessageElement = document.querySelector(`[data-message-id="${confirmedMessage.tempId}"]`);
+        // Find the temporary message element in the DOM
+        const tempMessageElement = this.messagesContainer.querySelector(`[data-message-id="${confirmedMessage.tempId}"]`);
         
         if (tempMessageElement) {
-            console.log(`[CHAT_DEBUG] Updating message element ID from ${confirmedMessage.tempId} to ${confirmedMessage.id}`);
-            // Update the data-message-id attribute to the permanent ID
+            // Update the message element with the permanent ID
             tempMessageElement.setAttribute('data-message-id', confirmedMessage.id);
-            
-            // Remove pending/failed states and indicators
-            tempMessageElement.classList.remove('message-pending', 'message-failed');
-            const errorIndicator = tempMessageElement.querySelector('.message-error-indicator');
-            if (errorIndicator) errorIndicator.remove();
-            
-            // Update timestamp if server provided a definitive one (optional)
-            if(confirmedMessage.created_at) {
-                const timestampElement = tempMessageElement.querySelector('.message-timestamp');
-                if(timestampElement) {
-                     timestampElement.textContent = this.formatTimestamp(confirmedMessage.created_at);
-                     timestampElement.setAttribute('data-timestamp', confirmedMessage.created_at); // Store full timestamp if needed
-                }
-            }
-
+            console.log(`[CHAT_DEBUG] Updated message element ID from ${confirmedMessage.tempId} to ${confirmedMessage.id}`);
         } else {
-            console.warn(`[CHAT_DEBUG] Could not find message element with temporary ID: ${confirmedMessage.tempId} to update.`);
-            // The message might already have been removed or never displayed if there was an immediate error
+            console.log(`[CHAT_DEBUG] Temp message element not found for ID: ${confirmedMessage.tempId}`);
         }
-
-        // Update local cache
+        
+        // Update the message in the cache
         this._updateMessageCache(confirmedMessage);
     }
     
     // Helper function to update messages in the cache
     _updateMessageCache(confirmedMessage) {
-        if (!confirmedMessage || !confirmedMessage.tempId) return;
+        const channel = confirmedMessage.channel || this.currentChannel;
         
-        let cache = null;
-        
-        // Determine which cache to update based on message type and channel
-        if (confirmedMessage.type === 'dm' || (confirmedMessage.channel && confirmedMessage.channel.startsWith('dm_'))) {
-            // For DMs, we need to find the right cache
-            if (confirmedMessage.recipientId) {
-                const otherUserId = confirmedMessage.senderId === this.currentUser.id ? 
-                    confirmedMessage.recipientId : confirmedMessage.senderId;
-                
-                if (this.dmConversations[otherUserId]) {
-                    cache = this.dmConversations[otherUserId];
-                }
-            }
-            
-            // Fallback to channel cache if we have a channel name
-            if (!cache && confirmedMessage.channel && this.channelMessages[confirmedMessage.channel]) {
-                cache = this.channelMessages[confirmedMessage.channel];
-            }
-        } else if (confirmedMessage.channel === 'general' || confirmedMessage.isGeneralMessage) {
-            cache = this.generalChatMessages;
-        } else if (confirmedMessage.channel && this.channelMessages[confirmedMessage.channel]) {
-            cache = this.channelMessages[confirmedMessage.channel];
+        // Ensure the channel cache exists
+        if (!this.channelMessages[channel]) {
+            this.channelMessages[channel] = [];
         }
         
-        if (!cache || !Array.isArray(cache)) {
-            console.warn(`[CHAT_DEBUG] No appropriate cache found for message ${confirmedMessage.tempId}`);
-            return;
-        }
+        // Find the temporary message in the cache by tempId
+        const tempMessageIndex = this.channelMessages[channel].findIndex(msg => 
+            msg.tempId === confirmedMessage.tempId || 
+            (msg.id && msg.id === confirmedMessage.tempId)
+        );
         
-        // Find and update the message in the cache
-        const index = cache.findIndex(msg => msg.id === confirmedMessage.tempId);
-        if (index !== -1) {
-            // Replace the temporary message with the confirmed one
-            cache[index] = confirmedMessage;
-            console.log(`[CHAT_DEBUG] Updated message ID ${confirmedMessage.tempId} -> ${confirmedMessage.id} in cache.`);
+        if (tempMessageIndex !== -1) {
+            // Update the existing message with the permanent ID and any other new data
+            this.channelMessages[channel][tempMessageIndex] = {
+                ...this.channelMessages[channel][tempMessageIndex],
+                id: confirmedMessage.id,
+                created_at: confirmedMessage.created_at
+            };
+            console.log(`[CHAT_DEBUG] Updated message in cache for channel ${channel}`);
         } else {
-            console.log(`[CHAT_DEBUG] Message with temp ID ${confirmedMessage.tempId} not found in cache, adding it.`);
-            cache.push(confirmedMessage);
+            // If we couldn't find the temp message, it might be because we're receiving a confirmation
+            // for a message that was sent before we joined this channel. In this case, we should add it.
+            console.log(`[CHAT_DEBUG] Temp message not found in cache for channel ${channel}, adding as new`);
         }
     }
 
