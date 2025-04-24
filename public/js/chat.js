@@ -364,7 +364,9 @@ class ChatManager {
     // Switch to a specific channel
     switchChannel(channelName) {
         // Always normalize channel name to have hashtag
-        if (!channelName.startsWith('#')) channelName = `#${channelName}`;
+        if (!channelName.startsWith('#') && !channelName.startsWith('dm_')) {
+            channelName = `#${channelName}`;
+        }
         console.log(`[CHAT_DEBUG] Switching to channel: ${channelName}`);
 
         // Update UI active state
@@ -397,18 +399,14 @@ class ChatManager {
         // Clear message container
         this.clearMessagesContainer();
         
-        // Display channel messages from cache if available
-        if (this.channelMessages[channelName] && this.channelMessages[channelName].length > 0) {
-            console.log(`[CHAT_DEBUG] Displaying ${this.channelMessages[channelName].length} cached messages for channel: ${channelName}`);
-            this.displaySystemMessage(`Channel: ${channelName}`);
-            this.channelMessages[channelName].forEach(msg => this.displayMessageInUI(msg, channelName));
-        } else {
-            this.displaySystemMessage(`Welcome to ${channelName}`);
-        }
+        // Display system message while loading
+        this.displaySystemMessage(`Loading messages for ${channelName}...`);
         
         // Always request fresh messages from server
-        console.log(`[CHAT_DEBUG] Requesting messages for channel: ${channelName}`);
-        this.socket.emit('get-messages', { channel: channelName });
+        // Strip the # from the channel name when sending to server
+        const serverChannelName = channelName.startsWith('#') ? channelName.substring(1) : channelName;
+        console.log(`[CHAT_DEBUG] Requesting messages for channel: ${serverChannelName}`);
+        this.socket.emit('get-messages', { channel: serverChannelName });
         
         // Update input placeholder
         if (this.messageInput) {

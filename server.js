@@ -616,7 +616,7 @@ io.on("connection", (socket) => {
                 
                 try {
                     // Load DM messages from Supabase
-                    const result = await getSupabaseClient()
+                    const result = await getSupabaseClient(true)
                         .from('messages')
                         .select('*')
                         .or(`recipient_id.eq.${data.participants[0]},recipient_id.eq.${data.participants[1]}`)
@@ -651,7 +651,8 @@ io.on("connection", (socket) => {
             } else {
                 // For regular channels, load from Supabase
                 try {
-                    const result = await getSupabaseClient()
+                    console.log(`Querying Supabase for messages in channel: ${channel}`);
+                    const result = await getSupabaseClient(true)
                         .from('messages')
                         .select('*')
                         .eq('channel', channel)
@@ -672,6 +673,8 @@ io.on("connection", (socket) => {
                         // Add debug info about the messages
                         if (messages.length > 0) {
                             console.log('Sample message data:', JSON.stringify(messages[0], null, 2));
+                        } else {
+                            console.log('No messages found for channel:', channel);
                         }
                     }
                 } catch (err) {
@@ -697,6 +700,7 @@ io.on("connection", (socket) => {
                     id: msg.id,
                     content: msg.content,
                     sender: senderUsername,
+                    username: senderUsername, // Add username field for client compatibility
                     senderId: msg.sender_id,
                     timestamp: msg.created_at || msg.timestamp,
                     channel: msg.channel || channel,
@@ -710,6 +714,7 @@ io.on("connection", (socket) => {
             });
             
             // Send messages to client
+            console.log(`Sending ${clientMessages.length} messages to client for channel ${channel}`);
             socket.emit('message-history', { 
                 channel, 
                 messages: clientMessages,

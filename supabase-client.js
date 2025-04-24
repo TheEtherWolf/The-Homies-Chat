@@ -524,11 +524,17 @@ async function saveMessageToSupabase(message) {
       return null;
     }
 
+    // Normalize channel name - remove # prefix if present
+    let channelName = message.channel || "general";
+    if (channelName.startsWith('#')) {
+      channelName = channelName.substring(1);
+    }
+
     // Format message for DB
     const formattedMessage = {
       sender_id: senderId,
       content: message.content || message.message || "",
-      channel: message.channel || "general",
+      channel: channelName,
       type: message.type || 'text',
       file_url: message.file_url || message.fileUrl || null,
       file_type: message.file_type || message.fileType || null,
@@ -537,6 +543,7 @@ async function saveMessageToSupabase(message) {
     };
     
     console.log(`Saving message to Supabase from user ${senderName} (${senderId}) in channel ${formattedMessage.channel}`);
+    console.log('Message content:', formattedMessage.content);
     
     // Insert and return the inserted row
     const { data, error } = await serviceSupabase
@@ -631,11 +638,12 @@ async function saveMessagesToSupabase(messages) {
         sender_id: senderId,
         content: message.message || message.content || "",
         created_at: new Date(message.timestamp || Date.now()).toISOString(),
-        type: message.type || "text",
+        type: message.type || 'text',
         file_url: message.fileUrl || null,
         file_type: message.fileType || null,
         file_size: message.fileSize || null,
-        channel: message.channel || "general" // Add channel support
+        channel: message.channel || "general", // Add channel support
+        recipient_id: message.recipientId || null
       });
     }
     
