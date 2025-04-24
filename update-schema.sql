@@ -20,17 +20,41 @@ ADD COLUMN IF NOT EXISTS user_id UUID DEFAULT gen_random_uuid();
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS friend_code VARCHAR(20);
 
--- Create the friends table (switched from friendships based on error message)
-CREATE TABLE IF NOT EXISTS friends (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id_1 UUID REFERENCES users(id),
-    user_id_2 UUID REFERENCES users(id),
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
-    friend_code VARCHAR(20),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT unique_friendship UNIQUE(user_id_1, user_id_2)
+-- Drop the old table if it exists
+DROP TABLE IF EXISTS friends;
+
+-- Create the new friends table
+CREATE TABLE friends (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id_1 UUID NOT NULL,
+    user_id_2 UUID NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'accepted', (optionally: 'blocked')
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    CONSTRAINT unique_friendship UNIQUE (user_id_1, user_id_2),
+    CONSTRAINT fk_user_1 FOREIGN KEY (user_id_1) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_2 FOREIGN KEY (user_id_2) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- Optional: Indexes for faster lookups
+CREATE INDEX idx_friends_user_id_1 ON friends(user_id_1);
+CREATE INDEX idx_friends_user_id_2 ON friends(user_id_2);
+CREATE INDEX idx_friends_status ON friends(status);
+
+-- Trigger to update updated_at on row update
+CREATE OR REPLACE FUNCTION update_friends_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS set_friends_updated_at ON friends;
+CREATE TRIGGER set_friends_updated_at
+BEFORE UPDATE ON friends
+FOR EACH ROW
+EXECUTE FUNCTION update_friends_updated_at();
 
 -- Add the friend_code column to users table if it doesn't exist
 ALTER TABLE users ADD COLUMN IF NOT EXISTS friend_code VARCHAR(20);
