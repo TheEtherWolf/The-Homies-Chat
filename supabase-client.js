@@ -527,7 +527,7 @@ async function saveMessageToSupabase(message) {
     // Format message for DB
     const formattedMessage = {
       sender_id: senderId,
-      content: message.content || message.message,
+      content: message.content || message.message || "",
       channel: message.channel || "general",
       type: message.type || 'text',
       file_url: message.file_url || message.fileUrl || null,

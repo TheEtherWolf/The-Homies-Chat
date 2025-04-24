@@ -1243,14 +1243,6 @@ class ChatManager {
         // Basic classes
         let messageClasses = ['message'];
         
-        // Is this an own message?
-        // const isOwnMessage = this.isOwnMessage(message);
-        
-        // Determine message classes
-        // if (isOwnMessage) {
-        //     messageClasses.push('own-message');
-        // }
-        
         // Check if this should be a first message in a group (with avatar and header)
         const isFirstMessageInGroup = (message) => {
             // For now, always treat every message as a first in group
@@ -1276,11 +1268,14 @@ class ChatManager {
             // Format the timestamp
             const timestamp = this.formatTimestamp(message.timestamp);
             
+            // Use message.username or message.sender for the display name
+            const displayName = message.username || message.sender || 'Unknown User';
+            
             messageHTML += `
-                <img src="${avatarUrl}" alt="${message.sender}" class="message-avatar">
+                <img src="${avatarUrl}" alt="${displayName}" class="message-avatar">
                 <div class="message-content">
                     <div class="message-header">
-                        <span class="message-author">${this.sanitizeHTML(message.sender || 'Unknown User')}</span>&nbsp;<span class="message-timestamp">${timestamp}</span>
+                        <span class="message-author">${this.sanitizeHTML(displayName)}</span>&nbsp;<span class="message-timestamp">${timestamp}</span>
                     </div>
             `;
         } else {
@@ -1297,16 +1292,17 @@ class ChatManager {
                 <div class="message-text">
                     <div class="message-file">
                         <a href="${message.fileUrl}" target="_blank" class="file-link">
-                            <i class="bi bi-file-earmark"></i> ${this.sanitizeHTML(message.content || 'Shared a file')}
+                            <i class="bi bi-file-earmark"></i> ${this.sanitizeHTML(message.content || message.message || 'Shared a file')}
                         </a>
                     </div>
                 </div>
             `;
         } else {
-            // Regular text message
+            // Regular text message - use message.content or message.message
+            const messageContent = message.content || message.message || '';
             messageHTML += `
                 <div class="message-text">
-                    ${this.sanitizeHTML(message.content || '')}
+                    ${this.formatMessageContent(messageContent)}
                 </div>
             `;
         }

@@ -737,12 +737,12 @@ io.on("connection", (socket) => {
         }
         
         // Extract data, with validation and defaults
-        const content = data.content || '';
+        const content = data.message || data.content || '';
         const channel = data.channel || 'general';
         const timestamp = data.timestamp || Date.now();
         const tempId = data.tempId; // Capture tempId from client
         let senderId = data.senderId || null;
-        let username = data.sender || null;
+        let username = data.username || data.sender || null;
         
         // Validate message content
         if (!content || typeof content !== 'string' || content.trim() === '') {
@@ -919,7 +919,7 @@ io.on("connection", (socket) => {
                 .from('users')
                 .select('id')
                 .eq('id', recipientId)
-                .maybeSingle();
+                .limit(1);
             if (error || !recipientExists) {
                 console.warn(`Recipient user ${recipientId} not found.`);
                 if (data.callback) { 
