@@ -84,45 +84,54 @@ class ChatManager {
 
     // Centralized method to setup all socket listeners
     _setupSocketListeners() {
-        if (!this.socket) {
-            console.error("[CHAT_ERROR] Socket not available for setting up listeners.");
-            return;
-        }
-        console.log('[CHAT_DEBUG] Setting up core socket listeners...');
-
-        // Handle connection and registration
-        this.socket.on('connect', () => {
-            console.log('[CHAT_DEBUG] Socket connected.');
-            this.isSocketConnected = true;
-            if (this.currentUser && this.needsInitialDataFetch) {
-                console.log('[CHAT_DEBUG] Registering session...');
-                this.socket.emit('register-session', { 
-                    username: this.currentUser.username, 
-                    id: this.currentUser.id 
-                });
-                this.needsInitialDataFetch = false;
+        console.log('[CHAT_DEBUG] Setting up socket listeners');
+        
+        // --- Connection Events ---
+        this.socket.on('connect', () => this.handleSocketConnect());
+        this.socket.on('disconnect', (reason) => this.handleSocketDisconnect(reason));
+        this.socket.on('reconnect', () => this.handleReconnect());
+        
+        // --- User Events ---
+        this.socket.on('user-connected', (data) => this.handleUserConnected(data));
+        this.socket.on('user-disconnected', (data) => this.handleUserDisconnected(data));
+        this.socket.on('user-list', (users) => this.handleUserList(users));
+        
+        // --- Message Events ---
+        this.socket.on('message', (message) => this.handleIncomingMessage(message));
+        this.socket.on('message-history', (data) => this.handleMessageHistory(data));
+        this.socket.on('message-saved', (confirmedMessage) => this.handleMessageConfirmation(confirmedMessage));
+        this.socket.on('message-deleted', (data) => {
+            console.log('[CHAT_DEBUG] Message deleted:', data);
+            // Remove from UI if present
+            const messageElement = document.querySelector(`.message[data-message-id="${data.messageId}"]`);
+            if (messageElement) messageElement.remove();
+        });
+        
+        // --- Friend Request Events ---
+        this.socket.on('friend-request-received', (data) => this.handleIncomingFriendRequest(data));
+        this.socket.on('friend-request-accepted', (data) => {
+            console.log('[CHAT_DEBUG] Friend request accepted:', data);
+            this.displaySystemMessage(`${data.username} accepted your friend request!`);
+            this.populateDMList(); // Refresh DM list
+        });
+        this.socket.on('friend-request-rejected', (data) => {
+            console.log('[CHAT_DEBUG] Friend request rejected:', data);
+            this.displaySystemMessage(`${data.username} rejected your friend request.`);
+        });
+        this.socket.on('friend-status-update', (data) => {
+            console.log('[CHAT_DEBUG] Friend status update:', data);
+            // Update friend status in UI
+            const dmItem = document.querySelector(`.dm-item[data-user-id="${data.userId}"]`);
+            if (dmItem) {
+                const statusIndicator = dmItem.querySelector('.dm-status');
+                if (statusIndicator) {
+                    statusIndicator.className = 'dm-status ' + data.status;
+                }
             }
         });
-
-        this.socket.on('disconnect', (reason) => {
-            console.warn(`[CHAT_DEBUG] Socket disconnected: ${reason}`);
-            this.isSocketConnected = false;
-            this.needsInitialDataFetch = true;
-        });
-
-        // --- NEW: Listen for message-history from server ---
-        this.socket.on('message-history', (data) => {
-            console.log('[CHAT_DEBUG] Received message-history:', data);
-            this.handleMessageHistory(data);
-        });
-
-        // Call specific listener setup methods here
-        // this._setupMessageListeners(); // Assume exists elsewhere or add later
-        // this._setupUserStatusListeners(); // Assume exists elsewhere or add later
-        // this._setupCallListeners(); // Assume exists elsewhere or add later
-        this._setupFriendSocketListeners(); // Call the friend listener setup
-        // this._setupChannelListeners(); // Assume exists elsewhere or add later
-
+        
+        // Setup friend-specific listeners
+        this._setupFriendSocketListeners();
     }
 
     // Setup listeners specifically for friend-related events
@@ -242,6 +251,7 @@ class ChatManager {
 
             if (this.friendships[removedFriendId]) {
                 const removedUsername = this.friendships[removedFriendId].friend_username || 'User';
+                
                 // Remove the friendship entry from our local state
                 delete this.friendships[removedFriendId];
 
@@ -753,6 +763,37 @@ class ChatManager {
             });
         });
         
+        // --- Friend Request Handling ---
+        const addFriendBtn = document.getElementById('add-friend-btn');
+        if (addFriendBtn) {
+            addFriendBtn.addEventListener('click', () => {
+                console.log('[CHAT_DEBUG] Add friend button clicked');
+                this.showAddFriendModal();
+            });
+        }
+        
+        // Accept friend request button in notification modal
+        const acceptFriendRequestBtn = document.getElementById('accept-friend-request-btn');
+        if (acceptFriendRequestBtn) {
+            acceptFriendRequestBtn.addEventListener('click', () => {
+                const username = document.getElementById('friend-request-username').textContent;
+                this.acceptFriendRequest(username);
+                
+                // Close the modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('friend-request-notification-modal'));
+                if (modal) modal.hide();
+            });
+        }
+        
+        // Reject friend request button in notification modal
+        const rejectFriendRequestBtn = document.getElementById('reject-friend-request-btn');
+        if (rejectFriendRequestBtn) {
+            rejectFriendRequestBtn.addEventListener('click', () => {
+                const username = document.getElementById('friend-request-username').textContent;
+                this.rejectFriendRequest(username);
+            });
+        }
+        
         // --- Emoji Picker ---
         this.emojiButton.addEventListener('click', this.toggleEmojiPicker);
         
@@ -1229,7 +1270,7 @@ class ChatManager {
             message.sender === currentUser.username
         );
         
-        console.log(`[CHAT_DEBUG] Message ownership check: ${isOwn ? 'OWN' : 'OTHER'} message`, {
+        console.log(`[CHAT_DEBUG] Message ownership check: ${isOwn ? 'OWN' message : 'OTHER'} message`, {
             msgSenderId: message.senderId,
             msgUsername: message.username,
             msgSender: message.sender,
@@ -1717,7 +1758,7 @@ class ChatManager {
             document.getElementById('new-channel-private').checked = false;
         }
         
-        // Close modal if using one
+        // Close modal
         const modal = document.getElementById('create-channel-modal');
         if (modal) {
             // Close bootstrap modal
@@ -1889,6 +1930,288 @@ class ChatManager {
         }
     }
 
+    // Load pending friend requests from the server
+    loadPendingFriendRequests() {
+        console.log('[CHAT_DEBUG] Loading pending friend requests');
+        
+        // Emit event to get pending requests
+        this.socket.emit('get-pending-requests', {}, (response) => {
+            if (response.success) {
+                console.log('[CHAT_DEBUG] Pending requests loaded:', response.requests);
+                this.updatePendingRequestsList(response.requests);
+            } else {
+                console.error('[CHAT_DEBUG] Failed to load pending requests:', response.message);
+            }
+        });
+    }
+    
+    // Update pending requests list in the UI
+    updatePendingRequestsList(requests) {
+        const pendingRequestsList = document.getElementById('pending-requests-list');
+        const noRequestsMessage = document.getElementById('no-pending-requests');
+        
+        if (!pendingRequestsList) return;
+        
+        // Clear previous items (except the no-requests message)
+        Array.from(pendingRequestsList.children).forEach(child => {
+            if (child.id !== 'no-pending-requests') {
+                child.remove();
+            }
+        });
+        
+        // Show or hide no requests message
+        if (!requests || requests.length === 0) {
+            if (noRequestsMessage) noRequestsMessage.classList.remove('d-none');
+            return;
+        } else {
+            if (noRequestsMessage) noRequestsMessage.classList.add('d-none');
+        }
+        
+        // Add each request to the list
+        requests.forEach(request => {
+            const requestItem = document.createElement('div');
+            requestItem.className = 'friend-request-item list-group-item';
+            requestItem.setAttribute('data-request-id', request.id);
+            
+            const avatarUrl = this.getDefaultAvatar(request.user_id);
+            const username = this.sanitizeHTML(request.username);
+            
+            requestItem.innerHTML = 
+                '<div class="friend-request-info">' +
+                '    <div class="friend-request-avatar">' +
+                '        <img src="' + avatarUrl + '" alt="' + username + '\'s Avatar">' +
+                '    </div>' +
+                '    <div class="friend-request-details">' +
+                '        <div class="friend-request-username">' + username + '</div>' +
+                '        <div class="friend-request-status">Pending</div>' +
+                '    </div>' +
+                '</div>' +
+                '<div class="friend-request-actions">' +
+                '    <button class="accept-btn" data-username="' + username + '">Accept</button>' +
+                '    <button class="reject-btn" data-username="' + username + '">Reject</button>' +
+                '</div>';
+            
+            // Add event listeners for accept/reject buttons
+            const acceptBtn = requestItem.querySelector('.accept-btn');
+            const rejectBtn = requestItem.querySelector('.reject-btn');
+            
+            if (acceptBtn) {
+                acceptBtn.addEventListener('click', () => {
+                    const username = acceptBtn.getAttribute('data-username');
+                    this.acceptFriendRequest(username);
+                    requestItem.remove();
+                    
+                    // Check if there are no more requests
+                    if (pendingRequestsList.querySelectorAll('.friend-request-item').length === 0) {
+                        if (noRequestsMessage) noRequestsMessage.classList.remove('d-none');
+                    }
+                });
+            }
+            
+            if (rejectBtn) {
+                rejectBtn.addEventListener('click', () => {
+                    const username = rejectBtn.getAttribute('data-username');
+                    this.rejectFriendRequest(username);
+                    requestItem.remove();
+                    
+                    // Check if there are no more requests
+                    if (pendingRequestsList.querySelectorAll('.friend-request-item').length === 0) {
+                        if (noRequestsMessage) noRequestsMessage.classList.remove('d-none');
+                    }
+                });
+            }
+            
+            pendingRequestsList.appendChild(requestItem);
+        });
+    }
+
+    // Show Add Friend Modal
+    showAddFriendModal() {
+        const addFriendModal = document.getElementById('add-friend-modal');
+        if (addFriendModal) {
+            // Clear the input field
+            const usernameInput = document.getElementById('friend-username-input');
+            if (usernameInput) {
+                usernameInput.value = '';
+            }
+            
+            // Load pending friend requests
+            this.loadPendingFriendRequests();
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(addFriendModal);
+            modal.show();
+        }
+    }
+    
+    // Send a friend request
+    sendFriendRequest() {
+        const usernameInput = document.getElementById('friend-username-input');
+        if (!usernameInput || !usernameInput.value.trim()) {
+            this.displaySystemMessage('Please enter a username');
+            return;
+        }
+        
+        const username = usernameInput.value.trim();
+        
+        // Don't allow sending friend request to yourself
+        if (username === this.currentUser.username) {
+            this.displaySystemMessage('You cannot send a friend request to yourself');
+            return;
+        }
+        
+        console.log('[CHAT_DEBUG] Sending friend request to:', username);
+        
+        // Emit event to send friend request
+        this.socket.emit('send-friend-request', { username }, (response) => {
+            if (response.success) {
+                console.log('[CHAT_DEBUG] Friend request sent successfully');
+                this.displaySystemMessage(`Friend request sent to ${username}`);
+                
+                // Clear the input field
+                usernameInput.value = '';
+                
+                // Close the modal
+                const addFriendModal = document.getElementById('add-friend-modal');
+                if (addFriendModal) {
+                    const modal = bootstrap.Modal.getInstance(addFriendModal);
+                    if (modal) {
+                        modal.hide();
+                    }
+                }
+            } else {
+                console.error('[CHAT_DEBUG] Failed to send friend request:', response.message);
+                this.displaySystemMessage(`Failed to send friend request: ${response.message}`);
+            }
+        });
+    }
+    
+    // Accept a friend request
+    acceptFriendRequest(username) {
+        if (!username) return;
+        
+        console.log('[CHAT_DEBUG] Accepting friend request from:', username);
+        
+        // Emit event to accept friend request
+        this.socket.emit('accept-friend-request', { username }, (response) => {
+            if (response.success) {
+                console.log('[CHAT_DEBUG] Friend request accepted successfully');
+                this.displaySystemMessage(`You are now friends with ${username}`);
+                
+                // Refresh the DM list
+                this.populateDMList();
+            } else {
+                console.error('[CHAT_DEBUG] Failed to accept friend request:', response.message);
+                this.displaySystemMessage(`Failed to accept friend request: ${response.message}`);
+            }
+        });
+    }
+    
+    // Reject a friend request
+    rejectFriendRequest(username) {
+        if (!username) return;
+        
+        console.log('[CHAT_DEBUG] Rejecting friend request from:', username);
+        
+        // Emit event to reject friend request
+        this.socket.emit('reject-friend-request', { username }, (response) => {
+            if (response.success) {
+                console.log('[CHAT_DEBUG] Friend request rejected successfully');
+                this.displaySystemMessage(`Friend request from ${username} rejected`);
+            } else {
+                console.error('[CHAT_DEBUG] Failed to reject friend request:', response.message);
+                this.displaySystemMessage(`Failed to reject friend request: ${response.message}`);
+            }
+        });
+    }
+    
+    // Handle incoming friend request
+    handleIncomingFriendRequest(data) {
+        console.log('[CHAT_DEBUG] Incoming friend request:', data);
+        
+        // Show notification modal
+        const notificationModal = document.getElementById('friend-request-notification-modal');
+        if (notificationModal) {
+            // Set the username
+            const usernameElement = document.getElementById('friend-request-username');
+            if (usernameElement) {
+                usernameElement.textContent = data.username;
+            }
+            
+            // Set up accept button
+            const acceptBtn = document.getElementById('accept-friend-request-btn');
+            if (acceptBtn) {
+                // Remove existing event listeners
+                const newAcceptBtn = acceptBtn.cloneNode(true);
+                acceptBtn.parentNode.replaceChild(newAcceptBtn, acceptBtn);
+                
+                // Add new event listener
+                newAcceptBtn.addEventListener('click', () => {
+                    this.acceptFriendRequest(data.username);
+                    
+                    // Close the modal
+                    const modal = bootstrap.Modal.getInstance(notificationModal);
+                    if (modal) {
+                        modal.hide();
+                    }
+                });
+            }
+            
+            // Set up reject button
+            const rejectBtn = document.getElementById('reject-friend-request-btn');
+            if (rejectBtn) {
+                // Remove existing event listeners
+                const newRejectBtn = rejectBtn.cloneNode(true);
+                rejectBtn.parentNode.replaceChild(newRejectBtn, rejectBtn);
+                
+                // Add new event listener
+                newRejectBtn.addEventListener('click', () => {
+                    this.rejectFriendRequest(data.username);
+                    
+                    // Close the modal
+                    const modal = bootstrap.Modal.getInstance(notificationModal);
+                    if (modal) {
+                        modal.hide();
+                    }
+                });
+            }
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(notificationModal);
+            modal.show();
+        }
+    }
+    
+    // Get default avatar for a user
+    getDefaultAvatar(userId) {
+        // Generate a consistent color based on the user ID
+        const hash = userId ? userId.toString().split('').reduce((acc, char) => {
+            return acc + char.charCodeAt(0);
+        }, 0) : 0;
+        
+        const colors = [
+            '#FF5733', '#33FF57', '#3357FF', '#F033FF', '#FF33F0',
+            '#33FFF0', '#F0FF33', '#FF3333', '#33FF33', '#3333FF'
+        ];
+        
+        const colorIndex = hash % colors.length;
+        const color = colors[colorIndex];
+        
+        // Return a data URL for a colored circle with the first letter of the username
+        return `https://ui-avatars.com/api/?name=${userId}&background=${color.substring(1)}&color=fff`;
+    }
+    
+    // Sanitize HTML to prevent XSS
+    sanitizeHTML(text) {
+        if (!text) return '';
+        return text.toString()
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+    
     // Show DM interface (switch to DM mode)
     showDMInterface() {
         console.log('[CHAT_DEBUG] Switching to DM interface');

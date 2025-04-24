@@ -2059,52 +2059,44 @@ io.on("connection", (socket) => {
         }
     }
 
-});
-
-// Add migration function (moved from within io.on block)
-async function addChannelColumnIfNeeded() {
-    try {
-        console.log('Ensuring messages are properly associated with channels...');
-        
-        // Get all messages that don't have a channel set
-        const { data: messagesWithoutChannel, error: queryError } = await getSupabaseClient(true)
-            .from('messages')
-            .select('id')
-            .is('channel', null);
-        
-        if (queryError) {
-            console.error('Error checking messages without channel:', queryError);
-            return;
+    // Handle friend request related events
+    socket.on('get-pending-requests', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            return callback({ success: false, message: 'Not authenticated' });
         }
         
-        // If we found messages without a channel, update them
-        if (messagesWithoutChannel && messagesWithoutChannel.length > 0) {
-            console.log(`Found ${messagesWithoutChannel.length} messages without a channel, updating to 'general'`);
+        const userId = users[socket.id].id;
+        console.log(`Getting pending friend requests for user ${users[socket.id].username} (${userId})`);
+        
+        try {
+            // Query the friends table for pending requests where this user is the recipient
+            const { data: requests, error } = await getSupabaseClient(true)
+                .from('friends')
+                .select('id, user_id_1, users!friends_user_id_1_fkey(id, username)')
+                .eq('user_id_2', userId)
+                .eq('status', 'pending');
             
-            // Update in batches to avoid timeouts
-            const batchSize = 100;
-            for (let i = 0; i < messagesWithoutChannel.length; i += batchSize) {
-                const batch = messagesWithoutChannel.slice(i, i + batchSize);
-                const ids = batch.map(msg => msg.id);
-                
-                const { error: updateError } = await getSupabaseClient(true)
-                    .from('messages')
-                    .update({ channel: 'general' })
-                    .in('id', ids);
-                
-                if (updateError) {
-                    console.error(`Error updating batch ${i} to ${i + batch.length}:`, updateError);
-                }
+            if (error) {
+                console.error('Error getting pending friend requests:', error);
+                return callback({ success: false, message: 'Database error' });
             }
             
-            console.log('Finished updating messages without channels');
-        } else {
-            console.log('All messages have a channel assigned');
+            // Format the requests for the client
+            const formattedRequests = requests.map(request => ({
+                id: request.id,
+                user_id: request.user_id_1,
+                username: request.users ? request.users.username : 'Unknown User'
+            }));
+            
+            console.log(`Found ${formattedRequests.length} pending friend requests`);
+            return callback({ success: true, requests: formattedRequests });
+        } catch (err) {
+            console.error('Exception in get-pending-requests:', err);
+            return callback({ success: false, message: 'Server error' });
         }
-    } catch (error) {
-        console.error('Database migration error:', error);
-    }
-}
+    });
+});
 
 // Listen on the port provided by Glitch or default to 3000
 const PORT = process.env.PORT || 3000;
@@ -2364,4 +2356,49 @@ async function getAllChannels() {
     console.error('Error in getAllChannels:', error);
     return [];
   }
+}
+
+// Add migration function (moved from within io.on block)
+async function addChannelColumnIfNeeded() {
+    try {
+        console.log('Ensuring messages are properly associated with channels...');
+        
+        // Get all messages that don't have a channel set
+        const { data: messagesWithoutChannel, error: queryError } = await getSupabaseClient(true)
+            .from('messages')
+            .select('id')
+            .is('channel', null);
+        
+        if (queryError) {
+            console.error('Error checking messages without channel:', queryError);
+            return;
+        }
+        
+        // If we found messages without a channel, update them
+        if (messagesWithoutChannel && messagesWithoutChannel.length > 0) {
+            console.log(`Found ${messagesWithoutChannel.length} messages without a channel, updating to 'general'`);
+            
+            // Update in batches to avoid timeouts
+            const batchSize = 100;
+            for (let i = 0; i < messagesWithoutChannel.length; i += batchSize) {
+                const batch = messagesWithoutChannel.slice(i, i + batchSize);
+                const ids = batch.map(msg => msg.id);
+                
+                const { error: updateError } = await getSupabaseClient(true)
+                    .from('messages')
+                    .update({ channel: 'general' })
+                    .in('id', ids);
+                
+                if (updateError) {
+                    console.error(`Error updating batch ${i} to ${i + batch.length}:`, updateError);
+                }
+            }
+            
+            console.log('Finished updating messages without channels');
+        } else {
+            console.log('All messages have a channel assigned');
+        }
+    } catch (error) {
+        console.error('Database migration error:', error);
+    }
 }

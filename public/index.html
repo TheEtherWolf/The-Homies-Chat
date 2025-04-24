@@ -169,6 +169,9 @@
                 <div class="sidebar-section">
                     <div class="sidebar-section-header">
                         <span>Direct Messages</span>
+                        <button id="add-friend-btn" class="btn btn-sm" title="Add Friend">
+                            <i class="bi bi-person-plus-fill"></i>
+                        </button>
                     </div>
                     
                     <!-- DM list will be populated here -->
@@ -485,6 +488,57 @@
                     <button class="emoji-btn">💝</button>
                     <button class="emoji-btn">💟</button>
                     <button class="emoji-btn">☮️</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Friend Modal -->
+        <div class="modal fade" id="add-friend-modal" tabindex="-1" aria-labelledby="addFriendModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="addFriendModalLabel">Add Friend</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="friend-username-input" class="form-label">USERNAME</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="friend-username-input" placeholder="Enter a username">
+                                <button class="btn btn-primary" type="button" onclick="chatManager.sendFriendRequest()">Send Friend Request</button>
+                            </div>
+                            <small class="text-muted">Enter a username to send a friend request</small>
+                        </div>
+                        
+                        <div class="mt-4">
+                            <h6>PENDING FRIEND REQUESTS</h6>
+                            <div id="pending-requests-list" class="list-group">
+                                <!-- Pending requests will be populated here -->
+                                <div class="list-group-item d-none" id="no-pending-requests">
+                                    <p class="mb-0 text-muted">No pending friend requests</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Friend Request Notification Modal -->
+        <div class="modal fade" id="friend-request-notification-modal" tabindex="-1" aria-labelledby="friendRequestModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="friendRequestModalLabel">Friend Request</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="friend-request-message">You have a new friend request from <span id="friend-request-username"></span>.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="reject-friend-request-btn" data-bs-dismiss="modal">Reject</button>
+                        <button type="button" class="btn btn-primary" id="accept-friend-request-btn">Accept</button>
+                    </div>
                 </div>
             </div>
         </div>
