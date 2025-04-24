@@ -1219,21 +1219,48 @@ class ChatManager {
         messageElement.setAttribute('data-message-id', message.id || 'temp-' + Date.now());
         
         // Check if this is the user's own message
-        const isOwnMessage = (message) => {
-            if (!this.currentUser || !message) return false;
-            return (
-                message.senderId === this.currentUser.id ||
-                message.username === this.currentUser.username
+        const isOwnMessage = (msg) => {
+            if (!this.currentUser || !msg) return false;
+            
+            // Get current user from session storage if not already set
+            if (!this.currentUser) {
+                try {
+                    this.currentUser = JSON.parse(sessionStorage.getItem('user'));
+                } catch (e) {
+                    console.error('[CHAT_DEBUG] Error getting user from session storage:', e);
+                    return false;
+                }
+            }
+            
+            const isOwn = (
+                msg.senderId === this.currentUser.id ||
+                msg.username === this.currentUser.username ||
+                msg.sender === this.currentUser.username
             );
+            
+            console.log(`[CHAT_DEBUG] Message ownership check: ${isOwn ? 'OWN' : 'OTHER'} message`, {
+                msgSenderId: msg.senderId,
+                msgUsername: msg.username,
+                msgSender: msg.sender,
+                currentUserId: this.currentUser.id,
+                currentUsername: this.currentUser.username
+            });
+            
+            return isOwn;
         };
         
-        if (isOwnMessage(message)) {
+        // Check if this is the user's own message and add class
+        const isOwn = isOwnMessage(message);
+        if (isOwn) {
             messageElement.classList.add('own-message');
             console.log(`[CHAT_DEBUG] Adding own-message class to message ${message.id}`);
         }
         
         // Basic classes
         let messageClasses = ['message'];
+        if (isOwn) {
+            messageClasses.push('own-message');
+        }
         
         // Check if this should be a first message in a group (with avatar and header)
         const isFirstMessageInGroup = (message) => {
@@ -1312,7 +1339,7 @@ class ChatManager {
                     <div class="message-action-item" data-action="copy">
                         <i class="bi bi-clipboard"></i> Copy Message
                     </div>
-                    ${isOwnMessage(message) ? `
+                    ${isOwn ? `
                     <div class="message-action-item danger" data-action="delete">
                         <i class="bi bi-trash"></i> Delete Message
                     </div>
@@ -1373,8 +1400,8 @@ class ChatManager {
         }
         
         // Find the temporary message in the cache by tempId
-        const tempMessageIndex = this.channelMessages[channel].findIndex(msg => 
-            msg.tempId === confirmedMessage.tempId || 
+        const tempMessageIndex = this.channelMessages[channel].findIndex(
+            msg => msg.tempId === confirmedMessage.tempId || 
             (msg.id && msg.id === confirmedMessage.tempId)
         );
         
