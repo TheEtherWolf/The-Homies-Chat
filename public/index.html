@@ -501,13 +501,52 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="friend-username-input" class="form-label">USERNAME</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="friend-username-input" placeholder="Enter a username">
-                                <button class="btn btn-primary" type="button" id="send-friend-request-btn">Send Friend Request</button>
+                        <ul class="nav nav-tabs mb-3" id="friendTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="username-tab" data-bs-toggle="tab" data-bs-target="#username-tab-pane" type="button" role="tab" aria-controls="username-tab-pane" aria-selected="true">Username</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="friend-code-tab" data-bs-toggle="tab" data-bs-target="#friend-code-tab-pane" type="button" role="tab" aria-controls="friend-code-tab-pane" aria-selected="false">Friend Code</button>
+                            </li>
+                        </ul>
+                        <div class="tab-content" id="friendTabsContent">
+                            <!-- Username Tab -->
+                            <div class="tab-pane fade show active" id="username-tab-pane" role="tabpanel" aria-labelledby="username-tab" tabindex="0">
+                                <div class="mb-3">
+                                    <label for="friend-username-input" class="form-label">USERNAME</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="friend-username-input" placeholder="Enter a username">
+                                        <button class="btn btn-primary" type="button" id="send-friend-request-btn">Send Friend Request</button>
+                                    </div>
+                                    <small class="text-muted">Enter a username to send a friend request</small>
+                                </div>
                             </div>
-                            <small class="text-muted">Enter a username to send a friend request</small>
+                            
+                            <!-- Friend Code Tab -->
+                            <div class="tab-pane fade" id="friend-code-tab-pane" role="tabpanel" aria-labelledby="friend-code-tab" tabindex="0">
+                                <div class="mb-3">
+                                    <label for="your-friend-code" class="form-label">YOUR FRIEND CODE</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="your-friend-code" readonly>
+                                        <button class="btn btn-secondary" type="button" id="copy-friend-code-btn" title="Copy to clipboard">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary" type="button" id="generate-friend-code-btn" title="Generate new code">
+                                            <i class="bi bi-arrow-repeat"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">Share this code with friends to let them add you</small>
+                                </div>
+                                
+                                <div class="mb-3 mt-4">
+                                    <label for="friend-code-input" class="form-label">ENTER FRIEND CODE</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="friend-code-input" placeholder="Enter a friend code">
+                                        <button class="btn btn-primary" type="button" id="send-friend-request-by-code-btn">Add Friend</button>
+                                    </div>
+                                    <small class="text-muted">Enter a friend code to send a friend request</small>
+                                </div>
+                            </div>
                         </div>
                         
                         <div class="mt-4">
