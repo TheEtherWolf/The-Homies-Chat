@@ -1279,7 +1279,7 @@ class ChatManager {
             message.sender === currentUser.username
         );
         
-        console.log(`[CHAT_DEBUG] Message ownership check: ${isOwn ? 'OWN' message : 'OTHER'} message`, {
+        console.log(`[CHAT_DEBUG] Message ownership check: ${isOwn ? 'OWN' : 'OTHER'} message`, {
             msgSenderId: message.senderId,
             msgUsername: message.username,
             msgSender: message.sender,
