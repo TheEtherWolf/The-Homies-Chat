@@ -470,6 +470,7 @@ body {
   word-break: break-word;
   transition: background 0.2s;
   text-align: left;
+  width: fit-content;
 }
 
 /* Your own message bubbles */
@@ -477,6 +478,7 @@ body {
   background: #3ba55c; /* Green for your messages */
   border-radius: 18px 18px 2px 18px; /* Pointed toward the right (middle) */
   text-align: right;
+  margin-left: auto;
 }
 
 /* Message container */
@@ -1099,6 +1101,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: block;
 }
 
 .friend-status-text {
