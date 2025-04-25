@@ -2071,26 +2071,36 @@ class ChatManager {
         
         console.log('[CHAT_DEBUG] Sending friend request to:', username);
         
-        // Emit event to send friend request
-        this.socket.emit('send-friend-request', { username }, (response) => {
-            if (response.success) {
-                console.log('[CHAT_DEBUG] Friend request sent successfully');
-                this.displaySystemMessage(`Friend request sent to ${username}`);
+        // First, find the user ID by username
+        this.socket.emit('get-user-by-username', { username }, (userResponse) => {
+            if (userResponse.success && userResponse.user) {
+                const recipientId = userResponse.user.id;
                 
-                // Clear the input field
-                usernameInput.value = '';
-                
-                // Close the modal
-                const addFriendModal = document.getElementById('add-friend-modal');
-                if (addFriendModal) {
-                    const modal = bootstrap.Modal.getInstance(addFriendModal);
-                    if (modal) {
-                        modal.hide();
+                // Now send the friend request with the recipient ID
+                this.socket.emit('send-friend-request', { recipientId }, (response) => {
+                    if (response.success) {
+                        console.log('[CHAT_DEBUG] Friend request sent successfully');
+                        this.displaySystemMessage(`Friend request sent to ${username}`);
+                        
+                        // Clear the input field
+                        usernameInput.value = '';
+                        
+                        // Close the modal
+                        const addFriendModal = document.getElementById('add-friend-modal');
+                        if (addFriendModal) {
+                            const modal = bootstrap.Modal.getInstance(addFriendModal);
+                            if (modal) {
+                                modal.hide();
+                            }
+                        }
+                    } else {
+                        console.error('[CHAT_DEBUG] Failed to send friend request:', response.message);
+                        this.displaySystemMessage(`Failed to send friend request: ${response.message}`);
                     }
-                }
+                });
             } else {
-                console.error('[CHAT_DEBUG] Failed to send friend request:', response.message);
-                this.displaySystemMessage(`Failed to send friend request: ${response.message}`);
+                console.error('[CHAT_DEBUG] User not found:', username);
+                this.displaySystemMessage(`User not found: ${username}`);
             }
         });
     }

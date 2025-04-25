@@ -1407,6 +1407,35 @@ io.on("connection", (socket) => {
         }
     });
 
+    // Get user by username
+    socket.on('get-user-by-username', async (data, callback) => {
+        if (!data || !data.username) {
+            return callback({ success: false, message: 'Username is required' });
+        }
+        
+        try {
+            const { data: user, error } = await getSupabaseClient(true)
+                .from('users')
+                .select('id, username')
+                .eq('username', data.username)
+                .single();
+                
+            if (error) {
+                console.error('Error getting user by username:', error);
+                return callback({ success: false, message: 'Database error' });
+            }
+            
+            if (!user) {
+                return callback({ success: false, message: 'User not found' });
+            }
+            
+            return callback({ success: true, user });
+        } catch (err) {
+            console.error('Exception in get-user-by-username:', err);
+            return callback({ success: false, message: 'Server error' });
+        }
+    });
+
     // Handle channel operations
     socket.on('create-channel', async (data, callback) => {
         // Check if user is authenticated
@@ -2073,7 +2102,12 @@ io.on("connection", (socket) => {
             // Query the friends table for pending requests where this user is the recipient
             const { data: requests, error } = await getSupabaseClient(true)
                 .from('friends')
-                .select('id, user_id_1, users!friends_user_id_1_fkey(id, username)')
+                .select(`
+                    id, 
+                    user_id_1,
+                    status,
+                    users:user_id_1(id, username)
+                `)
                 .eq('user_id_2', userId)
                 .eq('status', 'pending');
             
@@ -2252,32 +2286,41 @@ async function setupFriendsTable() {
             console.log(`
 CREATE TABLE IF NOT EXISTS public.friends (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES public.users(id),
-  friend_id UUID NOT NULL REFERENCES public.users(id),
+  user_id_1 UUID NOT NULL,
+  user_id_2 UUID NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   
   -- Prevent duplicate friendships
-  CONSTRAINT unique_friendship UNIQUE (user_id, friend_id)
+  CONSTRAINT unique_friendship UNIQUE (user_id_1, user_id_2),
+  CONSTRAINT fk_user_1 FOREIGN KEY (user_id_1) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_user_2 FOREIGN KEY (user_id_2) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- Add indexes for faster lookups
+CREATE INDEX IF NOT EXISTS idx_friends_user_id_1 ON public.friends(user_id_1);
+CREATE INDEX IF NOT EXISTS idx_friends_user_id_2 ON public.friends(user_id_2);
+CREATE INDEX IF NOT EXISTS idx_friends_status ON public.friends(status);
+
+-- Trigger to update updated_at on row update
+CREATE OR REPLACE FUNCTION update_friends_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS set_friends_updated_at ON friends;
+CREATE TRIGGER set_friends_updated_at
+BEFORE UPDATE ON friends
+FOR EACH ROW
+EXECUTE FUNCTION update_friends_updated_at();
 
 -- Add friend_code column to users table if it doesn't exist
 ALTER TABLE public.users 
-ADD COLUMN IF NOT EXISTS friend_code TEXT;
-
--- Create index for faster friend lookups
-CREATE INDEX IF NOT EXISTS idx_friends_user_id ON public.friends(user_id);
-CREATE INDEX IF NOT EXISTS idx_friends_friend_id ON public.friends(friend_id);
-
--- Add is_dm and recipient_id columns to messages table
-ALTER TABLE public.messages 
-ADD COLUMN IF NOT EXISTS is_dm BOOLEAN DEFAULT false;
-
-ALTER TABLE public.messages
-ADD COLUMN IF NOT EXISTS recipient_id UUID REFERENCES public.users(id);
-
--- Add is_deleted column to messages table
-ALTER TABLE public.messages
-ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+ADD COLUMN IF NOT EXISTS friend_code VARCHAR(20);
             `);
             return false;
         }
