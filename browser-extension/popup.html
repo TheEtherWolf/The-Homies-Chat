@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Homies Chat Notifications</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      width: 300px;
+      padding: 15px;
+      background-color: #36393f;
+      color: #dcddde;
+    }
+    
+    h1 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      color: #ffffff;
+      text-align: center;
+    }
+    
+    .status {
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 5px;
+      background-color: #2f3136;
+      text-align: center;
+    }
+    
+    .status.online {
+      border-left: 4px solid #43b581;
+    }
+    
+    .status.offline {
+      border-left: 4px solid #f04747;
+    }
+    
+    .settings-group {
+      margin-bottom: 15px;
+    }
+    
+    .settings-title {
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+    
+    .setting-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      padding: 8px;
+      background-color: #2f3136;
+      border-radius: 4px;
+    }
+    
+    .toggle {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 20px;
+    }
+    
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #72767d;
+      transition: .4s;
+      border-radius: 20px;
+    }
+    
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .slider {
+      background-color: #7289da;
+    }
+    
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+    
+    .footer {
+      font-size: 12px;
+      text-align: center;
+      margin-top: 15px;
+      color: #72767d;
+    }
+  </style>
+</head>
+<body>
+  <h1>The Homies Chat Notifications</h1>
+  
+  <div id="status-container" class="status offline">
+    <div id="status-text">Checking connection status...</div>
+  </div>
+  
+  <div class="settings-group">
+    <div class="settings-title">Notification Settings</div>
+    
+    <div class="setting-item">
+      <span>Enable Notifications</span>
+      <label class="toggle">
+        <input type="checkbox" id="enable-notifications" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    
+    <div class="setting-item">
+      <span>Play Sound</span>
+      <label class="toggle">
+        <input type="checkbox" id="enable-sound" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    
+    <div class="setting-item">
+      <span>Show Message Content</span>
+      <label class="toggle">
+        <input type="checkbox" id="show-content" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    
+    <div class="setting-item">
+      <span>Friend Request Notifications</span>
+      <label class="toggle">
+        <input type="checkbox" id="friend-requests" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+  
+  <div class="footer">
+    The Homies Chat Notifications v1.0
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
