@@ -306,6 +306,7 @@ body {
   height: calc(100vh - 140px);
   background-color: #17171A; /* Darker background like Signal */
   position: relative;
+  padding-bottom: 80px; /* Add extra padding at the bottom */
 }
 
 /* Message Input Area */
@@ -331,6 +332,11 @@ body {
   min-height: 44px;
   max-height: 120px;
   overflow-y: auto;
+  width: calc(100% - 60px) !important; /* Leave room for the send button */
+  margin-right: 10px !important;
+  height: auto !important;
+  min-height: 40px !important;
+  max-height: 100px !important;
 }
 
 #message-input:focus {
@@ -432,6 +438,7 @@ body {
   max-width: 100%;
   clear: both;
   display: block;
+  width: 100%;
 }
 
 /* Message bubbles */
@@ -451,6 +458,7 @@ body {
   display: inline-block !important;
   float: left !important;
   clear: both !important;
+  width: auto !important; /* Prevent stretching */
 }
 
 /* Your own message bubbles */
@@ -461,165 +469,130 @@ body {
   float: right !important;
 }
 
-/* Hide avatars in messages */
+/* Hide ALL avatars in messages */
 .message .message-avatar,
 .message .avatar-container,
-.message img.avatar {
+.message img.avatar,
+.avatar,
+.message-avatar,
+img.avatar,
+.user-avatar-img,
+.avatar-img {
   display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
 }
 
-/* Username and timestamp */
-.message-header,
-.message-info,
-.message-meta {
-  display: block !important;
-  margin-bottom: 4px !important;
-  font-size: 0.8rem !important;
-  color: #8E8E92 !important;
-  clear: both !important;
-}
-
-.message.own-message .message-header,
-.message.own-message .message-info,
-.message.own-message .message-meta {
-  text-align: right !important;
-}
-
-.message-author,
-.message-sender,
-.message-username {
-  font-weight: 600 !important;
-  margin-right: 8px !important;
-}
-
-.message-timestamp,
-.message-time {
-  font-size: 0.7rem !important;
-  opacity: 0.8 !important;
-}
-
-/* Message context menu (copy/delete) */
-.message-menu,
-.message-actions,
-.copy-delete-menu {
-  display: none !important; /* Force hide by default */
-}
-
-/* Only show menu when explicitly toggled with a class */
-.message.show-menu .message-menu {
+/* User profile area at bottom left */
+.user-profile-area,
+.profile-area,
+.user-controls {
+  position: fixed !important;
+  bottom: 70px !important;
+  left: 10px !important;
+  background-color: #2C2C2E !important;
+  border-radius: 12px !important;
+  padding: 10px !important;
   display: flex !important;
+  align-items: center !important;
+  z-index: 99 !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2) !important;
+  max-width: 220px !important;
 }
 
-/* Message container */
-#messages-container,
-.messages-container,
-.chat-messages {
+.user-info {
   display: flex !important;
   flex-direction: column !important;
-  padding: 1rem !important;
-  overflow-y: auto !important;
-  height: calc(100vh - 140px) !important;
-  background-color: #17171A !important; /* Darker background like Signal */
-  position: relative !important;
+  margin-left: 10px !important;
 }
 
-/* Fix for the bottom input area */
-.input-area, 
-#message-form,
-.message-input-container,
-.message-input-wrapper,
-.input-group,
-.message-form {
-  background-color: #17171A !important;
-  border-top: 1px solid #2C2C2E !important;
-  padding: 12px 16px !important;
-  position: fixed !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  z-index: 100 !important;
-}
-
-/* Fix for message input field */
-.message-input,
-#message-input,
-textarea.form-control,
-input[type="text"].form-control {
-  background-color: #2C2C2E !important;
+.user-name {
+  font-weight: 600 !important;
   color: #E9E9E9 !important;
-  border: none !important;
-  border-radius: 18px !important;
-  padding: 10px 16px !important;
-  width: 100% !important;
+  font-size: 14px !important;
+  margin-bottom: 2px !important;
 }
 
-/* Send button */
-#send-button,
-.send-button,
-button[type="submit"] {
-  background-color: #2090EA !important;
+.user-status {
+  font-size: 12px !important;
+  color: #8E8E92 !important;
+}
+
+.user-controls-buttons {
+  display: flex !important;
+  margin-top: 8px !important;
+  justify-content: space-between !important;
+}
+
+.user-control-button {
+  background: none !important;
   border: none !important;
+  color: #8E8E92 !important;
+  font-size: 16px !important;
+  padding: 5px !important;
+  cursor: pointer !important;
   border-radius: 50% !important;
-  width: 36px !important;
-  height: 36px !important;
+  width: 30px !important;
+  height: 30px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  color: white !important;
-  cursor: pointer !important;
-  min-width: 36px !important;
-  padding: 0 !important;
+  margin: 0 2px !important;
 }
 
-/* Fix for the sidebar */
-#sidebar,
-.sidebar,
-#server-column,
-#channel-column,
-.server-column,
-.channel-column {
-  background-color: #1B1B1D !important;
-  border-color: #2C2C2E !important;
-}
-
-/* Fix for system messages */
-.system-message,
-.info-message {
-  text-align: center !important;
-  padding: 8px !important;
-  margin: 8px 0 !important;
-  color: #8E8E92 !important;
-  font-style: italic !important;
-  font-size: 0.9rem !important;
-  width: 100% !important;
-  clear: both !important;
-}
-
-/* Fix for emoji button and other controls */
-.emoji-button,
-.message-control-button {
-  background: none !important;
-  border: none !important;
-  color: #8E8E92 !important;
-  cursor: pointer !important;
-}
-
-/* Fix for the copy/delete menu buttons */
-.copy-message-btn,
-.delete-message-btn {
-  background: none !important;
-  border: none !important;
+.user-control-button:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
   color: #E9E9E9 !important;
-  padding: 4px 8px !important;
-  font-size: 12px !important;
-  cursor: pointer !important;
-  display: none !important;
 }
 
-/* Fix for the message text content */
-.message-text-content {
-  word-break: break-word !important;
-  white-space: pre-wrap !important;
+/* Fix for the login page */
+.auth-card {
+  background-color: #1B1B1D !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  overflow: hidden !important;
+}
+
+.auth-card-header {
+  background-color: #2090EA !important;
+  color: white !important;
+  padding: 20px !important;
+  text-align: center !important;
+  font-weight: 600 !important;
+}
+
+.auth-card-body {
+  padding: 20px !important;
+}
+
+.auth-card input {
+  background-color: #2C2C2E !important;
+  border: none !important;
+  border-radius: 8px !important;
+  color: #E9E9E9 !important;
+  padding: 10px 12px !important;
+  margin-bottom: 15px !important;
+  width: 100% !important;
+}
+
+.auth-card button {
+  background-color: #2090EA !important;
+  border: none !important;
+  border-radius: 8px !important;
+  color: white !important;
+  padding: 10px !important;
+  font-weight: 600 !important;
+  width: 100% !important;
+  cursor: pointer !important;
+}
+
+.auth-card a {
+  color: #2090EA !important;
+  text-decoration: none !important;
 }
 
 /* Media queries for responsive design */
