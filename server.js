@@ -16,6 +16,9 @@ const {
   resendVerificationEmail 
 } = require('./email-verification');
 
+// Import extension download module
+const extensionDownload = require('./extension-download');
+
 const {
     getSupabaseClient,
     registerUser,
@@ -72,6 +75,9 @@ for (const path of possiblePaths) {
 // Serve static files from the validated path
 app.use(express.static(staticPath));
 console.log(`Serving static files from: ${staticPath}`);
+
+// Add extension download routes
+app.use(extensionDownload.router);
 
 // Serve the index.html for root path with fallback options
 app.get('/', (req, res) => {
@@ -684,18 +690,11 @@ io.on("connection", (socket) => {
             }
             
             // Transform the messages for client consumption
-            const clientMessages = messages.map(msg => {
-                // Use cached username from users object if available
+            const clientMessages = await Promise.all(messages.map(async (msg) => {
                 let senderUsername = 'Unknown User';
-                
-                // Check if we can find the username from our active users
-                for (const socketId in users) {
-                    if (users[socketId] && users[socketId].id === msg.sender_id) {
-                        senderUsername = users[socketId].username;
-                        break;
-                    }
+                if (msg.sender_id) {
+                    senderUsername = await resolveUsernameById(msg.sender_id);
                 }
-                
                 return {
                     id: msg.id,
                     content: msg.content,
@@ -711,7 +710,7 @@ io.on("connection", (socket) => {
                     fileType: msg.file_type,
                     fileSize: msg.file_size
                 };
-            });
+            }));
             
             // Send messages to client
             console.log(`Sending ${clientMessages.length} messages to client for channel ${channel}`);
@@ -895,14 +894,12 @@ io.on("connection", (socket) => {
     socket.on("direct-message", async (data) => {
         if (!users[socket.id] || !users[socket.id].authenticated) { // Added authentication check
             console.error('User not authenticated but trying to send DM');
-            // Optionally send an error back to the client
             if (data.callback) { 
                 data.callback({ success: false, message: 'Authentication required.' });
             }
             return;
         }
-        
-        const senderUsername = users[socket.id].username;
+        let senderUsername = users[socket.id].username;
         const senderId = users[socket.id].id;
         const recipientId = data.recipientId;
         const messageContent = data.message;
@@ -914,6 +911,11 @@ io.on("connection", (socket) => {
                 data.callback({ success: false, message: 'Invalid DM data.' });
             }
             return;
+        }
+        
+        // Always resolve senderUsername from DB if missing
+        if (!senderUsername) {
+            senderUsername = await resolveUsernameById(senderId);
         }
         
         console.log(`DM from ${senderUsername} (${senderId}) to ${recipientId}: ${messageContent.substring(0, 20)}...`);
@@ -946,7 +948,9 @@ io.on("connection", (socket) => {
             content: messageContent,
             timestamp: Date.now(),
             type: 'dm',
-            tempId: tempId // Include tempId if provided
+            tempId: tempId, // Include tempId if provided
+            sender: senderUsername, // Always include username
+            username: senderUsername // For client compatibility
         };
 
         // Try saving DM to database FIRST
@@ -1930,8 +1934,8 @@ io.on("connection", (socket) => {
                     console.log(`Notified ${recipientId} about incoming friend request from ${senderId}`);
                 }
             } else {
-                // This might occur due to race conditions or unexpected DB errors not caught by getFriendshipStatus
-                console.error(`sendFriendRequest returned null/false between ${senderId} and ${recipientId} unexpectedly.`);
+                 // This might occur due to race conditions or unexpected DB errors not caught by getFriendshipStatus
+                 console.error(`sendFriendRequest returned null/false between ${senderId} and ${recipientId} unexpectedly.`);
                 callback({ success: false, message: 'Failed to send friend request (database error)' });
             }
         } catch (error) {
@@ -2229,11 +2233,35 @@ io.on("connection", (socket) => {
                 callback({ success: false, message: 'Failed to send friend request (database error)' });
             }
         } catch (err) {
-            console.error(`Error in send-friend-request-by-code handler:`, err);
+            console.error('Error in send-friend-request-by-code handler:', err);
             callback({ success: false, message: 'Server error sending request' });
         }
     });
 });
+
+// Utility function to resolve username by user ID (with DB fallback)
+async function resolveUsernameById(userId) {
+    // First, try to find in connected users
+    for (const socketId in users) {
+        if (users[socketId] && users[socketId].id === userId) {
+            return users[socketId].username;
+        }
+    }
+    // Fallback: fetch from DB
+    try {
+        const { data: user, error } = await getSupabaseClient(true)
+            .from('users')
+            .select('username')
+            .eq('id', userId)
+            .maybeSingle();
+        if (!error && user && user.username) {
+            return user.username;
+        }
+    } catch (err) {
+        console.error('Error resolving username by ID from DB:', err);
+    }
+    return 'Unknown User';
+}
 
 // Listen on the port provided by Glitch or default to 3000
 const PORT = process.env.PORT || 3000;
