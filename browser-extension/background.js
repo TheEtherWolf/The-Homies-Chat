@@ -60,19 +60,11 @@ function handleLoginStatus(data) {
   // Update the extension icon based on login status
   if (data.isLoggedIn) {
     chrome.action.setIcon({
-      path: {
-        16: 'icons/icon16.png',
-        48: 'icons/icon48.png',
-        128: 'icons/icon128.png'
-      }
+      path: 'original-logo.png'
     });
   } else {
     chrome.action.setIcon({
-      path: {
-        16: 'icons/icon16-gray.png',
-        48: 'icons/icon48-gray.png',
-        128: 'icons/icon128-gray.png'
-      }
+      path: 'original-logo.png'
     });
   }
 }
@@ -112,7 +104,7 @@ function handleNewMessage(message) {
   // Show notification
   chrome.notifications.create({
     type: 'basic',
-    iconUrl: 'icons/icon128.png',
+    iconUrl: 'original-logo.png',
     title: title,
     message: content,
     contextMessage: contextText,
@@ -130,7 +122,7 @@ function handleFriendRequest(data) {
   // Show notification
   chrome.notifications.create({
     type: 'basic',
-    iconUrl: 'icons/icon128.png',
+    iconUrl: 'original-logo.png',
     title: 'New Friend Request',
     message: `${data.senderUsername || 'Someone'} sent you a friend request`,
     priority: 2,
@@ -147,7 +139,7 @@ function handleFriendAccepted(data) {
   // Show notification
   chrome.notifications.create({
     type: 'basic',
-    iconUrl: 'icons/icon128.png',
+    iconUrl: 'original-logo.png',
     title: 'Friend Request Accepted',
     message: `${data.username || 'Someone'} accepted your friend request`,
     priority: 2,
