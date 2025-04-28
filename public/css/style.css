@@ -48,12 +48,16 @@ body {
 .login-card,
 .signup-card {
   background-color: #1B1B1D !important;
-  border-radius: 12px !important;
+  border-radius: 8px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
   overflow: hidden !important;
   width: 350px !important;
   max-width: 90% !important;
   margin: 0 auto !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
 }
 
 .auth-card-header,
@@ -61,16 +65,10 @@ body {
 .login-header {
   background-color: #2090EA !important;
   color: white !important;
-  padding: 20px !important;
+  padding: 16px !important;
   text-align: center !important;
   font-weight: 600 !important;
   font-size: 18px !important;
-}
-
-.auth-card-body,
-.card-body,
-.login-body {
-  padding: 20px !important;
 }
 
 .auth-card input,
@@ -184,8 +182,8 @@ body {
 /* Channels Column (Middle) */
 #sidebar {
   grid-area: channels;
-  background-color: #1B1B1D;
-  border-right: 1px solid #2C2C2E;
+  background-color: #17171A !important;
+  border-right: 1px solid #2C2C2E !important;
   display: flex;
   flex-direction: column;
   width: 240px;
@@ -410,27 +408,27 @@ body {
 .message-content {
   background: #2C2C2E !important; /* Dark gray for received messages */
   color: #fff !important;
-  padding: 10px 12px !important;
-  border-radius: 18px !important; /* Fully rounded corners like Signal */
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
-  max-width: 70% !important; /* Wider bubbles like Signal */
+  padding: 8px 12px !important;
+  border-radius: 18px !important; 
+  box-shadow: none !important;
+  max-width: 75% !important;
   word-break: break-word !important;
   text-align: left !important;
   font-size: 0.95rem !important;
   line-height: 1.4 !important;
-  display: block !important; /* Changed from inline-block to fix lint issue */
+  display: block !important; /* Fixed: changed from inline-block to block since float is used */
   float: left !important;
   clear: both !important;
-  width: auto !important; /* Prevent stretching */
+  width: auto !important;
   position: relative !important;
-  margin: 1px 0 !important;
+  margin: 2px 0 !important;
 }
 
 /* Your own message bubbles */
 .message.own-message .message-bubble,
 .message.own-message .message-text,
 .message.own-message .message-content {
-  background: #2090EA !important; /* Signal blue for your messages */
+  background: #0B93F6 !important; /* Signal blue for your messages */
   float: right !important;
 }
 
@@ -447,13 +445,13 @@ body {
 .delete-message-btn,
 .message-menu-item,
 .message-action {
-  background: none !important;
-  border: none !important;
-  color: #E9E9E9 !important;
-  padding: 4px 8px !important;
-  font-size: 12px !important;
-  cursor: pointer !important;
-  display: none !important; /* Hide by default */
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
 }
 
 /* Hide checkboxes in messages */
@@ -461,6 +459,12 @@ body {
 .message-checkbox,
 .select-message {
   display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
 }
 
 /* Clean up the bottom user profile area */
@@ -547,7 +551,7 @@ body {
 .message-form {
   background-color: #17171A !important;
   border-top: 1px solid #2C2C2E !important;
-  padding: 12px 16px !important;
+  padding: 10px !important;
   position: fixed !important;
   bottom: 0 !important;
   left: 0 !important;
@@ -563,6 +567,12 @@ svg[fill="#9c27b0"],
 svg[fill="purple"],
 .triangle-icon {
   display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
 }
 
 /* Fix for the message input area at the bottom */
@@ -572,14 +582,15 @@ textarea.form-control,
 input[type="text"].form-control {
   background-color: #2C2C2E !important;
   border: none !important;
-  border-radius: 18px !important;
+  border-radius: 20px !important;
   padding: 10px 16px !important;
   color: #E9E9E9 !important;
   width: calc(100% - 60px) !important;
   margin-right: 10px !important;
-  height: auto !important;
+  height: 40px !important;
   min-height: 40px !important;
-  max-height: 100px !important;
+  max-height: 40px !important;
+  font-size: 14px !important;
 }
 
 /* Send button */
@@ -663,4 +674,34 @@ img.avatar,
     left: 0;
     z-index: 100;
   }
+}
+
+/* Simplify the sidebar */
+.sidebar,
+.channels-sidebar,
+.left-sidebar {
+  background-color: #17171A !important;
+  border-right: 1px solid #2C2C2E !important;
+}
+
+/* Channel list styling */
+.channel-list,
+.channels-list,
+.text-channels {
+  margin-top: 10px !important;
+}
+
+.channel,
+.channel-item {
+  padding: 6px 10px !important;
+  border-radius: 4px !important;
+  margin: 2px 5px !important;
+  font-size: 14px !important;
+  color: #8E8E92 !important;
+}
+
+.channel.active,
+.channel-item.active {
+  background-color: rgba(32, 144, 234, 0.2) !important;
+  color: #E9E9E9 !important;
 }
