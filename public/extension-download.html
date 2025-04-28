@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Homies Chat - Browser Extension</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .extension-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #36393f;
+            border-radius: 8px;
+            color: #dcddde;
+        }
+        
+        .extension-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .extension-header h1 {
+            color: #ffffff;
+            font-size: 28px;
+        }
+        
+        .extension-header img {
+            width: 100px;
+            height: 100px;
+            margin: 20px auto;
+            display: block;
+            border-radius: 50%;
+        }
+        
+        .extension-features {
+            margin-bottom: 30px;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        
+        .feature-icon {
+            margin-right: 15px;
+            font-size: 24px;
+            color: #7289da;
+        }
+        
+        .extension-download {
+            text-align: center;
+            margin: 40px 0;
+        }
+        
+        .download-btn {
+            display: inline-block;
+            background-color: #7289da;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        
+        .download-btn:hover {
+            background-color: #5b6eae;
+        }
+        
+        .installation-steps {
+            background-color: #2f3136;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .installation-steps h3 {
+            color: #ffffff;
+            margin-top: 0;
+        }
+        
+        .step {
+            margin-bottom: 15px;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .step-number {
+            position: absolute;
+            left: 0;
+            color: #7289da;
+            font-weight: bold;
+        }
+        
+        .screenshot {
+            max-width: 100%;
+            height: auto;
+            border: 2px solid #202225;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .github-section {
+            background-color: #2f3136;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        code {
+            background-color: #202225;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="extension-container">
+        <div class="extension-header">
+            <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/thumbnails_default%20pic.png?v=1745848479410" alt="The Homies Chat Logo">
+            <h1>The Homies Chat Browser Extension</h1>
+            <p>Never miss a message with our official browser extension</p>
+        </div>
+        
+        <div class="extension-features">
+            <h2>Features</h2>
+            
+            <div class="feature-item">
+                <div class="feature-icon">📬</div>
+                <div class="feature-text">
+                    <h3>Message Notifications</h3>
+                    <p>Get notified when you receive new messages in any channel or direct message, even when the browser tab is not active.</p>
+                </div>
+            </div>
+            
+            <div class="feature-item">
+                <div class="feature-icon">👋</div>
+                <div class="feature-text">
+                    <h3>Friend Request Alerts</h3>
+                    <p>Receive notifications for new friend requests and when your requests are accepted.</p>
+                </div>
+            </div>
+            
+            <div class="feature-item">
+                <div class="feature-icon">⚙️</div>
+                <div class="feature-text">
+                    <h3>Customizable Settings</h3>
+                    <p>Control notification sounds, content privacy, and more through the extension's settings panel.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="github-section">
+            <h3>Get the Extension from GitHub</h3>
+            <p>The extension is available in our GitHub repository. Follow these steps to install it:</p>
+            
+            <div class="step">
+                <span class="step-number">1.</span>
+                <p>Clone or download the repository from: <a href="https://github.com/TheEtherWolf/The-Homies-Chat" target="_blank">https://github.com/TheEtherWolf/The-Homies-Chat</a></p>
+            </div>
+            
+            <div class="step">
+                <span class="step-number">2.</span>
+                <p>The extension files are in the <code>browser-extension</code> folder</p>
+            </div>
+        </div>
+        
+        <div class="extension-download">
+            <a href="/download-extension" class="download-btn">Download Manifest File</a>
+            <p>Version 1.0 • Compatible with Chrome, Edge, and other Chromium browsers</p>
+        </div>
+        
+        <div class="installation-steps">
+            <h3>Installation Instructions</h3>
+            
+            <div class="step">
+                <span class="step-number">1.</span>
+                <p>Download the extension files from GitHub or use the manifest file above as a reference</p>
+            </div>
+            
+            <div class="step">
+                <span class="step-number">2.</span>
+                <p>Open Chrome and go to <code>chrome://extensions/</code></p>
+            </div>
+            
+            <div class="step">
+                <span class="step-number">3.</span>
+                <p>Enable "Developer mode" using the toggle in the top-right corner</p>
+            </div>
+            
+            <div class="step">
+                <span class="step-number">4.</span>
+                <p>Click "Load unpacked" and select the <code>browser-extension</code> folder</p>
+            </div>
+            
+            <div class="step">
+                <span class="step-number">5.</span>
+                <p>The extension should now appear in your browser toolbar</p>
+            </div>
+        </div>
+        
+        <div class="extension-footer">
+            <p>Having trouble? <a href="#" onclick="alert('Contact support feature coming soon!')">Contact support</a></p>
+            <p>The Homies Chat Browser Extension 2025</p>
+        </div>
+    </div>
+    
+    <script>
+        // Add a back button to return to the main app
+        document.addEventListener('DOMContentLoaded', function() {
+            const header = document.querySelector('.extension-header');
+            const backButton = document.createElement('a');
+            backButton.href = '/';
+            backButton.textContent = ' Back to The Homies Chat';
+            backButton.style.display = 'block';
+            backButton.style.marginBottom = '20px';
+            backButton.style.color = '#7289da';
+            header.prepend(backButton);
+        });
+    </script>
+</body>
+</html>
