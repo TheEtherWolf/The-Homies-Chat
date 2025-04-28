@@ -153,7 +153,12 @@ chrome.alarms.create('checkLoginStatus', { periodInMinutes: 5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'checkLoginStatus') {
     // Send message to content script to check login status
-    chrome.tabs.query({ url: '*://*.glitch.me/*' }, (tabs) => {
+    chrome.tabs.query({ 
+      url: [
+        '*://*.glitch.me/*',
+        'https://knotty-moored-spaghetti.glitch.me/*'
+      ] 
+    }, (tabs) => {
       tabs.forEach(tab => {
         chrome.tabs.sendMessage(tab.id, { type: 'CHECK_LOGIN_STATUS' });
       });

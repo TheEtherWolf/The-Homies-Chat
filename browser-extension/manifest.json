@@ -10,14 +10,18 @@
     "background"
   ],
   "host_permissions": [
-    "*://*.glitch.me/*"
+    "*://*.glitch.me/*",
+    "https://knotty-moored-spaghetti.glitch.me/"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["*://*.glitch.me/*"],
+      "matches": [
+        "*://*.glitch.me/*",
+        "https://knotty-moored-spaghetti.glitch.me/"
+      ],
       "js": ["content.js"]
     }
   ],
@@ -36,7 +40,10 @@
   "web_accessible_resources": [
     {
       "resources": ["socket-listener.js"],
-      "matches": ["*://*.glitch.me/*"]
+      "matches": [
+        "*://*.glitch.me/*",
+        "https://knotty-moored-spaghetti.glitch.me/"
+      ]
     }
   ]
 }
