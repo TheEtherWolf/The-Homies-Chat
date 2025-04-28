@@ -1,29 +1,24 @@
 /* Main Styles for The Homies App - Discord-Style Layout */
 :root {
-  --primary-color: #47c7b6; /* Brighter teal accent color */
-  --secondary-color: #2c3e4a; /* Dark teal-blue */
-  --background-color: #1e3a39; /* Dark teal background */
-  --light-background: #2a4a48; /* Medium teal background */
-  --content-background: #1e3a39; /* Dark teal background */
-  --very-dark: #162b2a; /* Very dark teal */
-  --text-light: #e8f5f3; /* Slightly teal-tinted white */
-  --text-muted: #a0c5c0; /* Muted teal text */
-  --text-dark: #82b0aa; /* Darker muted teal text */
-  --success: #3BA55C; /* Green */
-  --warning: #5cded0; /* Changed from yellow to teal */
-  --danger: #ED4245; /* Red */
-  --info: #47c7b6; /* Brighter teal */
-  --highlight: #5cded0; /* Highlight teal */
-  --hover-bg: rgba(76, 211, 193, 0.1);
-  --active-bg: rgba(76, 211, 193, 0.2);
-  --border-radius: 8px;
-  --border-radius-sm: 4px;
+  --primary-color: #2090EA; /* Signal blue */
+  --secondary-color: #1B1B1D; /* Dark sidebar color */
+  --background-color: #1B1B1D; /* Dark background */
+  --content-background: #17171A; /* Darker content area */
+  --text-color: #E9E9E9; /* Light text */
+  --text-secondary: #8E8E92; /* Secondary text */
+  --text-light: #E9E9E9; /* Light text for dark backgrounds */
+  --text-dark: #1B1B1D; /* Dark text for light backgrounds */
+  --border-color: #2C2C2E; /* Border color */
+  --border-radius-sm: 8px;
+  --border-radius-md: 12px;
   --border-radius-lg: 16px;
-  --border-color: #3b5f5d;
+  --shadow-sm: 0 2px 5px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.14);
+  --transition-speed: 0.2s;
   --server-column-width: 72px;
   --channel-column-width: 240px;
   --status-dot-size: 10px;
-  --transition-speed: 0.2s;
   --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   --message-hover-bg: rgba(30, 58, 57, 0.7);
   --own-message-bg: rgba(59, 165, 92, 0.25);
@@ -50,8 +45,8 @@ body {
 
 /* Auth Card Styles */
 .auth-card {
-  background-color: var(--light-background);
-  border-radius: var(--border-radius);
+  background-color: var(--content-background);
+  border-radius: var(--border-radius-md);
   border: none;
   width: 400px;
   max-width: 90%;
@@ -63,25 +58,25 @@ body {
   color: white;
   text-align: center;
   padding: 20px;
-  border-top-left-radius: var(--border-radius);
-  border-top-right-radius: var(--border-radius);
+  border-top-left-radius: var(--border-radius-md);
+  border-top-right-radius: var(--border-radius-md);
   border: none;
 }
 
 .auth-card .card-body {
-  background-color: var(--light-background);
+  background-color: var(--content-background);
   padding: 20px;
   border: none;
 }
 
 .auth-card input {
-  background-color: var(--very-dark);
+  background-color: var(--background-color);
   border: 1px solid rgba(0, 0, 0, 0.3);
   color: var(--text-light);
 }
 
 .auth-card input:focus {
-  background-color: var(--very-dark);
+  background-color: var(--background-color);
   color: var(--text-light);
   border-color: var(--primary-color);
   box-shadow: 0 0 0 2px rgba(70, 143, 135, 0.25);
@@ -123,7 +118,7 @@ body {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background-color: var(--light-background);
+  background-color: var(--content-background);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -200,7 +195,7 @@ body {
   font-size: 12px;
   text-transform: uppercase;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   margin-bottom: 4px;
 }
 
@@ -215,12 +210,12 @@ body {
   border-radius: var(--border-radius-sm);
   margin-bottom: 2px;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   position: relative;
 }
 
 .dm-item:hover, .channel-item:hover {
-  background-color: var(--hover-bg);
+  background-color: var(--message-hover-bg);
   color: var(--text-light);
 }
 
@@ -234,7 +229,7 @@ body {
   height: 32px;
   border-radius: 50%;
   margin-right: 10px;
-  background-color: var(--light-background);
+  background-color: var(--content-background);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -252,7 +247,7 @@ body {
 .channel-icon {
   border-radius: 30%;
   background-color: transparent;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .dm-status {
@@ -275,7 +270,7 @@ body {
 }
 
 .dm-status.offline {
-  background-color: var(--text-muted);
+  background-color: var(--text-secondary);
 }
 
 /* Main Content Area (Right) */
@@ -314,7 +309,7 @@ body {
 
 .message-input-container {
   background-color: var(--secondary-color);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   padding: 0 16px;
   position: relative;
 }
@@ -335,7 +330,7 @@ body {
 }
 
 #message-input::placeholder {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .message-controls {
@@ -346,7 +341,7 @@ body {
 .message-control-button {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 20px;
   padding: 8px;
   cursor: pointer;
@@ -372,8 +367,8 @@ body {
 
 /* Enhanced Modal Styling */
 .modal-content {
-  border-radius: var(--border-radius);
-  background-color: var(--light-background);
+  border-radius: var(--border-radius-md);
+  background-color: var(--content-background);
   border: 1px solid var(--border-color);
   box-shadow: var(--box-shadow);
 }
@@ -408,7 +403,7 @@ body {
 
 /* Input Styles */
 .form-control {
-  background-color: var(--very-dark);
+  background-color: var(--background-color);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   color: var(--text-light);
@@ -416,7 +411,7 @@ body {
 }
 
 .form-control:focus {
-  background-color: var(--very-dark);
+  background-color: var(--background-color);
   border-color: var(--primary-color);
   box-shadow: 0 0 0 0.2rem rgba(76, 211, 193, 0.25);
   color: var(--text-light);
@@ -458,26 +453,27 @@ body {
 
 /* Message text bubbles */
 .message-text {
-  background: #6c47c7; /* Purple for other people's messages */
+  background: #2C2C2E; /* Dark gray for received messages like Signal */
   color: #fff;
-  padding: 0.5rem 0.85rem;
-  border-radius: 18px 18px 18px 2px; /* Pointed toward the left (middle) */
-  font-size: 1rem;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  padding: 0.7rem 0.9rem;
+  border-radius: 18px; /* Fully rounded corners like Signal */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   margin-bottom: 2px;
   margin-top: 2px;
-  max-width: 420px;
+  max-width: 70%; /* Wider bubbles like Signal */
   word-break: break-word;
   transition: background 0.2s;
   text-align: left;
   width: fit-content;
+  font-size: 0.95rem;
+  line-height: 1.4;
 }
 
 /* Your own message bubbles */
 .message.own-message .message-text {
-  background: #3ba55c; /* Green for your messages */
-  border-radius: 18px 18px 2px 18px; /* Pointed toward the right (middle) */
-  text-align: right;
+  background: #2090EA; /* Signal blue for your messages */
+  border-radius: 18px; /* Fully rounded corners like Signal */
+  text-align: left; /* Left-aligned text even in own messages */
   margin-left: auto;
 }
 
@@ -488,329 +484,172 @@ body {
   padding: 1rem;
   overflow-y: auto;
   height: calc(100vh - 140px);
-  background-color: var(--content-background);
+  background-color: #17171A; /* Darker background like Signal */
 }
 
 /* Avatar positioning */
 .message .message-avatar {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   margin-right: 12px;
   margin-left: 0;
   object-fit: cover;
-  background: #22223b;
-  border: 2px solid var(--border-color);
+  background: #2C2C2E;
+  border: none; /* No border like Signal */
 }
 
 .message.own-message .message-avatar {
-  margin-left: 12px;
-  margin-right: 0;
+  display: none; /* Signal doesn't show avatars for own messages */
 }
 
 /* Message header (username and timestamp) */
 .message .message-header {
   display: flex;
   align-items: center;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 
 .message-author {
   font-weight: 600;
   margin-right: 0.5rem;
   color: var(--text-light);
+  font-size: 0.85rem; /* Smaller username like Signal */
 }
 
+/* Timestamp styling */
 .message-timestamp {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-left: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-left: 0.3rem;
 }
 
-.message.own-message .message-timestamp {
-  margin-left: 0;
-  margin-right: 0.25rem;
+/* Message groups - add spacing between different senders */
+.message:not(:first-child) {
+  margin-top: 2px;
 }
 
-/* Message Actions */
-.message-actions {
-  position: absolute;
-  top: 0; /* Change from top: 0.25rem */
-  right: -10px; /* Change from -30px to -10px to move closer */
-  opacity: 0;
-  transition: opacity var(--transition-speed) ease;
-  z-index: 10;
+.message:not(:last-child) {
+  margin-bottom: 2px;
 }
 
-.message:hover .message-actions {
-  opacity: 1; /* Show the actions menu when hovering over a message */
+/* Different sender = more spacing */
+.message:not(.own-message) + .message.own-message,
+.message.own-message + .message:not(.own-message) {
+  margin-top: 16px;
 }
 
-.message.own-message .message-actions {
-  right: auto;
-  left: -10px; /* Change from -30px to -10px to move closer */
-}
-
-.message-actions-btn {
-  background: rgba(35, 39, 42, 0.7); /* Semi-transparent dark background */
-  border: none;
-  border-radius: 50%; /* Make it circular */
-  color: var(--text-muted);
-  padding: 0.25rem; /* Reduce padding */
-  width: 28px; /* Set fixed width */
-  height: 28px; /* Set fixed height */
-  font-size: 0.9rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-speed) ease;
-  box-shadow: var(--box-shadow);
-}
-
-.message-actions-btn:hover {
-  color: var(--text-light);
-  background-color: var(--secondary-color);
-}
-
-.message-actions-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  background-color: var(--light-background);
-  border-radius: var(--border-radius-sm);
-  box-shadow: var(--box-shadow);
-  min-width: 150px;
-  z-index: 1000;
+/* Link previews like in Signal */
+.link-preview {
+  background: #2C2C2E;
+  border-radius: 12px;
   overflow: hidden;
-  display: none;
-}
-
-/* Ensure the menu is visible in the viewport for own messages */
-.message.own-message .message-actions-menu {
-  right: auto; 
-  left: 0;
-}
-
-/* Position adjustment for menu when close to screen edge */
-.message-actions-menu.show {
-  display: block;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-/* Make sure the menu is positioned within the viewport */
-@media (max-width: 768px) {
-  .message-actions-menu {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 20%;
-    top: auto;
-    width: 80%;
-    max-width: 300px;
-  }
-}
-
-.message-action-item {
-  padding: 8px 12px;
-  cursor: pointer;
+  margin-top: 8px;
+  max-width: 100%;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-light);
-  transition: background-color 0.2s ease;
+  flex-direction: column;
 }
 
-.message-action-item i {
-  margin-right: 0.5rem;
-  width: 1rem;
-  text-align: center;
+.link-preview-image {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
 }
 
-.message-action-item:hover {
-  background-color: var(--secondary-color);
+.link-preview-content {
+  padding: 12px;
 }
 
-.message-action-item.danger {
-  color: var(--danger);
-}
-
-.message-action-item.danger:hover {
-  background-color: rgba(220, 53, 69, 0.1);
-}
-
-/* System Messages */
-.system-message {
-  text-align: center;
-  margin: 1rem 0;
-  padding: 0.5rem;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  font-style: italic;
-}
-
-/* User Profile Area - Discord Style */
-.user-profile-area {
-  margin-top: auto;
-  padding: 0.5rem 0.625rem;
-  background-color: var(--very-dark);
-  display: flex;
-  align-items: center;
-  border-top: 1px solid rgba(79, 84, 92, 0.48);
-}
-
-.user-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  margin-right: 0.5rem;
-  position: relative;
-  flex-shrink: 0;
-}
-
-.user-status {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: var(--status-dot-size);
-  height: var(--status-dot-size);
-  border-radius: 50%;
-  background-color: var(--success);
-  border: 2px solid var(--very-dark);
-}
-
-.user-details {
-  flex-grow: 1;
-  min-width: 0; /* Ensure text truncation works */
-}
-
-.user-name {
+.link-preview-title {
   font-weight: 600;
-  font-size: 0.875rem;
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9rem;
 }
 
-.user-tag {
+.link-preview-description {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.link-preview-url {
   font-size: 0.75rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
+  color: var(--text-secondary);
 }
 
-.user-controls {
-  display: flex;
-  margin-left: 0.25rem;
+/* Update notification styling to match Signal's notification bar */
+.notification {
+  background-color: #2090EA;
+  color: white;
+  padding: 12px 16px;
+  border-radius: 0;
+  margin: 0;
+  text-align: center;
+  position: relative;
+  font-size: 0.9rem;
 }
 
-.user-control-button {
+.notification .close-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
   background: none;
   border: none;
-  color: var(--text-muted);
-  padding: 0.25rem;
-  margin-left: 0.125rem;
+  color: white;
   cursor: pointer;
-  transition: color 0.2s ease;
-  border-radius: var(--border-radius-sm);
-  font-size: 1rem;
+  font-size: 1.2rem;
 }
 
-.user-control-button:hover {
+/* Sidebar styling to match Signal's clean look */
+#sidebar {
+  background-color: #1B1B1D;
+  border-right: 1px solid #2C2C2E;
+}
+
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid #2C2C2E;
+}
+
+/* Channel and DM items styling */
+.dm-item, .channel-item {
+  padding: 12px 16px;
+  border-radius: 0;
+  margin: 0;
+  border-bottom: 1px solid #2C2C2E;
+  transition: background-color 0.2s;
+}
+
+.dm-item:hover, .channel-item:hover, 
+.dm-item.active, .channel-item.active {
+  background-color: #2C2C2E;
+}
+
+/* Input area styling */
+#message-input-container {
+  background-color: #17171A;
+  border-top: 1px solid #2C2C2E;
+  padding: 12px 16px;
+}
+
+#message-input {
+  background-color: #2C2C2E;
+  border: none;
+  border-radius: 18px;
+  padding: 10px 16px;
   color: var(--text-light);
-  background-color: rgba(79, 84, 92, 0.32);
 }
 
-/* User status indicators */
-.user-status {
-  width: 10px;
-  height: 10px;
+#send-button {
+  background-color: #2090EA;
+  border: none;
   border-radius: 50%;
-  margin-right: 8px;
-  display: inline-block;
-}
-
-.user-status.online {
-  background-color: #43b581;
-}
-
-.user-status.idle {
-  background-color: #5cded0;
-}
-
-.user-status.dnd {
-  background-color: #ED4245;
-}
-
-.user-status.offline {
-  background-color: #747f8d;
-}
-
-/* Default avatar fallback */
-.avatar-fallback {
-  width: 32px;
-  height: 32px;
-  background-color: #5865f2;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-weight: bold;
-  font-size: 14px;
-}
-
-/* Message retry button */
-.message-retry {
-  color: #ED4245;
-  margin-left: 8px;
-  cursor: pointer;
-}
-
-.message-retry:hover {
-  text-decoration: underline;
-}
-
-/* System messages */
-.system-message {
-  padding: 8px 16px;
-  text-align: center;
-  color: #72767d;
-  font-style: italic;
-  margin: 10px 0;
-}
-
-/* Unread indicators */
-.unread-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background-color: #0fd7f1;
-    border-radius: 50%;
-    margin-left: 10px;
-    animation: pulse 2s infinite;
-}
-
-.dm-item.unread {
-    font-weight: bold;
-    background-color: rgba(15, 215, 241, 0.1);
-}
-
-@keyframes pulse {
-    0% {
-        box-shadow: 0 0 0 0 rgba(15, 215, 241, 0.7);
-    }
-    70% {
-        box-shadow: 0 0 0 6px rgba(15, 215, 241, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(15, 215, 241, 0);
-    }
 }
 
 /* Media queries for responsive design */
@@ -862,8 +701,8 @@ body {
 
 /* Emoji Picker Styling - Fixed positioning */
 .emoji-picker {
-  background-color: var(--very-dark);
-  border-radius: var(--border-radius);
+  background-color: var(--background-color);
+  border-radius: var(--border-radius-md);
   box-shadow: var(--box-shadow);
   width: 320px;
   max-height: 400px;
@@ -895,7 +734,7 @@ body {
   padding: 8px;
   margin: 0 4px;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   border-radius: var(--border-radius-sm);
   transition: all var(--transition-speed) ease;
 }
@@ -916,7 +755,7 @@ body {
   padding: 8px;
   border-radius: var(--border-radius-sm);
   border: 1px solid var(--border-color);
-  background-color: var(--dark);
+  background-color: var(--background-color);
   color: var(--text-light);
 }
 
@@ -1021,7 +860,7 @@ body {
   color: var(--text-light);
   padding: 20px;
   background-color: var(--content-background);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
@@ -1044,8 +883,8 @@ body {
 }
 
 .friend-card {
-  background-color: var(--light-background);
-  border-radius: var(--border-radius);
+  background-color: var(--content-background);
+  border-radius: var(--border-radius-md);
   padding: 16px;
   display: flex;
   align-items: center;
@@ -1085,7 +924,7 @@ body {
   height: 14px;
   border-radius: 50%;
   background-color: var(--danger);
-  border: 2px solid var(--light-background);
+  border: 2px solid var(--content-background);
 }
 
 .friend-info {
@@ -1108,7 +947,7 @@ body {
 
 .friend-status-text {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .friend-actions {
@@ -1125,7 +964,7 @@ body {
 
 /* Friend request notification styling */
 .friend-request-notification {
-  background-color: var(--light-background);
+  background-color: var(--content-background);
   border-left: 4px solid var(--primary-color);
   padding: 12px;
   margin-bottom: 16px;
@@ -1152,7 +991,7 @@ body {
   padding: 1rem;
   overflow-y: auto;
   height: calc(100vh - 140px);
-  background-color: var(--content-background);
+  background-color: #17171A; /* Darker background like Signal */
 }
 
 /* Add responsive styles back */
@@ -1176,12 +1015,12 @@ body {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .sidebar-section-header button {
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   border: none;
   padding: 2px 4px;
   font-size: 0.9rem;
@@ -1199,13 +1038,13 @@ body {
   justify-content: space-between;
   padding: 10px;
   border-radius: var(--border-radius-sm);
-  background-color: var(--light-background);
+  background-color: var(--content-background);
   margin-bottom: 8px;
   transition: background-color 0.2s;
 }
 
 .friend-request-item:hover {
-  background-color: var(--highlight);
+  background-color: var(--hover-highlight);
 }
 
 .friend-request-info {
@@ -1240,7 +1079,7 @@ body {
 
 .friend-request-status {
   font-size: 0.8rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .friend-request-actions {
@@ -1277,9 +1116,9 @@ body {
 
 /* Add Friend Modal */
 #add-friend-modal .modal-content {
-  background-color: var(--dark-background);
+  background-color: var(--background-color);
   color: var(--text-light);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--border-color);
 }
 
@@ -1292,13 +1131,13 @@ body {
 }
 
 #add-friend-modal .form-label {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 0.8rem;
   font-weight: 600;
 }
 
 #add-friend-modal .list-group-item {
-  background-color: var(--light-background);
+  background-color: var(--content-background);
   border-color: var(--border-color);
   color: var(--text-light);
 }
