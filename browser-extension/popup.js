@@ -25,10 +25,7 @@ chrome.storage.local.get('notificationSettings', (result) => {
 function updateConnectionStatus() {
   // Query for active tabs with The Homies Chat
   chrome.tabs.query({ 
-    url: [
-      '*://*.glitch.me/*',
-      'https://knotty-moored-spaghetti.glitch.me/*'
-    ] 
+    url: "*://*.glitch.me/*" 
   }, (tabs) => {
     if (tabs.length > 0) {
       // Get the background page to check login status
