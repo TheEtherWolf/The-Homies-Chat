@@ -1,46 +1,29 @@
-/* Main Styles for The Homies App - Discord-Style Layout */
+/* Main Styles for The Homies App - Discord/Signal Hybrid Layout */
 :root {
-  --primary-color: #2090EA; /* Signal blue */
-  --secondary-color: #1B1B1D; /* Dark sidebar color */
-  --background-color: #1B1B1D; /* Dark background */
-  --content-background: #17171A; /* Darker content area */
-  --text-color: #E9E9E9; /* Light text */
-  --text-secondary: #8E8E92; /* Secondary text */
-  --text-light: #E9E9E9; /* Light text for dark backgrounds */
-  --text-dark: #1B1B1D; /* Dark text for light backgrounds */
-  --border-color: #2C2C2E; /* Border color */
-  --border-radius-sm: 8px;
-  --border-radius-md: 12px;
+  --primary-color: #5865F2; /* Discord blue */
+  --signal-blue: #2090EA; /* Signal blue */
+  --background-color: #36393F; /* Discord background */
+  --content-background: #2F3136; /* Discord content background */
+  --sidebar-color: #202225; /* Discord sidebar */
+  --text-light: #FFFFFF;
+  --text-muted: #72767D;
+  --signal-gray: #2C2C2E;
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
   --border-radius-lg: 16px;
-  --shadow-sm: 0 2px 5px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.12);
-  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.14);
-  --transition-speed: 0.2s;
-  --server-column-width: 72px;
-  --channel-column-width: 240px;
-  --status-dot-size: 10px;
-  --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  --message-hover-bg: rgba(30, 58, 57, 0.7);
-  --own-message-bg: rgba(59, 165, 92, 0.25);
-  --other-message-bg: rgba(79, 84, 92, 0.25);
+  --box-shadow: 0 2px 10px 0 rgba(0, 0, 0, 0.2);
+  --transition: all 0.2s ease;
 }
 
 body {
+  margin: 0;
+  padding: 0;
   font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   background-color: var(--background-color);
   color: var(--text-light);
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  overflow: hidden; /* Prevent body scroll */
-}
-
-/* Base container styles */
-.container-fluid {
-  height: 100vh;
-  padding: 0;
-  margin: 0;
+  line-height: 1.5;
   overflow: hidden;
+  height: 100vh;
 }
 
 /* Auth Card Styles */
@@ -63,7 +46,7 @@ body {
 .auth-card-header,
 .card-header,
 .login-header {
-  background-color: #2090EA !important;
+  background-color: var(--signal-blue) !important;
   color: white !important;
   padding: 16px !important;
   text-align: center !important;
@@ -71,13 +54,19 @@ body {
   font-size: 18px !important;
 }
 
+.auth-card-body,
+.card-body,
+.login-body {
+  padding: 20px !important;
+}
+
 .auth-card input,
 .login-card input,
 .form-control {
-  background-color: #2C2C2E !important;
+  background-color: var(--signal-gray) !important;
   border: none !important;
   border-radius: 8px !important;
-  color: #E9E9E9 !important;
+  color: var(--text-light) !important;
   padding: 12px !important;
   margin-bottom: 15px !important;
   width: 100% !important;
@@ -87,7 +76,7 @@ body {
 .auth-card button,
 .login-card button,
 .btn-primary {
-  background-color: #2090EA !important;
+  background-color: var(--signal-blue) !important;
   border: none !important;
   border-radius: 8px !important;
   color: white !important;
@@ -101,12 +90,20 @@ body {
 
 .auth-card a,
 .login-card a {
-  color: #2090EA !important;
+  color: var(--signal-blue) !important;
   text-decoration: none !important;
   font-size: 14px !important;
   display: block !important;
   text-align: center !important;
   margin-top: 15px !important;
+}
+
+/* Base container styles */
+.container-fluid {
+  height: 100vh;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
 }
 
 /* Discord Style Three-Column Layout */
@@ -406,7 +403,7 @@ body {
 .message-bubble,
 .message-text,
 .message-content {
-  background: #2C2C2E !important; /* Dark gray for received messages */
+  background: var(--signal-gray) !important;
   color: #fff !important;
   padding: 8px 12px !important;
   border-radius: 18px !important; 
@@ -428,23 +425,21 @@ body {
 .message.own-message .message-bubble,
 .message.own-message .message-text,
 .message.own-message .message-content {
-  background: #0B93F6 !important; /* Signal blue for your messages */
+  background: var(--signal-blue) !important;
   float: right !important;
 }
 
-/* Remove the three dots menu button */
-.message-action-button,
-.message-menu-button,
-.action-button,
-.three-dots {
-  display: none !important;
-}
-
-/* Hide copy/delete menu by default */
+/* Hide ALL checkboxes and copy/delete buttons */
+.message input[type="checkbox"],
+.message-checkbox,
+.select-message,
 .copy-message-btn,
 .delete-message-btn,
 .message-menu-item,
-.message-action {
+.message-action,
+.message-menu,
+.message-actions,
+.copy-delete-menu {
   display: none !important;
   visibility: hidden !important;
   width: 0 !important;
@@ -454,10 +449,15 @@ body {
   left: -9999px !important;
 }
 
-/* Hide checkboxes in messages */
-.message input[type="checkbox"],
-.message-checkbox,
-.select-message {
+/* Hide avatars in messages */
+.message .message-avatar,
+.message .avatar-container,
+.message img.avatar,
+.avatar,
+.message-avatar,
+img.avatar,
+.user-avatar-img,
+.avatar-img {
   display: none !important;
   visibility: hidden !important;
   width: 0 !important;
@@ -467,20 +467,21 @@ body {
   left: -9999px !important;
 }
 
-/* Clean up the bottom user profile area */
+/* Clean up the bottom left user profile area */
 .user-profile-area,
 .profile-area,
 .user-controls {
   position: fixed !important;
-  bottom: 70px !important; /* Adjusted to be above the input area */
+  bottom: 70px !important;
   left: 16px !important;
-  background-color: transparent !important;
-  padding: 0 !important;
+  background-color: var(--content-background) !important;
+  border-radius: var(--border-radius-md) !important;
+  padding: 8px 12px !important;
   display: flex !important;
   align-items: center !important;
   z-index: 99 !important;
   max-width: 220px !important;
-  width: 208px !important;
+  box-shadow: var(--box-shadow) !important;
 }
 
 .user-avatar-container {
@@ -489,7 +490,7 @@ body {
   border-radius: 50% !important;
   overflow: hidden !important;
   margin-right: 10px !important;
-  background-color: #2C2C2E !important;
+  background-color: var(--signal-gray) !important;
 }
 
 .user-avatar-container img {
@@ -507,7 +508,7 @@ body {
 
 .user-name {
   font-weight: 600 !important;
-  color: #E9E9E9 !important;
+  color: var(--text-light) !important;
   font-size: 14px !important;
   margin-bottom: 2px !important;
   white-space: nowrap !important;
@@ -517,7 +518,7 @@ body {
 
 .user-status {
   font-size: 12px !important;
-  color: #8E8E92 !important;
+  color: var(--text-muted) !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -531,7 +532,7 @@ body {
 .user-control-button {
   background: none !important;
   border: none !important;
-  color: #8E8E92 !important;
+  color: var(--text-muted) !important;
   font-size: 16px !important;
   padding: 5px !important;
   cursor: pointer !important;
@@ -539,7 +540,23 @@ body {
 }
 
 .user-control-button:hover {
-  color: #E9E9E9 !important;
+  color: var(--text-light) !important;
+}
+
+/* Fix for the message text content */
+.message-text-content {
+  word-break: break-word !important;
+  white-space: pre-wrap !important;
+  width: auto !important;
+  max-width: 100% !important;
+}
+
+/* Add padding to the bottom of the messages container */
+#messages-container,
+.messages-container,
+.chat-messages {
+  padding-bottom: 80px !important;
+  background-color: var(--background-color) !important;
 }
 
 /* Fix for the input area at the bottom */
@@ -549,8 +566,8 @@ body {
 .message-input-wrapper,
 .input-group,
 .message-form {
-  background-color: #17171A !important;
-  border-top: 1px solid #2C2C2E !important;
+  background-color: var(--content-background) !important;
+  border-top: 1px solid var(--signal-gray) !important;
   padding: 10px !important;
   position: fixed !important;
   bottom: 0 !important;
@@ -561,7 +578,7 @@ body {
   align-items: center !important;
 }
 
-/* Fix for the purple triangle icon */
+/* Hide the purple triangle icon */
 .purple-triangle,
 svg[fill="#9c27b0"],
 svg[fill="purple"],
@@ -575,16 +592,16 @@ svg[fill="purple"],
   left: -9999px !important;
 }
 
-/* Fix for the message input area at the bottom */
+/* Message Input Styling - Signal-like */
 #message-input,
 .message-input,
 textarea.form-control,
 input[type="text"].form-control {
-  background-color: #2C2C2E !important;
+  background-color: var(--signal-gray) !important;
   border: none !important;
   border-radius: 20px !important;
   padding: 10px 16px !important;
-  color: #E9E9E9 !important;
+  color: var(--text-light) !important;
   width: calc(100% - 60px) !important;
   margin-right: 10px !important;
   height: 40px !important;
@@ -597,7 +614,7 @@ input[type="text"].form-control {
 #send-button,
 .send-button,
 button[type="submit"] {
-  background-color: #2090EA !important;
+  background-color: var(--primary-color) !important;
   border: none !important;
   border-radius: 50% !important;
   width: 36px !important;
@@ -611,22 +628,34 @@ button[type="submit"] {
   padding: 0 !important;
 }
 
-/* Hide ALL avatars in messages */
-.message .message-avatar,
-.message .avatar-container,
-.message img.avatar,
-.avatar,
-.message-avatar,
-img.avatar,
-.user-avatar-img,
-.avatar-img {
-  display: none !important;
-  visibility: hidden !important;
-  width: 0 !important;
-  height: 0 !important;
-  opacity: 0 !important;
-  position: absolute !important;
-  left: -9999px !important;
+/* Simplify the sidebar */
+.sidebar,
+.channels-sidebar,
+.left-sidebar {
+  background-color: var(--sidebar-color) !important;
+  border-right: 1px solid var(--signal-gray) !important;
+}
+
+/* Channel list styling */
+.channel-list,
+.channels-list,
+.text-channels {
+  margin-top: 10px !important;
+}
+
+.channel,
+.channel-item {
+  padding: 6px 10px !important;
+  border-radius: 4px !important;
+  margin: 2px 5px !important;
+  font-size: 14px !important;
+  color: var(--text-muted) !important;
+}
+
+.channel.active,
+.channel-item.active {
+  background-color: rgba(88, 101, 242, 0.2) !important;
+  color: var(--text-light) !important;
 }
 
 /* Media queries for responsive design */
@@ -674,34 +703,4 @@ img.avatar,
     left: 0;
     z-index: 100;
   }
-}
-
-/* Simplify the sidebar */
-.sidebar,
-.channels-sidebar,
-.left-sidebar {
-  background-color: #17171A !important;
-  border-right: 1px solid #2C2C2E !important;
-}
-
-/* Channel list styling */
-.channel-list,
-.channels-list,
-.text-channels {
-  margin-top: 10px !important;
-}
-
-.channel,
-.channel-item {
-  padding: 6px 10px !important;
-  border-radius: 4px !important;
-  margin: 2px 5px !important;
-  font-size: 14px !important;
-  color: #8E8E92 !important;
-}
-
-.channel.active,
-.channel-item.active {
-  background-color: rgba(32, 144, 234, 0.2) !important;
-  color: #E9E9E9 !important;
 }
