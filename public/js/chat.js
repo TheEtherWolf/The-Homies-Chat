@@ -1267,9 +1267,9 @@ class ChatManager {
                 this.socket.emit('chat-message', messageData);
             }
             
-            // Add to UI immediately for instant feedback with the temp ID
-            messageData.id = tempId; // Set the ID to the temp ID for DOM tracking
-            this.displayMessageInUI(messageData);
+            // DISABLED: Add to UI immediately for instant feedback with the temp ID
+            // messageData.id = tempId; // Set the ID to the temp ID for DOM tracking
+            // this.displayMessageInUI(messageData);
         } catch (error) {
             console.error('[CHAT_DEBUG] Error sending message:', error);
             this.addSystemMessage('Error sending message. Please try again.');
