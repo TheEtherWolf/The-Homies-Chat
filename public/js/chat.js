@@ -1546,26 +1546,14 @@ class ChatManager {
                                         console.log(`[CHAT_DEBUG] Removed deleted message from channel cache: ${channelId}`);
                                     }
                                 }
-                                
-                                // Also check general messages
-                                if (this.generalChatMessages) {
-                                    const genIndex = this.generalChatMessages.findIndex(
-                                        msg => msg.id === messageId
-                                    );
-                                    
-                                    if (genIndex !== -1) {
-                                        this.generalChatMessages.splice(genIndex, 1);
-                                        console.log(`[CHAT_DEBUG] Removed deleted message from general chat cache`);
-                                    }
-                                }
                             } else {
-                                console.error(`[CHAT_DEBUG] Failed to delete message: ${response.message}`);
-                                alert(`Failed to delete message: ${response.message}`);
+                                console.error(`[CHAT_DEBUG] Failed to delete message: ${messageId}`, response.error);
+                                this.displaySystemMessage('Failed to delete message: ' + (response.error || 'Unknown error'));
                             }
+                            
+                            // Close menu
+                            actionsMenu.classList.remove('show');
                         });
-                        
-                        // Close menu
-                        actionsMenu.classList.remove('show');
                     }
                 });
             });
@@ -1575,7 +1563,7 @@ class ChatManager {
     // Close all message action menus when clicking elsewhere
     setupGlobalClickHandler() {
         document.addEventListener('click', (e) => {
-            // Check if click is outside any message action menu
+            // If the click is not inside any message-actions element, close all menus
             if (!e.target.closest('.message-actions')) {
                 document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
                     menu.classList.remove('show');

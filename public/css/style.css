@@ -394,6 +394,139 @@ body {
   text-align: right;
 }
 
+/* Message avatar styling */
+.message-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  margin-right: 8px;
+  overflow: hidden;
+}
+
+.message-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.message-content {
+  flex: 1;
+  max-width: calc(100% - 36px);
+}
+
+/* Message actions styling */
+.message-actions {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  z-index: 5;
+}
+
+.message-actions-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  opacity: 0;
+}
+
+.message:hover .message-actions-btn {
+  opacity: 0.8;
+}
+
+.message-actions-btn:hover {
+  color: var(--text-light);
+  background-color: rgba(255, 255, 255, 0.1);
+  opacity: 1;
+}
+
+.message-actions-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background-color: var(--sidebar-color);
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--box-shadow);
+  padding: 4px 0;
+  min-width: 150px;
+  z-index: 10;
+  display: none;
+}
+
+.message-actions-menu.show {
+  display: block;
+}
+
+.message-action-item {
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--text-light);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+}
+
+.message-action-item i {
+  margin-right: 8px;
+  font-size: 14px;
+}
+
+.message-action-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.message-action-item.danger {
+  color: var(--danger-color);
+}
+
+.message-action-item.danger:hover {
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+/* Hide copy/delete buttons by default */
+.message-options {
+  display: none;
+}
+
+.message-option-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--border-radius-sm);
+  display: flex;
+  align-items: center;
+  margin-right: 4px;
+}
+
+.message-option-btn:last-child {
+  margin-right: 0;
+}
+
+.message-option-btn i {
+  margin-right: 4px;
+}
+
+.message-option-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-light);
+}
+
+.message-option-btn.danger:hover {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: var(--danger-color);
+}
+
 /* System Message */
 .system-message {
   text-align: center;
