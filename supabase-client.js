@@ -682,10 +682,11 @@ async function saveMessagesToSupabase(messages) {
 
 /**
  * Mark a message as deleted in Supabase
- * @param {string} messageId - The ID of the message to delete
+ * @param {string} messageId - ID of the message to mark as deleted
+ * @param {string} userId - ID of the user requesting deletion (for permission check)
  * @returns {Promise<boolean>} - Success status
  */
-async function markMessageAsDeleted(messageId) {
+async function markMessageAsDeleted(messageId, userId) {
   try {
     // Ensure Supabase is configured
     if (!serviceSupabase || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
@@ -700,10 +701,10 @@ async function markMessageAsDeleted(messageId) {
 
     console.log(`Marking message ${messageId} as deleted in Supabase`);
 
-    // First check if the message exists
+    // First check if the message exists and belongs to the user
     const { data: existingMessage, error: fetchError } = await serviceSupabase
       .from('messages')
-      .select('id')
+      .select('id, sender_id')
       .eq('id', messageId)
       .maybeSingle();
 
@@ -717,12 +718,19 @@ async function markMessageAsDeleted(messageId) {
       return false;
     }
 
-    // Update the message with deleted status
+    // Check if the user is the owner of the message
+    if (userId && existingMessage.sender_id !== userId) {
+      console.error(`User ${userId} is not the owner of message ${messageId}`);
+      return false;
+    }
+
+    // Update the message with deleted status using the new column name
     const { error } = await serviceSupabase
       .from('messages')
       .update({
-        deleted: true,
-        deleted_at: new Date().toISOString()
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        content: '[This message has been deleted]' // Replace content with placeholder
       })
       .eq('id', messageId);
 

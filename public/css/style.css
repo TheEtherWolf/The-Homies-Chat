@@ -557,6 +557,17 @@ body {
   color: var(--danger-color);
 }
 
+/* Deleted message styling */
+.deleted-message {
+  font-style: italic;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.message-text.deleted {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
 /* System Message */
 .system-message {
   text-align: center;

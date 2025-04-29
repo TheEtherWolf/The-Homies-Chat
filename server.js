@@ -1006,52 +1006,65 @@ io.on("connection", (socket) => {
     });
     
     // Handle message deletion
-    socket.on('delete-message', async (messageData, callback) => {
+    socket.on('delete-message', async (data, callback) => {
         try {
-            if (!messageData || !messageData.messageId) {
-                console.error('Cannot delete message: Missing message ID');
-                callback({ success: false, message: 'Missing message ID' });
-                return;
-            }
-
-            const messageId = messageData.messageId;
-            console.log(`Attempting to delete message: ${messageId}`);
+            const { messageId, userId } = data;
             
-            // Check if user is authenticated
-            if (!users[socket.id] || !users[socket.id].id) { // Corrected key from userId to id
-                console.error('Cannot delete message: User not authenticated');
-                callback({ success: false, message: 'You must be logged in to delete messages' });
-                return;
+            // Validate input
+            if (!messageId || !userId) {
+                console.error('Missing required fields for message deletion');
+                return callback({ 
+                    success: false, 
+                    error: 'Missing required fields' 
+                });
             }
             
-            // Mark message as deleted in Supabase
-            const success = await markMessageAsDeleted(messageId);
+            console.log(`Attempting to delete message ${messageId} by user ${userId}`);
+            
+            // Verify the user is authenticated
+            if (!users[socket.id] || !users[socket.id].authenticated) {
+                console.error('Unauthenticated user tried to delete a message');
+                return callback({ 
+                    success: false, 
+                    error: 'Authentication required' 
+                });
+            }
+            
+            // Verify the user ID matches the socket's user ID
+            if (users[socket.id].id !== userId) {
+                console.error(`User ID mismatch: socket has ${users[socket.id].id} but request has ${userId}`);
+                return callback({ 
+                    success: false, 
+                    error: 'User ID mismatch' 
+                });
+            }
+            
+            // Call the Supabase function to mark the message as deleted
+            const success = await markMessageAsDeleted(messageId, userId);
             
             if (success) {
-                // Find and remove the message from channelMessages
-                for (const channel in channelMessages) {
-                    const index = channelMessages[channel].findIndex(msg => msg.id === messageId);
-                    if (index !== -1) {
-                        console.log(`Removing message ${messageId} from channel ${channel}`);
-                        channelMessages[channel].splice(index, 1);
-                        
-                        // Notify all users in the channel about the deletion
-                        io.emit('message-deleted', { 
-                            messageId,
-                            channel
-                        });
-                        
-                        break;
-                    }
-                }
+                console.log(`Message ${messageId} successfully marked as deleted`);
                 
-                callback({ success: true, message: 'Message deleted successfully' });
+                // Broadcast to all clients that the message has been deleted
+                io.emit('message-deleted', {
+                    messageId,
+                    deletedBy: userId
+                });
+                
+                return callback({ success: true });
             } else {
-                callback({ success: false, message: 'Failed to delete message from database' });
+                console.error(`Failed to delete message ${messageId}`);
+                return callback({ 
+                    success: false, 
+                    error: 'Failed to delete message' 
+                });
             }
         } catch (error) {
-            console.error('Error deleting message:', error);
-            callback({ success: false, message: 'An error occurred while deleting the message' });
+            console.error('Error handling message deletion:', error);
+            return callback({ 
+                success: false, 
+                error: 'Server error processing deletion request' 
+            });
         }
     });
     
@@ -1718,7 +1731,11 @@ io.on("connection", (socket) => {
         if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
             return callback({ success: false, message: 'Not authenticated' });
         }
-        
+        // Validate input data
+        if (!data || !data.username) {
+            return callback({ success: false, message: 'Username is required' });
+        }
+
         const userId = users[socket.id].id;
         console.log(`Generating new friend code for user ${users[socket.id].username} (${userId})`);
         

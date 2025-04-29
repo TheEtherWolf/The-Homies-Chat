@@ -100,12 +100,7 @@ class ChatManager {
         this.socket.on('message', (message) => this.handleIncomingMessage(message));
         this.socket.on('message-history', (data) => this.handleMessageHistory(data));
         this.socket.on('message-saved', (confirmedMessage) => this.handleMessageConfirmation(confirmedMessage));
-        this.socket.on('message-deleted', (data) => {
-            console.log('[CHAT_DEBUG] Message deleted:', data);
-            // Remove from UI if present
-            const messageElement = document.querySelector(`.message[data-message-id="${data.messageId}"]`);
-            if (messageElement) messageElement.remove();
-        });
+        this.socket.on('message-deleted', (data) => this.handleMessageDeleted(data));
         
         // --- Friend Request Events ---
         this.socket.on('friend-request-received', (data) => this.handleIncomingFriendRequest(data));
@@ -1571,21 +1566,41 @@ class ChatManager {
                     }
                     else if (action === 'delete' && messageId) {
                         // Delete message
-                        this.socket.emit('delete-message', { messageId }, (response) => {
+                        const userId = this.currentUser?.id;
+                        if (!userId) {
+                            console.error('[CHAT_DEBUG] Cannot delete message: No user ID available');
+                            this.displaySystemMessage('Error: You must be logged in to delete messages');
+                            actionsMenu.classList.remove('show');
+                            return;
+                        }
+                        
+                        this.socket.emit('delete-message', { messageId, userId }, (response) => {
                             if (response.success) {
-                                console.log(`[CHAT_DEBUG] Message deleted successfully: ${messageId}`);
-                                // Remove the message from UI immediately 
-                                messageElement.remove();
+                                console.log(`[CHAT_DEBUG] Message marked as deleted: ${messageId}`);
                                 
-                                // Remove from local cache in ALL channels
+                                // Update the message in the UI to show it's been deleted
+                                const messageTextElement = messageElement.querySelector('.message-text');
+                                if (messageTextElement) {
+                                    messageTextElement.innerHTML = '<em>[This message has been deleted]</em>';
+                                    messageTextElement.classList.add('deleted-message');
+                                }
+                                
+                                // Remove action buttons since the message is now deleted
+                                const actionsButton = messageElement.querySelector('.message-actions-btn');
+                                if (actionsButton) {
+                                    actionsButton.style.display = 'none';
+                                }
+                                
+                                // Update the message in the cache
                                 for (const channelId in this.channelMessages) {
                                     const index = this.channelMessages[channelId].findIndex(
                                         msg => msg.id === messageId
                                     );
                                     
                                     if (index !== -1) {
-                                        this.channelMessages[channelId].splice(index, 1);
-                                        console.log(`[CHAT_DEBUG] Removed deleted message from channel cache: ${channelId}`);
+                                        this.channelMessages[channelId][index].is_deleted = true;
+                                        this.channelMessages[channelId][index].content = '[This message has been deleted]';
+                                        console.log(`[CHAT_DEBUG] Marked message as deleted in channel cache: ${channelId}`);
                                     }
                                 }
                             } else {
@@ -1600,18 +1615,6 @@ class ChatManager {
                 });
             });
         }
-    }
-    
-    // Close all message action menus when clicking elsewhere
-    setupGlobalClickHandler() {
-        document.addEventListener('click', (e) => {
-            // If the click is not inside any message-actions element, close all menus
-            if (!e.target.closest('.message-actions')) {
-                document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
-                    menu.classList.remove('show');
-                });
-            }
-        });
     }
 
     // Format timestamp in Discord style
@@ -2063,12 +2066,10 @@ class ChatManager {
                 acceptBtn.addEventListener('click', () => {
                     const username = acceptBtn.getAttribute('data-username');
                     this.acceptFriendRequest(username);
-                    requestItem.remove();
                     
-                    // Check if there are no more requests
-                    if (pendingRequestsList.querySelectorAll('.friend-request-item').length === 0) {
-                        if (noRequestsMessage) noRequestsMessage.classList.remove('d-none');
-                    }
+                    // Close the modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('friend-request-notification-modal'));
+                    if (modal) modal.hide();
                 });
             }
             
@@ -2076,12 +2077,6 @@ class ChatManager {
                 rejectBtn.addEventListener('click', () => {
                     const username = rejectBtn.getAttribute('data-username');
                     this.rejectFriendRequest(username);
-                    requestItem.remove();
-                    
-                    // Check if there are no more requests
-                    if (pendingRequestsList.querySelectorAll('.friend-request-item').length === 0) {
-                        if (noRequestsMessage) noRequestsMessage.classList.remove('d-none');
-                    }
                 });
             }
             
@@ -2447,6 +2442,60 @@ class ChatManager {
                 this.displaySystemMessage(`Failed to send friend request: ${response.message}`);
             }
         });
+    }
+
+    // Close all message action menus when clicking elsewhere
+    setupGlobalClickHandler() {
+        document.addEventListener('click', (e) => {
+            // If the click is not inside any message-actions element, close all menus
+            if (!e.target.closest('.message-actions')) {
+                document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
+                    menu.classList.remove('show');
+                });
+            }
+        });
+    }
+
+    // Handle message deleted event from server
+    handleMessageDeleted(data) {
+        const { messageId, deletedBy } = data;
+        
+        if (!messageId) {
+            console.error('[CHAT_DEBUG] Received invalid message-deleted event without messageId');
+            return;
+        }
+        
+        console.log(`[CHAT_DEBUG] Message ${messageId} was deleted by user ${deletedBy}`);
+        
+        // Find the message element in the DOM
+        const messageElement = document.querySelector(`.message[data-message-id="${messageId}"]`);
+        if (messageElement) {
+            // Update the message in the UI to show it's been deleted
+            const messageTextElement = messageElement.querySelector('.message-text');
+            if (messageTextElement) {
+                messageTextElement.innerHTML = '<em>[This message has been deleted]</em>';
+                messageTextElement.classList.add('deleted-message');
+            }
+            
+            // Remove action buttons since the message is now deleted
+            const actionsButton = messageElement.querySelector('.message-actions-btn');
+            if (actionsButton) {
+                actionsButton.style.display = 'none';
+            }
+        }
+        
+        // Update the message in the cache for all channels
+        for (const channelId in this.channelMessages) {
+            const index = this.channelMessages[channelId].findIndex(
+                msg => msg.id === messageId
+            );
+            
+            if (index !== -1) {
+                this.channelMessages[channelId][index].is_deleted = true;
+                this.channelMessages[channelId][index].content = '[This message has been deleted]';
+                console.log(`[CHAT_DEBUG] Marked message as deleted in channel cache: ${channelId}`);
+            }
+        }
     }
 }
 
