@@ -91,123 +91,81 @@
         <!-- Main App - Discord Layout -->
         <div id="app-container" class="d-none">
             
-            <!-- Server Column (Left) -->
-            <div id="server-column">
-                <div class="server-sep"></div>
-                <!-- Server icons -->
-                <div class="server-icon active">
-                    <i class="bi bi-people-fill"></i>
-                </div>
-                <div class="server-icon" id="dm-server-icon">
-                    <i class="bi bi-chat-square-text-fill"></i>
-                </div>
-            </div>
-
-            <!-- Channels Column (Middle) -->
-            <div id="sidebar">
-                <div class="sidebar-header">
-                    <span>The Homies</span>
+            <!-- Left Sidebar -->
+            <div id="left-sidebar">
+                <!-- App Logo -->
+                <div class="app-logo">
+                    <span>The Homies Chat</span>
                 </div>
                 
-                <div class="channels-section">
-                    <div class="channels-header" id="channels-header">
-                        <span>TEXT CHANNELS</span>
-                        <button id="add-channel-btn" class="btn btn-sm" title="Add Channel">
-                            <i class="bi bi-plus-circle-fill"></i>
+                <!-- Main Navigation -->
+                <div class="main-nav">
+                    <button class="nav-button active" id="home-button" title="Home">
+                        <i class="bi bi-house-fill"></i>
+                        <span>Home</span>
+                    </button>
+                    <button class="nav-button" id="dm-button" title="Direct Messages">
+                        <i class="bi bi-chat-fill"></i>
+                        <span>DMs</span>
+                    </button>
+                    <button class="nav-button" id="create-group-button" title="Create Group">
+                        <i class="bi bi-people-fill"></i>
+                        <span>New Group</span>
+                    </button>
+                </div>
+                
+                <!-- Channels Section (shown when in Home view) -->
+                <div id="channels-section">
+                    <div class="section-header">
+                        <span>CHANNELS</span>
+                        <button id="add-channel-btn" class="btn-icon" title="Add Channel">
+                            <i class="bi bi-plus-lg"></i>
                         </button>
                     </div>
-                    <div id="channels-list" class="channels-list">
-                        <div class="channel-item active" data-channel="general">
+                    <div id="channels-list" class="list-container">
+                        <div class="list-item active" data-channel="general">
                             <i class="bi bi-hash"></i>
                             <span>general</span>
                         </div>
-                        <div class="channel-item" data-channel="announcements">
+                        <div class="list-item" data-channel="announcements">
                             <i class="bi bi-hash"></i>
                             <span>announcements</span>
                         </div>
-                        <div class="channel-item" data-channel="memes">
+                        <div class="list-item" data-channel="memes">
                             <i class="bi bi-hash"></i>
                             <span>memes</span>
                         </div>
                     </div>
                 </div>
-
-                <!-- Create Channel Modal -->
-                <div class="modal fade" id="create-channel-modal" tabindex="-1" aria-labelledby="createChannelModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title" id="createChannelModalLabel">Create Text Channel</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <form id="create-channel-form">
-                                    <div class="mb-3">
-                                        <label for="new-channel-name" class="form-label">Channel Name</label>
-                                        <input type="text" class="form-control" id="new-channel-name" placeholder="new-channel" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="new-channel-desc" class="form-label">Description (Optional)</label>
-                                        <input type="text" class="form-control" id="new-channel-desc" placeholder="What's this channel about?">
-                                    </div>
-                                    <div class="form-check mb-3">
-                                        <input class="form-check-input" type="checkbox" id="new-channel-private">
-                                        <label class="form-check-label" for="new-channel-private">
-                                            Private Channel
-                                        </label>
-                                    </div>
-                                </form>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="button" class="btn btn-primary" id="create-channel-submit">Create Channel</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="sidebar-section">
-                    <div class="sidebar-section-header">
-                        <span>Direct Messages</span>
-                        <button id="add-friend-btn" class="btn btn-sm" title="Add Friend">
+                
+                <!-- DMs Section (hidden by default, shown when DM button is clicked) -->
+                <div id="dms-section" class="d-none">
+                    <div class="section-header">
+                        <span>DIRECT MESSAGES</span>
+                        <button id="add-friend-btn" class="btn-icon" title="Add Friend">
                             <i class="bi bi-person-plus-fill"></i>
                         </button>
                     </div>
-                    
-                    <!-- DM list will be populated here -->
-                    <div id="dm-list">
-                        <!-- Example DM item -->
-                        <div class="dm-item">
-                            <div class="dm-avatar">
-                                <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="User Avatar">
-                                <div class="dm-status"></div>
-                            </div>
-                            <span></span>
-                        </div>
+                    <div id="dm-list" class="list-container">
+                        <!-- DM items will be added here by JS -->
                     </div>
                 </div>
                 
                 <!-- User Profile Area -->
                 <div class="user-profile-area">
                     <div class="user-avatar">
-                        <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="Your Avatar" width="32" height="32">
-                        <div class="user-status"></div>
+                        <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="Your Avatar">
+                        <div class="user-status online"></div>
                     </div>
                     <div class="user-details">
                         <div class="user-name" id="current-user">Username</div>
                         <div class="user-tag">@username</div>
                     </div>
                     <div class="user-controls">
-                        <button class="user-control-button" title="Mute">
-                            <i class="bi bi-mic-fill"></i>
-                        </button>
-                        <button class="user-control-button" title="Deafen">
-                            <i class="bi bi-headphones"></i>
-                        </button>
-                        <button class="user-control-button" title="Settings" id="settings-button">
+                        <button class="user-control-button" id="settings-button" title="Settings">
                             <i class="bi bi-gear-fill"></i>
                         </button>
-                        <button class="user-control-button" title="Logout" id="logout-btn">
+                        <button class="user-control-button" id="logout-btn" title="Sign Out">
                             <i class="bi bi-box-arrow-right"></i>
                         </button>
                     </div>
@@ -222,11 +180,19 @@
                         <i class="bi bi-hash me-2"></i>
                         <span class="fw-bold" id="chat-title">general</span>
                     </div>
+                    <div class="header-controls">
+                        <button class="header-button" id="video-call-button" title="Start Video Call">
+                            <i class="bi bi-camera-video-fill"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Messages Container -->
                 <div id="messages-container">
                     <!-- Messages will be added here by JS -->
+                    <div class="date-separator">
+                        <span>Today</span>
+                    </div>
                     <div class="system-message">
                         Welcome to the beginning of #general
                     </div>
@@ -235,24 +201,53 @@
                 <!-- Message Input Area -->
                 <div id="message-input-area">
                     <div class="message-input-container">
-                        <div class="d-flex align-items-center">
+                        <div class="input-wrapper">
                             <textarea id="message-input" placeholder="Message #general" rows="1"></textarea>
                         </div>
                         <div class="message-controls">
-                            <button class="message-control-button" id="emoji-button">
+                            <button class="message-control-button" id="emoji-button" title="Add Emoji">
                                 <i class="bi bi-emoji-smile"></i>
                             </button>
-                            <button class="message-control-button" id="attach-file-button">
+                            <button class="message-control-button" id="attach-file-button" title="Attach File">
                                 <i class="bi bi-paperclip"></i>
                             </button>
-                            <button id="send-button">
-                                <i class="bi bi-send"></i>
+                            <button id="send-button" title="Send Message">
+                                <i class="bi bi-send-fill"></i>
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
-            
+        </div>
+
+        <!-- Create Group Modal -->
+        <div class="modal fade" id="create-group-modal" tabindex="-1" aria-labelledby="createGroupModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="createGroupModalLabel">Create New Group</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="create-group-form">
+                            <div class="mb-3">
+                                <label for="group-name" class="form-label">Group Name</label>
+                                <input type="text" class="form-control" id="group-name" placeholder="My Awesome Group" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Add Friends</label>
+                                <div id="friend-selection-list" class="friend-selection">
+                                    <!-- Friend selection checkboxes will be added here by JS -->
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="create-group-submit">Create Group</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Emoji Picker (hidden by default) -->
