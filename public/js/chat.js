@@ -1317,15 +1317,17 @@ class ChatManager {
         messageElement.className = isOwn ? 'message own-message' : 'message';
         messageElement.setAttribute('data-message-id', message.id || 'temp-' + Date.now());
         
+        // Add sender and timestamp attributes for grouping
+        const sender = message.username || message.sender || 'unknown';
+        messageElement.setAttribute('data-sender', sender);
+        messageElement.setAttribute('data-timestamp', message.timestamp || Date.now());
+        
         // Check if this should be a first message in a group (with avatar and header)
-        const isFirstMessageInGroup = (message) => {
-            // For now, always treat every message as a first in group
-            // You can later enhance this with logic to group messages by sender/time
-            return true;
-        };
-        const isFirstMessage = isFirstMessageInGroup(message);
-        if (isFirstMessage) {
+        const isFirstMessageInGroup = this.isFirstMessageInGroup(message);
+        if (isFirstMessageInGroup) {
             messageElement.classList.add('first-message');
+        } else {
+            messageElement.classList.add('grouped');
         }
         
         // Basic classes
@@ -1341,7 +1343,7 @@ class ChatManager {
         let messageHTML = '';
         
         // Only first message in a group gets avatar and header
-        if (isFirstMessage) {
+        if (isFirstMessageInGroup) {
             // Get avatar URL - use default if not provided
             const avatarUrl = message.avatarUrl || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378';
             
@@ -1353,10 +1355,9 @@ class ChatManager {
             
             messageHTML += `
                 <img src="${avatarUrl}" alt="${displayName}" class="message-avatar">
-                <div class="message-content">
-                    <div class="message-header">
-                        <span class="message-author">${this.sanitizeHTML(displayName)}</span>&nbsp;<span class="message-timestamp">${timestamp}</span>
-                    </div>
+                <div class="message-header">
+                    <span class="message-author">${this.sanitizeHTML(displayName)}</span>&nbsp;<span class="message-timestamp">${timestamp}</span>
+                </div>
             `;
         } else {
             // For grouped messages, simplified structure
@@ -1427,6 +1428,47 @@ class ChatManager {
         }, 500);
     }
     
+    // Check if this should be a first message in a group (with avatar and header)
+    isFirstMessageInGroup(message) {
+        // Get all messages in the container
+        const allMessages = Array.from(this.messagesContainer.querySelectorAll('.message'));
+        
+        // If this is the first message, it's definitely a first in group
+        if (allMessages.length === 0) {
+            return true;
+        }
+        
+        // Get the previous message element
+        const prevMessageElement = allMessages[allMessages.length - 1];
+        
+        // If no previous message, this is a first in group
+        if (!prevMessageElement) {
+            return true;
+        }
+        
+        // Get the previous message's sender
+        const prevMessageSender = prevMessageElement.getAttribute('data-sender');
+        const currentSender = message.username || message.sender || 'unknown';
+        
+        // If different senders, this is a first in group
+        if (prevMessageSender !== currentSender) {
+            return true;
+        }
+        
+        // Check time difference (if within 5 minutes, group together)
+        const prevMessageTime = prevMessageElement.getAttribute('data-timestamp');
+        const currentMessageTime = message.timestamp || Date.now();
+        
+        // If time difference is more than 5 minutes (300000ms), this is a first in group
+        if (!prevMessageTime || !currentMessageTime || 
+            Math.abs(parseInt(currentMessageTime) - parseInt(prevMessageTime)) > 300000) {
+            return true;
+        }
+        
+        // If we got here, this message should be grouped with the previous one
+        return false;
+    }
+
     // Handle confirmation that a message was saved (received permanent ID)
     handleMessageConfirmation(confirmedMessage) {
         console.log('[CHAT_DEBUG] Message confirmation received:', confirmedMessage);
@@ -1843,10 +1885,10 @@ class ChatManager {
                     this.socket.emit('delete-message', { messageId }, (response) => {
                         if (response.success) {
                             console.log(`[CHAT_DEBUG] Message deleted successfully: ${messageId}`);
-                            // Remove the message from UI immediately
+                            // Remove the message from UI immediately 
                             messageElement.remove();
                         } else {
-                            console.error(`[CHAT_DEBUG] Failed to delete message: ${response.message}`);
+                            console.error(`[CHAT_DEBUG] Failed to delete message: ${messageId}`, response.error);
                             alert(`Failed to delete message: ${response.message}`);
                         }
                     });

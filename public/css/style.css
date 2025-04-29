@@ -1,21 +1,28 @@
 /* Main Styles for The Homies App - Modern Chat Layout */
 :root {
-  --primary-color: #0052FF; /* Bright blue for your messages */
-  --secondary-color: #2C2C2E; /* Gray for other people's messages */
+  /* Color Variables */
+  --primary-color: #3498db;
+  --secondary-color: #2c3e50;
+  --accent-color: #1abc9c;
+  --danger-color: #e74c3c;
+  --warning-color: #f39c12;
+  --success-color: #2ecc71;
+  --dark-color: #121212;
+  --dark-secondary: #1e1e1e;
+  --sidebar-color: #1a2633;
+  --text-light: #ecf0f1;
+  --text-muted: #95a5a6;
+  --border-color: #34495e;
+  --hover-color: rgba(255, 255, 255, 0.1);
+  --message-bg: #2c3e50;
+  --own-message-bg: #3498db;
   --background-color: #0A2E36; /* Dark teal background */
-  --sidebar-color: #0F3740; /* Slightly lighter than background */
   --input-bg: #1A3E46; /* Input background */
-  --text-light: #FFFFFF;
-  --text-muted: #A0A0A0;
-  --accent-color: #00C2FF; /* Accent color for highlights */
-  --success-color: #4CAF50; /* Green for online status */
-  --warning-color: #FFC107; /* Yellow for away status */
-  --danger-color: #F44336; /* Red for busy/DND status */
+  --box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  --transition: all 0.2s ease;
   --border-radius-sm: 8px;
   --border-radius-md: 12px;
   --border-radius-lg: 20px;
-  --box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  --transition: all 0.2s ease;
 }
 
 body {
@@ -357,61 +364,79 @@ body {
 
 /* Message Styling */
 .message {
+  position: relative;
+  margin-bottom: 8px;
+  padding-left: 40px; /* Space for avatar */
   display: flex;
   flex-direction: column;
-  margin-bottom: 16px;
-  max-width: 100%;
-  position: relative;
-  clear: both;
+  align-items: flex-start;
+  width: 100%;
 }
 
-.message-bubble {
-  background-color: var(--secondary-color);
+.message.own-message {
+  padding-left: 0;
+  padding-right: 40px;
+  align-items: flex-end;
+}
+
+.message-text {
+  font-size: 15px;
+  line-height: 1.4;
   color: var(--text-light);
-  padding: 12px 16px;
-  border-radius: var(--border-radius-lg);
-  max-width: 70%;
+  padding: 8px 12px;
+  border-radius: var(--border-radius-md);
+  background-color: var(--message-bg);
+  max-width: 80%;
   word-break: break-word;
-  position: relative;
-  float: left;
-  clear: both;
+  margin-bottom: 2px;
+}
+
+.message.own-message .message-text {
+  background-color: var(--own-message-bg);
+}
+
+.message-header {
   margin-bottom: 4px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
 }
 
-.message.own-message .message-bubble {
-  background-color: var(--primary-color);
-  float: right;
+.message-author {
+  font-weight: 600;
+  color: var(--text-light);
+  margin-right: 6px;
 }
 
-.message-time {
+.message-timestamp {
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: 4px;
-  clear: both;
-}
-
-.message.own-message .message-time {
-  text-align: right;
 }
 
 /* Message avatar styling */
 .message-avatar {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  margin-right: 8px;
-  overflow: hidden;
+  position: absolute;
+  left: 8px;
+  top: 0;
 }
 
-.message-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.message.own-message .message-avatar {
+  left: auto;
+  right: 8px;
 }
 
-.message-content {
-  flex: 1;
-  max-width: calc(100% - 36px);
+/* Grouped message styling */
+.message.grouped {
+  margin-top: 2px;
+  padding-top: 0;
+}
+
+.message.grouped .message-avatar,
+.message.grouped .message-header {
+  display: none;
 }
 
 /* Message actions styling */
@@ -420,6 +445,11 @@ body {
   right: 5px;
   top: 5px;
   z-index: 5;
+}
+
+.message.own-message .message-actions {
+  right: auto;
+  left: 5px;
 }
 
 .message-actions-btn {
