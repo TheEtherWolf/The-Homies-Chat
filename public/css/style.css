@@ -331,13 +331,16 @@ body {
   z-index: 10;
 }
 
-#messages-container {
+#messages-container,
+.messages-container,
+.chat-messages {
   padding-bottom: 80px !important;
-  background-color: #17171A !important; /* Darker background like in the image */
+  background-color: #0A2E36 !important; /* Darker teal background like in the image */
   overflow-y: auto !important;
   display: flex !important;
   flex-direction: column !important;
   height: calc(100vh - 140px) !important;
+  padding: 16px !important;
 }
 
 .message {
@@ -350,30 +353,23 @@ body {
   padding: 2px 0;
 }
 
-.message-username,
-.message-sender-name,
-.message-author,
-.sender-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #E9E9E9;
-  margin-bottom: 4px;
-  display: block;
-}
-
-.message.own-message .message-username,
-.message.own-message .message-sender-name,
-.message.own-message .message-author,
-.message.own-message .sender-name {
-  text-align: right;
-}
-
 .message-timestamp,
 .message-time,
 .timestamp {
   font-size: 11px;
   color: rgba(233, 233, 233, 0.6);
-  margin-left: 8px;
+  display: block;
+  text-align: right;
+  margin-top: 4px;
+  margin-right: 8px;
+}
+
+.date-separator {
+  text-align: center;
+  color: #E9E9E9;
+  font-size: 12px;
+  margin: 16px 0;
+  opacity: 0.7;
 }
 
 .message-bubble,
@@ -381,15 +377,15 @@ body {
 .message-content {
   background: #2C2C2E !important; /* Gray for other people's messages */
   color: #fff !important;
-  padding: 8px 12px !important;
-  border-radius: 18px !important; 
+  padding: 10px 14px !important;
+  border-radius: 20px !important; 
   box-shadow: none !important;
   max-width: 75% !important;
   word-break: break-word !important;
   text-align: left !important;
   font-size: 0.95rem !important;
   line-height: 1.4 !important;
-  display: block !important;
+  display: inline-block !important;
   float: left !important;
   clear: both !important;
   width: auto !important;
@@ -400,7 +396,7 @@ body {
 .message.own-message .message-bubble,
 .message.own-message .message-text,
 .message.own-message .message-content {
-  background: #2090EA !important; /* Blue for your messages */
+  background: #0052FF !important; /* Bright blue for your messages like in the image */
   float: right !important;
   text-align: left !important;
 }
@@ -438,7 +434,12 @@ body {
 
 .message-actions,
 .message-actions-btn,
-.message-actions-menu {
+.message-actions-menu,
+.message-header,
+.message-author,
+.message-username,
+.message-sender-name,
+.sender-name {
   display: none !important;
   visibility: hidden !important;
   width: 0 !important;
@@ -454,14 +455,14 @@ body {
   position: fixed !important;
   bottom: 16px !important;
   left: 16px !important;
-  background-color: var(--content-background) !important;
-  border-radius: var(--border-radius-md) !important;
+  background-color: #0A2E36 !important; /* Match main background */
+  border-radius: 12px !important;
   padding: 8px 12px !important;
   display: flex !important;
   align-items: center !important;
   z-index: 99 !important;
   max-width: 220px !important;
-  box-shadow: var(--box-shadow) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3) !important;
 }
 
 .user-avatar-container {
@@ -470,7 +471,7 @@ body {
   border-radius: 50% !important;
   overflow: hidden !important;
   margin-right: 10px !important;
-  background-color: var(--signal-gray) !important;
+  background-color: #2C2C2E !important;
   display: block !important;
   visibility: visible !important;
   position: relative !important;
@@ -524,16 +525,6 @@ body {
   text-overflow: ellipsis !important;
 }
 
-.message-header {
-  margin-bottom: 4px !important;
-  display: flex !important;
-  align-items: center !important;
-}
-
-.message.own-message .message-header {
-  justify-content: flex-end !important;
-}
-
 .system-message {
   text-align: center !important;
   color: var(--text-muted) !important;
@@ -552,8 +543,8 @@ body {
 .message-input-wrapper,
 .input-group,
 .message-form {
-  background-color: var(--content-background) !important;
-  border-top: 1px solid var(--signal-gray) !important;
+  background-color: #0A2E36 !important; /* Match main background */
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
   padding: 10px !important;
   position: fixed !important;
   bottom: 0 !important;
@@ -568,75 +559,81 @@ body {
 .message-input,
 textarea.form-control,
 input[type="text"].form-control {
-  background-color: var(--signal-gray) !important;
+  background-color: #1A3E46 !important; /* Slightly lighter than background */
   border: none !important;
   border-radius: 20px !important;
-  padding: 10px 16px !important;
-  color: var(--text-light) !important;
-  width: calc(100% - 60px) !important;
+  color: #fff !important;
+  padding: 10px 15px !important;
   margin-right: 10px !important;
+  flex-grow: 1 !important;
+  resize: none !important;
   height: 40px !important;
-  min-height: 40px !important;
-  max-height: 40px !important;
+  max-height: 120px !important;
   font-size: 14px !important;
 }
 
 #send-button,
 .send-button,
 button[type="submit"] {
-  background-color: var(--primary-color) !important;
+  background-color: #0052FF !important; /* Match your message bubble color */
   border: none !important;
   border-radius: 50% !important;
-  width: 36px !important;
-  height: 36px !important;
+  color: white !important;
+  width: 40px !important;
+  height: 40px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  color: white !important;
   cursor: pointer !important;
-  min-width: 36px !important;
+  margin-left: 8px !important;
   padding: 0 !important;
 }
 
-.sidebar,
-.channels-sidebar,
-.left-sidebar {
-  background-color: var(--sidebar-color) !important;
-  border-right: 1px solid var(--signal-gray) !important;
-}
-
-.channel-list,
-.channels-list,
-.text-channels {
-  margin-top: 10px !important;
-}
-
-.channel,
-.channel-item {
-  padding: 6px 10px !important;
-  border-radius: 4px !important;
-  margin: 2px 5px !important;
+.dm-button {
+  background-color: #0A2E36 !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 20px !important;
+  color: white !important;
+  padding: 8px 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  margin-left: auto !important;
+  margin-right: 10px !important;
   font-size: 14px !important;
-  color: var(--text-muted) !important;
 }
 
-.channel.active,
-.channel-item.active {
-  background-color: rgba(88, 101, 242, 0.2) !important;
-  color: var(--text-light) !important;
+.message-time {
+  display: block !important;
+  text-align: right !important;
+  font-size: 11px !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+  margin-top: 4px !important;
+  margin-bottom: 8px !important;
 }
 
-.purple-triangle,
-svg[fill="#9c27b0"],
-svg[fill="purple"],
-.triangle-icon {
-  display: none !important;
-  visibility: hidden !important;
-  width: 0 !important;
-  height: 0 !important;
-  opacity: 0 !important;
-  position: absolute !important;
-  left: -9999px !important;
+#sidebar {
+  background-color: #0A2E36 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.channel-item, .dm-item {
+  border-radius: 8px !important;
+  margin: 2px 5px !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.channel-item:hover, .dm-item:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: white !important;
+}
+
+.channel-item.active, .dm-item.active {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  color: white !important;
 }
 
 @media (max-width: 768px) {
