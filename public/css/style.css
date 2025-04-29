@@ -332,18 +332,12 @@ body {
 }
 
 #messages-container {
-  flex-grow: 1;
-  overflow-y: auto;
-  padding: 16px;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  padding: 1rem;
-  overflow-y: auto;
-  height: calc(100vh - 140px);
-  background-color: #17171A; /* Darker background like Signal */
-  position: relative;
-  padding-bottom: 80px; /* Add extra padding at the bottom */
+  padding-bottom: 80px !important;
+  background-color: #17171A !important; /* Darker background like in the image */
+  overflow-y: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: calc(100vh - 140px) !important;
 }
 
 .message {
@@ -365,8 +359,6 @@ body {
   color: #E9E9E9;
   margin-bottom: 4px;
   display: block;
-  padding-left: 12px; /* Align with bubble */
-  padding-right: 12px;
 }
 
 .message.own-message .message-username,
@@ -384,7 +376,35 @@ body {
   margin-left: 8px;
 }
 
-/* Fix for nested bubbles - target all possible container classes */
+.message-bubble,
+.message-text,
+.message-content {
+  background: #2C2C2E !important; /* Gray for other people's messages */
+  color: #fff !important;
+  padding: 8px 12px !important;
+  border-radius: 18px !important; 
+  box-shadow: none !important;
+  max-width: 75% !important;
+  word-break: break-word !important;
+  text-align: left !important;
+  font-size: 0.95rem !important;
+  line-height: 1.4 !important;
+  display: block !important;
+  float: left !important;
+  clear: both !important;
+  width: auto !important;
+  position: relative !important;
+  margin: 2px 0 !important;
+}
+
+.message.own-message .message-bubble,
+.message.own-message .message-text,
+.message.own-message .message-content {
+  background: #2090EA !important; /* Blue for your messages */
+  float: right !important;
+  text-align: left !important;
+}
+
 .message > div,
 .message > span,
 .message-wrapper,
@@ -399,65 +419,14 @@ body {
   display: contents !important;
 }
 
-/* Message bubbles */
-.message-bubble,
-.message-text,
-.message-content {
-  background: var(--signal-gray) !important;
-  color: #fff !important;
-  padding: 8px 12px !important;
-  border-radius: 18px !important; 
-  box-shadow: none !important;
-  max-width: 75% !important;
-  word-break: break-word !important;
-  text-align: left !important;
-  font-size: 0.95rem !important;
-  line-height: 1.4 !important;
-  display: block !important; /* Fixed: changed from inline-block to block since float is used */
-  float: left !important;
-  clear: both !important;
-  width: auto !important;
-  position: relative !important;
-  margin: 2px 0 !important;
-}
-
-/* Your own message bubbles */
-.message.own-message .message-bubble,
-.message.own-message .message-text,
-.message.own-message .message-content {
-  background: var(--signal-blue) !important;
-  float: right !important;
-}
-
-/* Hide ALL checkboxes and copy/delete buttons */
-.message input[type="checkbox"],
-.message-checkbox,
-.select-message,
-.copy-message-btn,
-.delete-message-btn,
-.message-menu-item,
-.message-action,
-.message-menu,
-.message-actions,
-.copy-delete-menu {
-  display: none !important;
-  visibility: hidden !important;
-  width: 0 !important;
-  height: 0 !important;
-  opacity: 0 !important;
-  position: absolute !important;
-  left: -9999px !important;
-}
-
-/* Hide avatars in messages */
 .message .message-avatar,
 .message .avatar-container,
 .message img.avatar,
-.avatar,
-.message-avatar,
-img.avatar,
-.user-avatar-img,
-.avatar-img {
+.message .avatar,
+.message .message-avatar,
+.message img.avatar,
+.message .user-avatar-img,
+.message .avatar-img {
   display: none !important;
   visibility: hidden !important;
   width: 0 !important;
@@ -467,12 +436,23 @@ img.avatar,
   left: -9999px !important;
 }
 
-/* Clean up the bottom left user profile area */
+.message-actions,
+.message-actions-btn,
+.message-actions-menu {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
+}
+
 .user-profile-area,
 .profile-area,
 .user-controls {
   position: fixed !important;
-  bottom: 70px !important;
+  bottom: 16px !important;
   left: 16px !important;
   background-color: var(--content-background) !important;
   border-radius: var(--border-radius-md) !important;
@@ -491,12 +471,32 @@ img.avatar,
   overflow: hidden !important;
   margin-right: 10px !important;
   background-color: var(--signal-gray) !important;
+  display: block !important;
+  visibility: visible !important;
+  position: relative !important;
+  left: auto !important;
+  opacity: 1 !important;
 }
 
 .user-avatar-container img {
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
+}
+
+.user-profile-area .user-avatar,
+.profile-area .avatar-container,
+.user-controls .avatar,
+.user-profile-area img.avatar,
+.profile-area .avatar-img,
+.user-controls .user-avatar-img {
+  display: block !important;
+  visibility: visible !important;
+  width: 36px !important;
+  height: 36px !important;
+  opacity: 1 !important;
+  position: relative !important;
+  left: auto !important;
 }
 
 .user-info {
@@ -524,42 +524,28 @@ img.avatar,
   text-overflow: ellipsis !important;
 }
 
-.user-controls-buttons {
+.message-header {
+  margin-bottom: 4px !important;
   display: flex !important;
-  margin-left: auto !important;
+  align-items: center !important;
 }
 
-.user-control-button {
-  background: none !important;
-  border: none !important;
+.message.own-message .message-header {
+  justify-content: flex-end !important;
+}
+
+.system-message {
+  text-align: center !important;
   color: var(--text-muted) !important;
-  font-size: 16px !important;
-  padding: 5px !important;
-  cursor: pointer !important;
-  margin: 0 2px !important;
+  font-size: 12px !important;
+  margin: 10px 0 !important;
+  padding: 5px 10px !important;
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  border-radius: 10px !important;
+  display: inline-block !important;
+  align-self: center !important;
 }
 
-.user-control-button:hover {
-  color: var(--text-light) !important;
-}
-
-/* Fix for the message text content */
-.message-text-content {
-  word-break: break-word !important;
-  white-space: pre-wrap !important;
-  width: auto !important;
-  max-width: 100% !important;
-}
-
-/* Add padding to the bottom of the messages container */
-#messages-container,
-.messages-container,
-.chat-messages {
-  padding-bottom: 80px !important;
-  background-color: var(--background-color) !important;
-}
-
-/* Fix for the input area at the bottom */
 .input-area, 
 #message-form,
 .message-input-container,
@@ -578,21 +564,6 @@ img.avatar,
   align-items: center !important;
 }
 
-/* Hide the purple triangle icon */
-.purple-triangle,
-svg[fill="#9c27b0"],
-svg[fill="purple"],
-.triangle-icon {
-  display: none !important;
-  visibility: hidden !important;
-  width: 0 !important;
-  height: 0 !important;
-  opacity: 0 !important;
-  position: absolute !important;
-  left: -9999px !important;
-}
-
-/* Message Input Styling - Signal-like */
 #message-input,
 .message-input,
 textarea.form-control,
@@ -610,7 +581,6 @@ input[type="text"].form-control {
   font-size: 14px !important;
 }
 
-/* Send button */
 #send-button,
 .send-button,
 button[type="submit"] {
@@ -628,7 +598,6 @@ button[type="submit"] {
   padding: 0 !important;
 }
 
-/* Simplify the sidebar */
 .sidebar,
 .channels-sidebar,
 .left-sidebar {
@@ -636,7 +605,6 @@ button[type="submit"] {
   border-right: 1px solid var(--signal-gray) !important;
 }
 
-/* Channel list styling */
 .channel-list,
 .channels-list,
 .text-channels {
@@ -658,7 +626,19 @@ button[type="submit"] {
   color: var(--text-light) !important;
 }
 
-/* Media queries for responsive design */
+.purple-triangle,
+svg[fill="#9c27b0"],
+svg[fill="purple"],
+.triangle-icon {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
+}
+
 @media (max-width: 768px) {
   #app-container {
     grid-template-columns: var(--server-column-width) 1fr;
