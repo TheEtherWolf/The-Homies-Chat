@@ -329,10 +329,12 @@ body {
 #messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 20px 10px;
   display: flex;
   flex-direction: column;
   background-color: var(--background-color);
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Date Separator */
@@ -386,9 +388,12 @@ body {
   padding: 8px 12px;
   border-radius: var(--border-radius-md);
   background-color: var(--message-bg);
-  max-width: 80%;
-  word-break: break-word;
+  max-width: 95%;
+  min-width: 80px;
+  word-break: normal;
+  overflow-wrap: break-word;
   margin-bottom: 2px;
+  white-space: normal;
 }
 
 .message.own-message .message-text {
