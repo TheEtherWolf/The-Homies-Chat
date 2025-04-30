@@ -80,9 +80,209 @@ class ChatManager {
         // Begin with the general channel
         this.switchChannel('general');
 
+        // Initialize emoji picker
+        this.initializeEmojiPicker();
+
         // Set initialization flag
         this.isInitialized = true;
         console.log('[CHAT_DEBUG] ChatManager successfully initialized.');
+    }
+
+    // Initialize emoji picker functionality
+    initializeEmojiPicker() {
+        if (!this.emojiButton || !this.emojiPicker) {
+            console.error('[CHAT_DEBUG] Emoji picker elements not found');
+            return;
+        }
+
+        // Toggle emoji picker visibility when emoji button is clicked
+        this.emojiButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Position the emoji picker near the emoji button
+            const buttonRect = this.emojiButton.getBoundingClientRect();
+            this.emojiPicker.style.bottom = `${window.innerHeight - buttonRect.top + 10}px`;
+            this.emojiPicker.style.left = `${buttonRect.left}px`;
+            
+            // Toggle visibility
+            this.emojiPicker.classList.toggle('d-none');
+            
+            // If showing the picker, focus the search input if it exists
+            if (!this.emojiPicker.classList.contains('d-none')) {
+                const searchInput = this.emojiPicker.querySelector('#emoji-search-input');
+                if (searchInput) {
+                    setTimeout(() => searchInput.focus(), 100);
+                }
+            }
+        });
+
+        // Handle emoji selection
+        const emojiButtons = this.emojiPicker.querySelectorAll('.emoji-btn');
+        emojiButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Get the emoji from the button text
+                const emoji = btn.textContent;
+                
+                // Insert the emoji at the current cursor position in the message input
+                this.insertEmojiAtCursor(emoji);
+                
+                // Hide the emoji picker
+                this.emojiPicker.classList.add('d-none');
+                
+                // Focus back on the message input
+                this.messageInput.focus();
+            });
+        });
+
+        // Handle emoji category switching
+        const categoryButtons = this.emojiPicker.querySelectorAll('.emoji-category');
+        categoryButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Remove active class from all category buttons
+                categoryButtons.forEach(b => b.classList.remove('active'));
+                
+                // Add active class to clicked button
+                btn.classList.add('active');
+                
+                // Get category name
+                const category = btn.getAttribute('data-category');
+                
+                // Hide all category content
+                const categoryContents = this.emojiPicker.querySelectorAll('.emoji-category-content');
+                categoryContents.forEach(content => content.classList.remove('active'));
+                
+                // Show selected category content
+                const selectedContent = this.emojiPicker.querySelector(`.emoji-category-content[data-category="${category}"]`);
+                if (selectedContent) {
+                    selectedContent.classList.add('active');
+                }
+            });
+        });
+
+        // Handle emoji search
+        const searchInput = this.emojiPicker.querySelector('#emoji-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                
+                // If search term is empty, show all emojis
+                if (!searchTerm) {
+                    emojiButtons.forEach(btn => {
+                        btn.style.display = '';
+                    });
+                    return;
+                }
+                
+                // Filter emojis based on search term
+                emojiButtons.forEach(btn => {
+                    const emoji = btn.textContent;
+                    // Simple search - just check if emoji contains the search term
+                    if (emoji.includes(searchTerm)) {
+                        btn.style.display = '';
+                    } else {
+                        btn.style.display = 'none';
+                    }
+                });
+            });
+        }
+
+        // Close emoji picker when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!this.emojiPicker.classList.contains('d-none') && 
+                !this.emojiPicker.contains(e.target) && 
+                e.target !== this.emojiButton) {
+                this.emojiPicker.classList.add('d-none');
+            }
+        });
+
+        // Store recently used emojis
+        this.recentEmojis = this.getRecentEmojis();
+        this.updateRecentEmojis();
+    }
+
+    // Insert emoji at cursor position in message input
+    insertEmojiAtCursor(emoji) {
+        if (!this.messageInput) return;
+        
+        const start = this.messageInput.selectionStart;
+        const end = this.messageInput.selectionEnd;
+        const text = this.messageInput.value;
+        const before = text.substring(0, start);
+        const after = text.substring(end, text.length);
+        
+        this.messageInput.value = before + emoji + after;
+        this.messageInput.selectionStart = this.messageInput.selectionEnd = start + emoji.length;
+        
+        // Add to recent emojis
+        this.addToRecentEmojis(emoji);
+    }
+
+    // Get recent emojis from localStorage
+    getRecentEmojis() {
+        try {
+            const stored = localStorage.getItem('recentEmojis');
+            return stored ? JSON.parse(stored) : [];
+        } catch (e) {
+            console.error('[CHAT_DEBUG] Error getting recent emojis:', e);
+            return [];
+        }
+    }
+
+    // Add emoji to recent emojis
+    addToRecentEmojis(emoji) {
+        // Don't add if already in the list
+        if (this.recentEmojis.includes(emoji)) {
+            // Move to front of list
+            this.recentEmojis = this.recentEmojis.filter(e => e !== emoji);
+        }
+        
+        // Add to front of list
+        this.recentEmojis.unshift(emoji);
+        
+        // Limit to 20 recent emojis
+        if (this.recentEmojis.length > 20) {
+            this.recentEmojis = this.recentEmojis.slice(0, 20);
+        }
+        
+        // Save to localStorage
+        try {
+            localStorage.setItem('recentEmojis', JSON.stringify(this.recentEmojis));
+        } catch (e) {
+            console.error('[CHAT_DEBUG] Error saving recent emojis:', e);
+        }
+        
+        // Update recent emojis in UI
+        this.updateRecentEmojis();
+    }
+
+    // Update recent emojis in UI
+    updateRecentEmojis() {
+        const recentContainer = this.emojiPicker.querySelector('.emoji-category-content[data-category="recent"]');
+        if (!recentContainer) return;
+        
+        // Clear current recent emojis
+        recentContainer.innerHTML = '';
+        
+        // Add recent emojis
+        if (this.recentEmojis.length === 0) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'text-center text-muted p-3';
+            placeholder.textContent = 'No recent emojis';
+            recentContainer.appendChild(placeholder);
+        } else {
+            this.recentEmojis.forEach(emoji => {
+                const btn = document.createElement('button');
+                btn.className = 'emoji-btn';
+                btn.textContent = emoji;
+                btn.addEventListener('click', () => {
+                    this.insertEmojiAtCursor(emoji);
+                    this.emojiPicker.classList.add('d-none');
+                    this.messageInput.focus();
+                });
+                recentContainer.appendChild(btn);
+            });
+        }
     }
 
     // Centralized method to setup all socket listeners

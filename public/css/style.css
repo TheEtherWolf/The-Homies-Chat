@@ -663,6 +663,140 @@ body {
   background-color: #0045D8;
 }
 
+/* Emoji Picker Styles */
+.emoji-picker {
+  position: absolute;
+  width: 320px;
+  height: 400px;
+  background-color: #36393f;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #202225;
+}
+
+.emoji-picker.d-none {
+  display: none;
+}
+
+.emoji-picker-header {
+  padding: 12px;
+  border-bottom: 1px solid #202225;
+  display: flex;
+  align-items: center;
+}
+
+#emoji-search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: none;
+  background-color: #202225;
+  color: #dcddde;
+  font-size: 14px;
+}
+
+#emoji-search-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(114, 137, 218, 0.5);
+}
+
+.emoji-categories {
+  display: flex;
+  padding: 8px;
+  border-bottom: 1px solid #202225;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.emoji-categories::-webkit-scrollbar {
+  height: 4px;
+}
+
+.emoji-categories::-webkit-scrollbar-thumb {
+  background-color: #202225;
+  border-radius: 4px;
+}
+
+.emoji-category {
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #b9bbbe;
+  background-color: transparent;
+  border: none;
+  font-size: 18px;
+  padding: 0;
+}
+
+.emoji-category:hover, .emoji-category.active {
+  background-color: #4f545c;
+  color: #ffffff;
+}
+
+.emoji-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  scrollbar-width: thin;
+}
+
+.emoji-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.emoji-content::-webkit-scrollbar-thumb {
+  background-color: #202225;
+  border-radius: 4px;
+}
+
+.emoji-category-content {
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.emoji-category-content.active {
+  display: flex;
+}
+
+.emoji-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 0;
+  transition: background-color 0.2s;
+}
+
+.emoji-btn:hover {
+  background-color: #4f545c;
+}
+
+/* Make the first category active by default */
+.emoji-category:first-child {
+  background-color: #4f545c;
+  color: #ffffff;
+}
+
+.emoji-category-content:first-child {
+  display: flex;
+}
+
 /* Modal Styling */
 .modal-content {
   background-color: var(--sidebar-color);
