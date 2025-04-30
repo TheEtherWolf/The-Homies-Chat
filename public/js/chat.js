@@ -160,6 +160,22 @@ class ChatManager {
                 if (selectedContent) {
                     selectedContent.classList.add('active');
                 }
+                
+                // Clear search if there's any
+                const searchInput = this.emojiPicker.querySelector('#emoji-search-input');
+                if (searchInput && searchInput.value) {
+                    searchInput.value = '';
+                    // Reset emoji visibility
+                    emojiButtons.forEach(btn => {
+                        btn.style.display = '';
+                    });
+                    
+                    // Hide no results message if it exists
+                    const noResultsMsg = this.emojiPicker.querySelector('.no-emoji-results');
+                    if (noResultsMsg) {
+                        noResultsMsg.style.display = 'none';
+                    }
+                }
             });
         });
 
@@ -167,26 +183,66 @@ class ChatManager {
         const searchInput = this.emojiPicker.querySelector('#emoji-search-input');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
-                const searchTerm = e.target.value.toLowerCase();
+                const searchTerm = e.target.value.toLowerCase().trim();
                 
-                // If search term is empty, show all emojis
+                // If search term is empty, reset display and show the active category
                 if (!searchTerm) {
+                    // Reset all emoji buttons to be visible
                     emojiButtons.forEach(btn => {
                         btn.style.display = '';
+                    });
+                    
+                    // Show only the active category
+                    const categoryContents = this.emojiPicker.querySelectorAll('.emoji-category-content');
+                    categoryContents.forEach(content => {
+                        if (content.classList.contains('active')) {
+                            content.style.display = 'flex';
+                        } else {
+                            content.style.display = 'none';
+                        }
                     });
                     return;
                 }
                 
+                // When searching, show all categories
+                const categoryContents = this.emojiPicker.querySelectorAll('.emoji-category-content');
+                categoryContents.forEach(content => {
+                    content.style.display = 'flex';
+                });
+                
                 // Filter emojis based on search term
+                let hasVisibleEmojis = false;
                 emojiButtons.forEach(btn => {
-                    const emoji = btn.textContent;
                     // Simple search - just check if emoji contains the search term
-                    if (emoji.includes(searchTerm)) {
+                    if (btn.textContent.includes(searchTerm)) {
                         btn.style.display = '';
+                        hasVisibleEmojis = true;
                     } else {
                         btn.style.display = 'none';
                     }
                 });
+                
+                // If no emojis match, show a message
+                if (!hasVisibleEmojis) {
+                    // Create or update "no results" message
+                    let noResultsMsg = this.emojiPicker.querySelector('.no-emoji-results');
+                    if (!noResultsMsg) {
+                        noResultsMsg = document.createElement('div');
+                        noResultsMsg.className = 'no-emoji-results';
+                        noResultsMsg.textContent = 'No emojis found';
+                        noResultsMsg.style.padding = '10px';
+                        noResultsMsg.style.textAlign = 'center';
+                        noResultsMsg.style.color = '#dcddde';
+                        this.emojiPicker.querySelector('.emoji-content').appendChild(noResultsMsg);
+                    }
+                    noResultsMsg.style.display = 'block';
+                } else {
+                    // Hide "no results" message if it exists
+                    const noResultsMsg = this.emojiPicker.querySelector('.no-emoji-results');
+                    if (noResultsMsg) {
+                        noResultsMsg.style.display = 'none';
+                    }
+                }
             });
         }
 
@@ -2739,7 +2795,7 @@ class ChatManager {
                         this.socket.emit('keep-alive-ping');
                         console.log('[CHAT_DEBUG] Sent keep-alive ping to server');
                     }
-                }, 240000 + randomDelay); // 4 minutes + random delay up to 30 seconds
+                }, 240000 + randomDelay); // 4 minutes (240,000 ms) + random delay up to 30 seconds
             }
         }, 240000); // 4 minutes (240,000 ms)
         
