@@ -2299,7 +2299,7 @@ function setupKeepAlive() {
     setInterval(() => {
         // This is a no-op function that just keeps the event loop active
         // No need to do anything here, just keeping the process awake
-    }, 280000); // 4 minutes 40 seconds (just under 5 minutes)
+    }, 240000); // 4 minutes
 }
 
 // Initialize the server

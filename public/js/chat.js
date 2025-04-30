@@ -2519,12 +2519,13 @@ class ChatManager {
 
     // Set up keep-alive mechanism to prevent Glitch from sleeping
     setupKeepAlive() {
-        // Send a ping every 4 minutes and 30 seconds (just under 5 minutes)
+        // Send a ping every 4 minutes (well under the 5-minute limit)
         // This is to prevent Glitch from putting the app to sleep
         this.keepAliveInterval = setInterval(() => {
             // Only send keep-alive if socket is connected
             if (this.socket && this.socket.connected) {
                 this.socket.emit('keep-alive-ping');
+                console.log('[CHAT_DEBUG] Sent keep-alive ping to server');
                 
                 // Add a small random delay (0-30 seconds) to avoid synchronized pings from all clients
                 const randomDelay = Math.floor(Math.random() * 30000);
@@ -2534,10 +2535,11 @@ class ChatManager {
                 this.keepAliveInterval = setInterval(() => {
                     if (this.socket && this.socket.connected) {
                         this.socket.emit('keep-alive-ping');
+                        console.log('[CHAT_DEBUG] Sent keep-alive ping to server');
                     }
-                }, 270000 + randomDelay); // 4.5 minutes + random delay up to 30 seconds
+                }, 240000 + randomDelay); // 4 minutes + random delay up to 30 seconds
             }
-        }, 270000); // 4.5 minutes (270,000 ms)
+        }, 240000); // 4 minutes (240,000 ms)
         
         // Listen for pong response (not necessary but completes the ping-pong pattern)
         this.socket.on('keep-alive-pong', () => {
