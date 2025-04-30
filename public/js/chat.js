@@ -100,10 +100,13 @@ class ChatManager {
             e.preventDefault();
             e.stopPropagation();
             
-            // Position the emoji picker near the emoji button
+            // Position the emoji picker near the emoji button, but toward the left
             const buttonRect = this.emojiButton.getBoundingClientRect();
             this.emojiPicker.style.bottom = `${window.innerHeight - buttonRect.top + 10}px`;
-            this.emojiPicker.style.left = `${buttonRect.left}px`;
+            
+            // Position to the left of the button
+            const pickerWidth = 320; // Width of the emoji picker from CSS
+            this.emojiPicker.style.left = `${buttonRect.left - pickerWidth + buttonRect.width}px`;
             
             // Toggle visibility
             this.emojiPicker.classList.toggle('d-none');
@@ -889,8 +892,7 @@ class ChatManager {
         this.messageInput.value = textBefore + emoji + textAfter;
         
         // Set cursor position after the inserted emoji
-        this.messageInput.selectionStart = cursorPos + emoji.length;
-        this.messageInput.selectionEnd = cursorPos + emoji.length;
+        this.messageInput.selectionStart = this.messageInput.selectionEnd = cursorPos + emoji.length;
         this.messageInput.focus();
         
         // Hide emoji picker after selection
