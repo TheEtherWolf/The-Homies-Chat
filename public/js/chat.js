@@ -45,6 +45,9 @@ class ChatManager {
         this.inGeneralChat = false; // Flag to track if we're in the general chat
         this.currentChannel = 'general'; // Default channel
         this.isDMMode = false; // Track if we're in DM mode or channels mode
+
+        // Set up keep-alive mechanism to prevent Glitch from sleeping
+        this.setupKeepAlive();
     }
 
     // Initialize chat manager with user data
@@ -1569,7 +1572,7 @@ class ChatManager {
                         const userId = this.currentUser?.id;
                         if (!userId) {
                             console.error('[CHAT_DEBUG] Cannot delete message: No user ID available');
-                            this.displaySystemMessage('Error: You must be logged in to delete messages');
+                            this.addSystemMessage('Error: You must be logged in to delete messages');
                             actionsMenu.classList.remove('show');
                             return;
                         }
@@ -1903,24 +1906,40 @@ class ChatManager {
         this.socket.on('message-deleted', (data) => {
             console.log('[CHAT_DEBUG] Received message deletion notification:', data);
             
-            if (!data || !data.messageId) return;
-            
-            // Remove message from UI if present
-            const messageElement = document.querySelector(`.message[data-message-id="${data.messageId}"]`);
-            if (messageElement) {
-                messageElement.remove();
-                console.log(`[CHAT_DEBUG] Removed deleted message from UI: ${data.messageId}`);
+            if (!data || !data.messageId) {
+                console.error('[CHAT_DEBUG] Received invalid message-deleted event without messageId');
+                return;
             }
             
-            // Remove from stored messages in ALL channels (in case it appears in multiple places)
+            console.log(`[CHAT_DEBUG] Message ${data.messageId} was deleted by user ${data.deletedBy}`);
+            
+            // Find the message element in the DOM
+            const messageElement = document.querySelector(`.message[data-message-id="${data.messageId}"]`);
+            if (messageElement) {
+                // Update the message in the UI to show it's been deleted
+                const messageTextElement = messageElement.querySelector('.message-text');
+                if (messageTextElement) {
+                    messageTextElement.innerHTML = '<em>[This message has been deleted]</em>';
+                    messageTextElement.classList.add('deleted-message');
+                }
+                
+                // Remove action buttons since the message is now deleted
+                const actionsButton = messageElement.querySelector('.message-actions-btn');
+                if (actionsButton) {
+                    actionsButton.style.display = 'none';
+                }
+            }
+            
+            // Update the message in the cache for all channels
             for (const channelId in this.channelMessages) {
                 const index = this.channelMessages[channelId].findIndex(
                     msg => msg.id === data.messageId
                 );
                 
                 if (index !== -1) {
-                    this.channelMessages[channelId].splice(index, 1);
-                    console.log(`[CHAT_DEBUG] Removed deleted message from channel cache: ${channelId}`);
+                    this.channelMessages[channelId][index].is_deleted = true;
+                    this.channelMessages[channelId][index].content = '[This message has been deleted]';
+                    console.log(`[CHAT_DEBUG] Marked message as deleted in channel cache: ${channelId}`);
                 }
             }
             
@@ -2496,6 +2515,35 @@ class ChatManager {
                 console.log(`[CHAT_DEBUG] Marked message as deleted in channel cache: ${channelId}`);
             }
         }
+    }
+
+    // Set up keep-alive mechanism to prevent Glitch from sleeping
+    setupKeepAlive() {
+        // Send a ping every 4 minutes and 30 seconds (just under 5 minutes)
+        // This is to prevent Glitch from putting the app to sleep
+        this.keepAliveInterval = setInterval(() => {
+            // Only send keep-alive if socket is connected
+            if (this.socket && this.socket.connected) {
+                this.socket.emit('keep-alive-ping');
+                
+                // Add a small random delay (0-30 seconds) to avoid synchronized pings from all clients
+                const randomDelay = Math.floor(Math.random() * 30000);
+                
+                // Clear and reset the interval with the random delay
+                clearInterval(this.keepAliveInterval);
+                this.keepAliveInterval = setInterval(() => {
+                    if (this.socket && this.socket.connected) {
+                        this.socket.emit('keep-alive-ping');
+                    }
+                }, 270000 + randomDelay); // 4.5 minutes + random delay up to 30 seconds
+            }
+        }, 270000); // 4.5 minutes (270,000 ms)
+        
+        // Listen for pong response (not necessary but completes the ping-pong pattern)
+        this.socket.on('keep-alive-pong', () => {
+            // No need to do anything with the response
+            // This is just to keep the connection alive
+        });
     }
 }
 

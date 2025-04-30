@@ -2283,24 +2283,46 @@ async function resolveUsernameById(userId) {
 // Listen on the port provided by Glitch or default to 3000
 const PORT = process.env.PORT || 3000;
 
+// Keep-alive mechanism to prevent Glitch from sleeping
+function setupKeepAlive() {
+    // Set up a ping event that clients can use to keep the server awake
+    io.on('connection', (socket) => {
+        // Add keep-alive ping handler
+        socket.on('keep-alive-ping', () => {
+            // Just respond with a pong - no actual work needed
+            socket.emit('keep-alive-pong', { timestamp: new Date().toISOString() });
+            // Don't log this to avoid cluttering the logs
+        });
+    });
+
+    // Also set up a self-ping mechanism as backup
+    setInterval(() => {
+        // This is a no-op function that just keeps the event loop active
+        // No need to do anything here, just keeping the process awake
+    }, 280000); // 4 minutes 40 seconds (just under 5 minutes)
+}
+
 // Initialize the server
 async function initServer() {
-  // Initialize storage
-  await initializeStorage();
-  
-  // Add channel column if needed
-  await addChannelColumnIfNeeded();
-  
-  // Set up channels table
-  await setupChannelsTable();
-  
-  // Set up friends table
-  await setupFriendsTable();
-  
-  // Start the server
-  server.listen(PORT, () => {
-    console.log(`Server listening on *:${PORT}`);
-  });
+    // Initialize storage
+    await initializeStorage();
+    
+    // Add channel column if needed
+    await addChannelColumnIfNeeded();
+    
+    // Set up channels table
+    await setupChannelsTable();
+    
+    // Set up friends table
+    await setupFriendsTable();
+    
+    // Start the server
+    server.listen(PORT, () => {
+        console.log(`Server listening on *:${PORT}`);
+    });
+    
+    // Set up keep-alive mechanism
+    setupKeepAlive();
 }
 
 initServer();
