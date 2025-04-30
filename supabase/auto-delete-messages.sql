@@ -7,16 +7,16 @@ ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;
 CREATE INDEX IF NOT EXISTS idx_messages_is_deleted ON messages(is_deleted);
 CREATE INDEX IF NOT EXISTS idx_messages_deleted_at ON messages(deleted_at);
 
--- Create a function to permanently delete messages that have been marked as deleted for more than 30 days
+-- Create a function to permanently delete messages that have been marked as deleted for more than 1 day
 CREATE OR REPLACE FUNCTION permanently_delete_old_messages()
 RETURNS void AS $$
 BEGIN
-  -- Delete messages that have been marked as deleted for more than 30 days
+  -- Delete messages that have been marked as deleted for more than 1 day
   DELETE FROM messages 
   WHERE is_deleted = true 
-  AND deleted_at < (CURRENT_TIMESTAMP - INTERVAL '30 days');
+  AND deleted_at < (CURRENT_TIMESTAMP - INTERVAL '1 day');
   
-  RAISE NOTICE 'Permanently deleted messages marked as deleted more than 30 days ago';
+  RAISE NOTICE 'Permanently deleted messages marked as deleted more than 1 day ago';
 END;
 $$ LANGUAGE plpgsql;
 
