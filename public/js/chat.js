@@ -120,6 +120,14 @@ class ChatManager {
             }
         });
 
+        // Add close button functionality
+        const closeButton = this.emojiPicker.querySelector('#emoji-picker-close');
+        if (closeButton) {
+            closeButton.addEventListener('click', () => {
+                this.emojiPicker.classList.add('d-none');
+            });
+        }
+
         // Handle emoji selection
         const emojiButtons = this.emojiPicker.querySelectorAll('.emoji-btn');
         emojiButtons.forEach(btn => {
@@ -130,9 +138,7 @@ class ChatManager {
                 // Insert the emoji at the current cursor position in the message input
                 this.insertEmojiAtCursor(emoji);
                 
-                // Hide the emoji picker
-                this.emojiPicker.classList.add('d-none');
-                
+                // Keep the emoji picker open
                 // Focus back on the message input
                 this.messageInput.focus();
             });
@@ -246,15 +252,6 @@ class ChatManager {
             });
         }
 
-        // Close emoji picker when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!this.emojiPicker.classList.contains('d-none') && 
-                !this.emojiPicker.contains(e.target) && 
-                e.target !== this.emojiButton) {
-                this.emojiPicker.classList.add('d-none');
-            }
-        });
-
         // Store recently used emojis
         this.recentEmojis = this.getRecentEmojis();
         this.updateRecentEmojis();
@@ -264,14 +261,16 @@ class ChatManager {
     insertEmojiAtCursor(emoji) {
         if (!this.messageInput) return;
         
-        const start = this.messageInput.selectionStart;
-        const end = this.messageInput.selectionEnd;
-        const text = this.messageInput.value;
-        const before = text.substring(0, start);
-        const after = text.substring(end, text.length);
+        const cursorPos = this.messageInput.selectionStart;
+        const textBefore = this.messageInput.value.substring(0, cursorPos);
+        const textAfter = this.messageInput.value.substring(this.messageInput.selectionEnd);
         
-        this.messageInput.value = before + emoji + after;
-        this.messageInput.selectionStart = this.messageInput.selectionEnd = start + emoji.length;
+        // Set the new value with the emoji inserted
+        this.messageInput.value = textBefore + emoji + textAfter;
+        
+        // Set cursor position after the inserted emoji
+        this.messageInput.selectionStart = this.messageInput.selectionEnd = cursorPos + emoji.length;
+        this.messageInput.focus();
         
         // Add to recent emojis
         this.addToRecentEmojis(emoji);
@@ -1065,55 +1064,6 @@ class ChatManager {
         // Add click handlers to all emoji buttons
         this.emojiButtons.forEach(btn => {
             btn.addEventListener('click', () => this.insertEmoji(btn.textContent));
-        });
-        
-        // Close emoji picker when clicking outside
-        document.addEventListener('click', (e) => {
-            if (this.emojiPicker && !this.emojiPicker.classList.contains('d-none') && 
-                !this.emojiPicker.contains(e.target) && e.target !== this.emojiButton) {
-                this.emojiPicker.classList.add('d-none');
-            }
-        });
-        
-        // --- Settings and Logout ---
-        if (this.settingsButton) {
-            this.settingsButton.addEventListener('click', () => {
-                alert('Settings feature coming soon!');
-            });
-        }
-        
-        // Add event listeners for channel creation UI
-        const addChannelBtn = document.getElementById('add-channel-btn');
-        if (addChannelBtn) {
-            addChannelBtn.addEventListener('click', () => {
-                // Show the create channel modal
-                const modal = new bootstrap.Modal(document.getElementById('create-channel-modal'));
-                modal.show();
-            });
-        }
-        
-        // Add event listener for create channel submit button
-        const createChannelSubmit = document.getElementById('create-channel-submit');
-        if (createChannelSubmit) {
-            createChannelSubmit.addEventListener('click', this.handleCreateChannelUI.bind(this));
-        }
-        
-        // Listen for new channel creation from server
-        this.socket.on('channel-created', (channel) => {
-            console.log('[CHAT_DEBUG] New channel created:', channel);
-            this.addChannelToUI(channel);
-        });
-        
-        // Listen for channels list update
-        this.socket.on('channels-list', (data) => {
-            console.log('[CHAT_DEBUG] Received channels list:', data);
-            
-            // Update channels in UI
-            if (data.channels && Array.isArray(data.channels)) {
-                data.channels.forEach(channel => {
-                    this.addChannelToUI(channel);
-                });
-            }
         });
         
         // Socket event listeners
@@ -2727,7 +2677,9 @@ class ChatManager {
             // If the click is not inside any message-actions element, close all menus
             if (!e.target.closest('.message-actions')) {
                 document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
-                    menu.classList.remove('show');
+                    if (menu !== e.target) {
+                        menu.classList.remove('show');
+                    }
                 });
             }
         });
