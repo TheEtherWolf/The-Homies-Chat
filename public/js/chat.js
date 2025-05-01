@@ -1166,6 +1166,21 @@ class ChatManager {
             btn.addEventListener('click', () => this.insertEmoji(btn.textContent));
         });
         
+        // --- Settings Button ---
+        if (this.settingsButton) {
+            this.settingsButton.addEventListener('click', () => {
+                this.openSettingsModal();
+            });
+        }
+        
+        // --- Logout Button ---
+        if (this.logoutButton) {
+            this.logoutButton.addEventListener('click', () => {
+                console.log('[CHAT_DEBUG] Logout button clicked');
+                this.authManager.logout();
+            });
+        }
+        
         // Socket event listeners
         this.socket.on('connect', this.handleSocketConnect);
         this.socket.on('disconnect', this.handleSocketDisconnect);
@@ -3006,6 +3021,105 @@ class ChatManager {
         };
         
         return emojiMap;
+    }
+    
+    // Open settings modal
+    openSettingsModal() {
+        console.log('[CHAT_DEBUG] Opening settings modal');
+        
+        // Show the modal
+        const settingsModal = new bootstrap.Modal(document.getElementById('settings-modal'));
+        settingsModal.show();
+        
+        // Set up profile picture upload
+        const profilePictureInput = document.getElementById('profile-picture-input');
+        const profilePicturePreview = document.getElementById('profile-picture-preview');
+        const changeProfilePictureBtn = document.getElementById('change-profile-picture-btn');
+        
+        // Set current profile picture
+        if (profilePicturePreview && this.currentUser) {
+            profilePicturePreview.src = this.currentUser.avatarUrl || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+        }
+        
+        // Set up profile picture upload button
+        if (changeProfilePictureBtn && profilePictureInput) {
+            changeProfilePictureBtn.onclick = () => {
+                profilePictureInput.click();
+            };
+        }
+        
+        // Handle profile picture selection
+        if (profilePictureInput) {
+            profilePictureInput.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // Show preview
+                if (profilePicturePreview) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        profilePicturePreview.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+                
+                // Upload to server
+                this.uploadProfilePicture(file);
+            };
+        }
+        
+        // Set up save button
+        const saveSettingsBtn = document.getElementById('save-settings');
+        if (saveSettingsBtn) {
+            saveSettingsBtn.onclick = () => {
+                // Close the modal
+                settingsModal.hide();
+                
+                // Show success message
+                this.addSystemMessage('Settings saved successfully!');
+            };
+        }
+    }
+    
+    // Upload profile picture to server
+    uploadProfilePicture(file) {
+        console.log('[CHAT_DEBUG] Uploading profile picture:', file.name);
+        
+        // Create form data
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('userId', this.currentUser.id);
+        
+        // Upload to server
+        fetch('/api/upload-profile-picture', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('[CHAT_DEBUG] Profile picture uploaded successfully:', data.fileUrl);
+                
+                // Update user avatar URL
+                this.currentUser.avatarUrl = data.fileUrl;
+                
+                // Update avatar in sidebar
+                const userAvatar = document.querySelector('.user-avatar img');
+                if (userAvatar) {
+                    userAvatar.src = data.fileUrl;
+                }
+                
+                // Show success message
+                this.addSystemMessage('Profile picture updated successfully!');
+            } else {
+                console.error('[CHAT_DEBUG] Error uploading profile picture:', data.error);
+                this.addSystemMessage('Error uploading profile picture. Please try again.');
+            }
+        })
+        .catch(error => {
+            console.error('[CHAT_DEBUG] Error uploading profile picture:', error);
+            this.addSystemMessage('Error uploading profile picture. Please try again.');
+        });
     }
 }
 

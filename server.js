@@ -7,6 +7,7 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4, validate: isValidUUID } = require('uuid');
 require('dotenv').config();
+const fileUpload = require('express-fileupload');
 
 // Import storage and email verification modules
 const storage = require('./mega-storage');
@@ -49,7 +50,86 @@ console.log(`Running in ${process.env.NODE_ENV} mode with dev auth DISABLED`);
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Add file upload middleware
+app.use(express.static('public'));
+app.use(fileUpload({
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    useTempFiles: true,
+    tempFileDir: '/tmp/'
+}));
+
+// Serve static files from the public directory
+app.use(express.static(path.join(__dirname, 'public')));
+
+// API endpoint for profile picture upload
+app.post('/api/upload-profile-picture', async (req, res) => {
+    try {
+        // Check if files were uploaded
+        if (!req.files || Object.keys(req.files).length === 0) {
+            return res.status(400).json({ success: false, error: 'No files were uploaded.' });
+        }
+
+        // Get the uploaded file
+        const uploadedFile = req.files.file;
+        const userId = req.body.userId;
+
+        // Validate user ID
+        if (!userId) {
+            return res.status(400).json({ success: false, error: 'User ID is required.' });
+        }
+
+        // Check file type
+        const fileType = uploadedFile.mimetype;
+        if (!fileType.startsWith('image/')) {
+            return res.status(400).json({ success: false, error: 'Only image files are allowed.' });
+        }
+
+        // Generate a unique filename
+        const fileExtension = path.extname(uploadedFile.name);
+        const fileName = `profile-${userId}-${Date.now()}${fileExtension}`;
+
+        // Upload to MEGA
+        const fileBuffer = uploadedFile.data;
+        const megaUploadResult = await storage.uploadFile(fileBuffer, fileName, 'profile-pictures');
+
+        if (!megaUploadResult || !megaUploadResult.url) {
+            return res.status(500).json({ success: false, error: 'Failed to upload to MEGA.' });
+        }
+
+        // Update user profile in Supabase
+        const { data, error } = await getSupabaseClient(true)
+            .from('users')
+            .update({ avatar_url: megaUploadResult.url })
+            .eq('id', userId);
+
+        if (error) {
+            console.error('Error updating user profile:', error);
+            return res.status(500).json({ success: false, error: 'Failed to update user profile.' });
+        }
+
+        // Return success response
+        res.json({
+            success: true,
+            fileUrl: megaUploadResult.url,
+            message: 'Profile picture uploaded successfully.'
+        });
+    } catch (error) {
+        console.error('Error uploading profile picture:', error);
+        res.status(500).json({ success: false, error: 'Server error uploading profile picture.' });
+    }
+});
 
 // Add middleware for parsing JSON
 app.use(express.json());
