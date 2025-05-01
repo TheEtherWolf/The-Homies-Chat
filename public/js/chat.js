@@ -2197,7 +2197,7 @@ class ChatManager {
                     // Send delete request to server
                     this.socket.emit('delete-message', { messageId }, (response) => {
                         if (response.success) {
-                            console.log(`[CHAT_DEBUG] Message deleted successfully: ${messageId}`);
+                            console.log(`[CHAT_DEBUG] Message deleted successfully`);
                             // Remove the message from UI immediately 
                             messageElement.remove();
                         } else {
@@ -3043,59 +3043,55 @@ class ChatManager {
         // Show loading message
         this.addSystemMessage('Uploading profile picture...');
         
-        // Convert file to base64 for socket transfer
+        // Convert file to data URL
         const reader = new FileReader();
         reader.onload = (e) => {
-            const fileData = {
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                data: e.target.result.split(',')[1] // Remove the data:image/jpeg;base64, part
-            };
+            const imageData = e.target.result; // Full data URL
             
-            console.log(`[CHAT_DEBUG] File converted to base64, sending to server (${Math.round(fileData.data.length/1024)}KB)`);
+            console.log(`[CHAT_DEBUG] File converted to data URL, sending to server`);
             
-            // Upload via socket.io with a timeout
-            const uploadTimeout = setTimeout(() => {
-                this.addSystemMessage('Profile picture upload timed out. Please try again.');
-                console.error('[CHAT_DEBUG] Profile picture upload timed out');
-            }, 30000); // 30 second timeout
-            
-            this.socket.emit('upload-profile-picture', { file: fileData }, (response) => {
-                // If this is the preliminary response (upload in progress), don't clear timeout yet
-                if (response.inProgress) {
-                    console.log('[CHAT_DEBUG] Upload in progress, waiting for completion...');
-                    this.addSystemMessage('Upload in progress, please wait...');
-                    return;
-                }
-                
-                // Clear timeout for final response
-                clearTimeout(uploadTimeout);
-                
-                if (response.success) {
-                    console.log('[CHAT_DEBUG] Profile picture uploaded successfully:', response.fileUrl);
+            // Use fetch API instead of socket.io
+            fetch('/api/upload-profile-picture', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    imageData: imageData,
+                    fileType: file.type
+                }),
+                credentials: 'include' // Include cookies for session authentication
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('[CHAT_DEBUG] Profile picture uploaded successfully:', data.fileUrl);
                     
                     // Update user avatar URL
-                    this.currentUser.avatarUrl = response.fileUrl;
+                    this.currentUser.avatarUrl = data.fileUrl;
                     
                     // Update all instances of the user's avatar in the UI
-                    this.updateUserAvatarInUI(response.fileUrl);
+                    this.updateUserAvatarInUI(data.fileUrl);
                     
                     // Show success message
                     this.addSystemMessage('Profile picture updated successfully!');
                 } else {
-                    console.error('[CHAT_DEBUG] Error uploading profile picture:', response.error);
+                    console.error('[CHAT_DEBUG] Error uploading profile picture:', data.error);
                     
                     // If there's a fallback URL, use it
-                    if (response.fallbackUrl) {
-                        console.log('[CHAT_DEBUG] Using fallback URL:', response.fallbackUrl);
-                        this.currentUser.avatarUrl = response.fallbackUrl;
-                        this.updateUserAvatarInUI(response.fallbackUrl);
+                    if (data.fallbackUrl) {
+                        console.log('[CHAT_DEBUG] Using fallback URL:', data.fallbackUrl);
+                        this.currentUser.avatarUrl = data.fallbackUrl;
+                        this.updateUserAvatarInUI(data.fallbackUrl);
                         this.addSystemMessage(`Profile picture upload had an issue, but we're using a fallback image.`);
                     } else {
-                        this.addSystemMessage(`Error uploading profile picture: ${response.error}`);
+                        this.addSystemMessage(`Error uploading profile picture: ${data.error}`);
                     }
                 }
+            })
+            .catch(error => {
+                console.error('[CHAT_DEBUG] Fetch error uploading profile picture:', error);
+                this.addSystemMessage(`Network error uploading profile picture. Please try again.`);
             });
         };
         

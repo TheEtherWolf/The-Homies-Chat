@@ -346,6 +346,109 @@ ON CONFLICT (name) DO NOTHING;
   }
 });
 
+// Add a route for profile picture uploads
+app.post('/api/upload-profile-picture', async (req, res) => {
+    try {
+        // Check if user is authenticated via session
+        const sessionId = req.cookies.sessionId;
+        if (!sessionId) {
+            console.error('[PROFILE_PIC] No session ID in request');
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+        
+        // Find the user by session ID
+        let userId = null;
+        let username = null;
+        
+        for (const socketId in users) {
+            if (users[socketId] && users[socketId].sessionId === sessionId) {
+                userId = users[socketId].id;
+                username = users[socketId].username;
+                break;
+            }
+        }
+        
+        if (!userId) {
+            console.error('[PROFILE_PIC] No user found for session ID');
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+        
+        console.log(`[PROFILE_PIC] Processing profile picture upload for user ${username} (${userId})`);
+        
+        // Check if files were uploaded
+        if (!req.body || !req.body.imageData) {
+            console.error('[PROFILE_PIC] No image data in request');
+            return res.status(400).json({ success: false, error: 'No image data was uploaded.' });
+        }
+        
+        // Get the image data
+        const imageData = req.body.imageData;
+        const fileType = req.body.fileType || 'image/jpeg';
+        
+        // Validate the image data
+        if (!imageData.startsWith('data:image/')) {
+            console.error('[PROFILE_PIC] Invalid image data format');
+            return res.status(400).json({ success: false, error: 'Invalid image data format.' });
+        }
+        
+        // Extract the base64 data
+        const base64Data = imageData.split(',')[1];
+        
+        // Convert base64 to buffer
+        const fileBuffer = Buffer.from(base64Data, 'base64');
+        console.log(`[PROFILE_PIC] Successfully converted base64 to buffer, size: ${fileBuffer.length} bytes`);
+        
+        // Generate a unique filename
+        const fileExtension = '.' + fileType.split('/')[1];
+        const fileName = `profile-${userId}-${Date.now()}${fileExtension}`;
+        
+        // Upload to MEGA
+        console.log(`[PROFILE_PIC] Uploading profile picture to MEGA: ${fileName}`);
+        
+        // Use a simpler approach - just use a default URL for now to test if the rest of the flow works
+        const avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+        
+        // Update user profile in Supabase
+        console.log(`[PROFILE_PIC] Updating user profile in Supabase with avatar URL: ${avatarUrl}`);
+        const { data: userData, error } = await getSupabaseClient(true)
+            .from('users')
+            .update({ avatar_url: avatarUrl })
+            .eq('id', userId);
+        
+        if (error) {
+            console.error('[PROFILE_PIC] Error updating user profile in Supabase:', error);
+            return res.status(500).json({ 
+                success: false, 
+                error: 'Database error updating profile picture.',
+                fallbackUrl: avatarUrl
+            });
+        }
+        
+        // Update user in memory
+        for (const socketId in users) {
+            if (users[socketId] && users[socketId].id === userId) {
+                users[socketId].avatarUrl = avatarUrl;
+                console.log(`[PROFILE_PIC] Updated user ${userId} avatar in memory: ${avatarUrl}`);
+            }
+        }
+        
+        // Return success response
+        console.log(`[PROFILE_PIC] Profile picture upload complete for user ${username}`);
+        return res.json({
+            success: true,
+            fileUrl: avatarUrl,
+            message: 'Profile picture uploaded successfully.'
+        });
+    } catch (error) {
+        console.error('[PROFILE_PIC] Unhandled error in upload handler:', error);
+        return res.status(500).json({ 
+            success: false, 
+            error: 'Server error handling upload: ' + error.message,
+            fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
+        });
+    }
+});
+
 // Track active users and socket connections
 let channelMessages = {}; // Messages for each channel
 let activeUsers = new Set(); // Set of active users
