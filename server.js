@@ -2305,8 +2305,7 @@ io.on("connection", (socket) => {
             const username = users[socket.id]?.username || 'unknown';
 
             console.log(`[PROFILE_PIC] Processing profile picture upload for user ${username} (${userId})`);
-            console.log(`[PROFILE_PIC] File info - name: ${uploadedFile.name}, type: ${uploadedFile.type}, size: ${uploadedFile.size} bytes`);
-
+            
             // Check file type
             const fileType = uploadedFile.type;
             if (!fileType.startsWith('image/')) {
@@ -2317,8 +2316,6 @@ io.on("connection", (socket) => {
             // Generate a unique filename
             const fileExtension = '.' + fileType.split('/')[1];
             const fileName = `profile-${userId}-${Date.now()}${fileExtension}`;
-
-            console.log(`[PROFILE_PIC] Generated filename: ${fileName}`);
 
             // Convert base64 to buffer
             let fileBuffer;
@@ -2336,45 +2333,28 @@ io.on("connection", (socket) => {
 
             console.log(`[PROFILE_PIC] MEGA upload result:`, megaUploadResult);
             
-            if (!megaUploadResult || !megaUploadResult.success) {
-                console.error('[PROFILE_PIC] Failed to upload to MEGA:', megaUploadResult?.error || 'Unknown error');
-                
-                // If we have a fallback URL in the result, use it
-                if (megaUploadResult && megaUploadResult.url) {
-                    console.log(`[PROFILE_PIC] Using fallback URL from MEGA: ${megaUploadResult.url}`);
-                } else {
-                    console.error('[PROFILE_PIC] No fallback URL available, aborting');
-                    return callback({ 
-                        success: false, 
-                        error: 'Failed to upload to MEGA: ' + (megaUploadResult?.error || 'Unknown error'),
-                        fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
-                    });
-                }
+            // Use the URL from the result, even if the upload "failed" but provided a fallback URL
+            const avatarUrl = megaUploadResult?.url || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+            
+            if (!avatarUrl) {
+                console.error('[PROFILE_PIC] No URL returned from MEGA upload');
+                return callback({ 
+                    success: false, 
+                    error: 'Failed to get avatar URL from storage.',
+                    fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
+                });
             }
 
-            // Get the URL from the result
-            const avatarUrl = megaUploadResult.url;
-            
             // Update user profile in Supabase
-            console.log(`[PROFILE_PIC] Updating user profile in Supabase with new avatar URL: ${avatarUrl}`);
-            try {
-                const { data: userData, error } = await getSupabaseClient(true)
-                    .from('users')
-                    .update({ avatar_url: avatarUrl })
-                    .eq('id', userId);
+            console.log(`[PROFILE_PIC] Updating user profile in Supabase with avatar URL: ${avatarUrl}`);
+            const { data: userData, error } = await getSupabaseClient(true)
+                .from('users')
+                .update({ avatar_url: avatarUrl })
+                .eq('id', userId);
 
-                if (error) {
-                    console.error('[PROFILE_PIC] Error updating user profile in Supabase:', error);
-                    return callback({ 
-                        success: true, 
-                        fileUrl: avatarUrl,
-                        message: 'Profile picture uploaded but database update failed. Changes may not persist after logout.'
-                    });
-                }
-                
-                console.log('[PROFILE_PIC] Successfully updated user profile in Supabase');
-            } catch (dbError) {
-                console.error('[PROFILE_PIC] Exception updating user profile in Supabase:', dbError);
+            if (error) {
+                console.error('[PROFILE_PIC] Error updating user profile in Supabase:', error);
+                // Still return success with the URL so the client can display it
                 return callback({ 
                     success: true, 
                     fileUrl: avatarUrl,
