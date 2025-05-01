@@ -2188,23 +2188,24 @@ class ChatManager {
                 
                 // Get message ID
                 const messageId = messageElement.getAttribute('data-message-id');
-                if (!messageId) return;
                 
-                // Simple confirmation to delete
-                if (confirm('Delete this message?')) {
-                    console.log(`[CHAT_DEBUG] Requesting deletion of message: ${messageId}`);
-                    
-                    // Send delete request to server
-                    this.socket.emit('delete-message', { messageId }, (response) => {
-                        if (response.success) {
-                            console.log(`[CHAT_DEBUG] Message deleted successfully`);
-                            // Remove the message from UI immediately 
-                            messageElement.remove();
-                        } else {
-                            console.error(`[CHAT_DEBUG] Failed to delete message: ${messageId}`, response.error);
-                            alert(`Failed to delete message: ${response.message}`);
-                        }
-                    });
+                if (messageId) {
+                    // Simple confirmation to delete
+                    if (confirm('Delete this message?')) {
+                        console.log(`[CHAT_DEBUG] Requesting deletion of message: ${messageId}`);
+                        
+                        // Send delete request to server
+                        this.socket.emit('delete-message', { messageId }, (response) => {
+                            if (response.success) {
+                                console.log(`[CHAT_DEBUG] Message deleted successfully`);
+                                // Remove the message from UI immediately 
+                                messageElement.remove();
+                            } else {
+                                console.error(`[CHAT_DEBUG] Failed to delete message: ${messageId}`, response.error);
+                                alert(`Failed to delete message: ${response.message}`);
+                            }
+                        });
+                    }
                 }
             }
         });
@@ -3043,12 +3044,9 @@ class ChatManager {
         // Show loading message
         this.addSystemMessage('Uploading profile picture...');
         
-        // Convert file to data URL
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const imageData = e.target.result; // Full data URL
-            
-            console.log(`[CHAT_DEBUG] File converted to data URL, sending to server`);
+        // Compress and convert image to data URL
+        this._compressImage(file).then(imageData => {
+            console.log(`[CHAT_DEBUG] File compressed and converted to data URL, sending to server`);
             
             // Use fetch API instead of socket.io
             fetch('/api/upload-profile-picture', {
@@ -3058,7 +3056,7 @@ class ChatManager {
                 },
                 body: JSON.stringify({
                     imageData: imageData,
-                    fileType: file.type
+                    fileType: 'image/jpeg' // We convert all images to JPEG during compression
                 }),
                 credentials: 'include' // Include cookies for session authentication
             })
@@ -3093,14 +3091,65 @@ class ChatManager {
                 console.error('[CHAT_DEBUG] Fetch error uploading profile picture:', error);
                 this.addSystemMessage(`Network error uploading profile picture. Please try again.`);
             });
-        };
-        
-        reader.onerror = (error) => {
-            console.error('[CHAT_DEBUG] Error reading file:', error);
-            this.addSystemMessage('Error reading file. Please try again.');
-        };
-        
-        reader.readAsDataURL(file);
+        }).catch(error => {
+            console.error('[CHAT_DEBUG] Error compressing image:', error);
+            this.addSystemMessage('Error processing image. Please try again with a different image.');
+        });
+    }
+    
+    // Compress an image file and return a data URL
+    _compressImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Create a canvas to draw the compressed image
+                    const canvas = document.createElement('canvas');
+                    
+                    // Calculate new dimensions while maintaining aspect ratio
+                    let width = img.width;
+                    let height = img.height;
+                    const MAX_WIDTH = 800;
+                    const MAX_HEIGHT = 800;
+                    
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+                    
+                    // Set canvas dimensions
+                    canvas.width = width;
+                    canvas.height = height;
+                    
+                    // Draw the image on the canvas
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // Get the compressed data URL (JPEG at 80% quality)
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    
+                    console.log(`[CHAT_DEBUG] Image compressed: Original size: ${Math.round(file.size/1024)}KB, New size: ~${Math.round(dataUrl.length/1024)}KB`);
+                    
+                    resolve(dataUrl);
+                };
+                img.onerror = () => {
+                    reject(new Error('Failed to load image for compression'));
+                };
+                img.src = event.target.result;
+            };
+            reader.onerror = () => {
+                reject(new Error('Failed to read file'));
+            };
+            reader.readAsDataURL(file);
+        });
     }
     
     // Update all instances of the user's avatar in the UI
