@@ -402,11 +402,22 @@ app.post('/api/upload-profile-picture', async (req, res) => {
         const fileExtension = '.' + fileType.split('/')[1];
         const fileName = `profile-${userId}-${Date.now()}${fileExtension}`;
         
-        // Upload to MEGA
-        console.log(`[PROFILE_PIC] Uploading profile picture to MEGA: ${fileName}`);
+        // Upload to Supabase Storage
+        console.log(`[PROFILE_PIC] Uploading profile picture to Supabase Storage: ${fileName}`);
+        const { uploadFileToSupabase } = require('./supabase-client');
+        const uploadResult = await uploadFileToSupabase(fileBuffer, fileName, 'profile-pictures');
         
-        // Use a simpler approach - just use a default URL for now to test if the rest of the flow works
-        const avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+        if (!uploadResult.success) {
+            console.error(`[PROFILE_PIC] Error uploading to Supabase Storage: ${uploadResult.error}`);
+            return res.status(500).json({ 
+                success: false, 
+                error: `Error uploading to Supabase Storage: ${uploadResult.error}`,
+                fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
+            });
+        }
+        
+        const avatarUrl = uploadResult.url;
+        console.log(`[PROFILE_PIC] File uploaded successfully to Supabase Storage: ${avatarUrl}`);
         
         // Update user profile in Supabase
         console.log(`[PROFILE_PIC] Updating user profile in Supabase with avatar URL: ${avatarUrl}`);
@@ -418,9 +429,9 @@ app.post('/api/upload-profile-picture', async (req, res) => {
         if (error) {
             console.error('[PROFILE_PIC] Error updating user profile in Supabase:', error);
             return res.status(500).json({ 
-                success: false, 
-                error: 'Database error updating profile picture.',
-                fallbackUrl: avatarUrl
+                success: true, // Still return success since the upload worked
+                fileUrl: avatarUrl,
+                message: 'Profile picture uploaded but database update failed. Changes may not persist after logout.'
             });
         }
         

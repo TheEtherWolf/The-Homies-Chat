@@ -960,6 +960,74 @@ async function getFriendshipStatus(userId1, userId2) {
     }
 }
 
+/**
+ * Upload a file to Supabase Storage
+ * @param {Buffer} fileBuffer - The file buffer to upload
+ * @param {string} fileName - The name to give the file
+ * @param {string} bucket - The storage bucket to upload to
+ * @returns {Promise<{success: boolean, url: string|null, error: string|null}>} Result object with success status and file URL
+ */
+async function uploadFileToSupabase(fileBuffer, fileName, bucket = 'profile-pictures') {
+  try {
+    console.log(`[SUPABASE_STORAGE] Uploading file ${fileName} to bucket ${bucket}`);
+    
+    // Get the service client to bypass RLS
+    const client = getSupabaseClient(true);
+    
+    // Check if the bucket exists, create it if it doesn't
+    const { data: buckets, error: bucketsError } = await client.storage.listBuckets();
+    
+    if (bucketsError) {
+      console.error(`[SUPABASE_STORAGE] Error listing buckets: ${bucketsError.message}`);
+      return { success: false, url: null, error: `Error listing buckets: ${bucketsError.message}` };
+    }
+    
+    const bucketExists = buckets.some(b => b.name === bucket);
+    
+    if (!bucketExists) {
+      console.log(`[SUPABASE_STORAGE] Bucket ${bucket} doesn't exist, creating it`);
+      const { error: createBucketError } = await client.storage.createBucket(bucket, {
+        public: true,
+        fileSizeLimit: 5242880 // 5MB
+      });
+      
+      if (createBucketError) {
+        console.error(`[SUPABASE_STORAGE] Error creating bucket: ${createBucketError.message}`);
+        return { success: false, url: null, error: `Error creating bucket: ${createBucketError.message}` };
+      }
+    }
+    
+    // Upload the file
+    const { error: uploadError } = await client.storage
+      .from(bucket)
+      .upload(fileName, fileBuffer, {
+        contentType: 'image/jpeg', // Default to JPEG, can be overridden
+        upsert: true // Overwrite if file exists
+      });
+    
+    if (uploadError) {
+      console.error(`[SUPABASE_STORAGE] Error uploading file: ${uploadError.message}`);
+      return { success: false, url: null, error: `Error uploading file: ${uploadError.message}` };
+    }
+    
+    // Get the public URL
+    const { data: publicUrlData } = client.storage
+      .from(bucket)
+      .getPublicUrl(fileName);
+    
+    if (!publicUrlData || !publicUrlData.publicUrl) {
+      console.error('[SUPABASE_STORAGE] Error getting public URL');
+      return { success: false, url: null, error: 'Error getting public URL' };
+    }
+    
+    console.log(`[SUPABASE_STORAGE] File uploaded successfully: ${publicUrlData.publicUrl}`);
+    return { success: true, url: publicUrlData.publicUrl, error: null };
+  } catch (error) {
+    console.error(`[SUPABASE_STORAGE] Unexpected error: ${error.message}`);
+    return { success: false, url: null, error: `Unexpected error: ${error.message}` };
+  }
+}
+
 module.exports = {
   getSupabaseClient,
   registerUser,
@@ -976,5 +1044,6 @@ module.exports = {
   sendFriendRequest,
   acceptFriendRequest,
   rejectOrRemoveFriend,
-  getFriendships
+  getFriendships,
+  uploadFileToSupabase
 };
