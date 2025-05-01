@@ -2384,4 +2384,17 @@ io.on("connection", (socket) => {
             });
         }
     });
-{{ ... }}
+    
+    // Handle user typing events
+    socket.on('user-typing', (data) => {
+        // Broadcast to all clients that this user is typing
+        io.emit('user-typing', {
+            username: users[socket.id].username,
+            typing: data.typing
+        });
+    });
+});
+
+server.listen(process.env.PORT || 3000, () => {
+    console.log('Server listening on port 3000');
+});
