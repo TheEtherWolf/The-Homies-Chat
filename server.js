@@ -7,7 +7,6 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4, validate: isValidUUID } = require('uuid');
 require('dotenv').config();
-const fileUpload = require('express-fileupload');
 
 // Import storage and email verification modules
 const storage = require('./mega-storage');
@@ -62,74 +61,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Add file upload middleware
-app.use(express.static('public'));
-app.use(fileUpload({
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-    useTempFiles: true,
-    tempFileDir: '/tmp/'
-}));
-
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, 'public')));
-
-// API endpoint for profile picture upload
-app.post('/api/upload-profile-picture', async (req, res) => {
-    try {
-        // Check if files were uploaded
-        if (!req.files || Object.keys(req.files).length === 0) {
-            return res.status(400).json({ success: false, error: 'No files were uploaded.' });
-        }
-
-        // Get the uploaded file
-        const uploadedFile = req.files.file;
-        const userId = req.body.userId;
-
-        // Validate user ID
-        if (!userId) {
-            return res.status(400).json({ success: false, error: 'User ID is required.' });
-        }
-
-        // Check file type
-        const fileType = uploadedFile.mimetype;
-        if (!fileType.startsWith('image/')) {
-            return res.status(400).json({ success: false, error: 'Only image files are allowed.' });
-        }
-
-        // Generate a unique filename
-        const fileExtension = path.extname(uploadedFile.name);
-        const fileName = `profile-${userId}-${Date.now()}${fileExtension}`;
-
-        // Upload to MEGA
-        const fileBuffer = uploadedFile.data;
-        const megaUploadResult = await storage.uploadFile(fileBuffer, fileName, 'profile-pictures');
-
-        if (!megaUploadResult || !megaUploadResult.url) {
-            return res.status(500).json({ success: false, error: 'Failed to upload to MEGA.' });
-        }
-
-        // Update user profile in Supabase
-        const { data, error } = await getSupabaseClient(true)
-            .from('users')
-            .update({ avatar_url: megaUploadResult.url })
-            .eq('id', userId);
-
-        if (error) {
-            console.error('Error updating user profile:', error);
-            return res.status(500).json({ success: false, error: 'Failed to update user profile.' });
-        }
-
-        // Return success response
-        res.json({
-            success: true,
-            fileUrl: megaUploadResult.url,
-            message: 'Profile picture uploaded successfully.'
-        });
-    } catch (error) {
-        console.error('Error uploading profile picture:', error);
-        res.status(500).json({ success: false, error: 'Server error uploading profile picture.' });
-    }
-});
 
 // Add middleware for parsing JSON
 app.use(express.json());
@@ -1807,7 +1740,7 @@ io.on("connection", (socket) => {
     
     // Generate a friend code for the user if they don't have one
     socket.on('generate-friend-code', async (data, callback) => {
-        // Validate authentication
+        // Validate user authentication
         if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
             return callback({ success: false, message: 'Not authenticated' });
         }
@@ -2332,6 +2265,69 @@ io.on("connection", (socket) => {
         } catch (err) {
             console.error('Error in send-friend-request-by-code handler:', err);
             callback({ success: false, message: 'Server error sending request' });
+        }
+    });
+    
+    // Handle profile picture upload
+    socket.on('upload-profile-picture', async (data, callback) => {
+        try {
+            // Check if user is authenticated
+            if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+                return callback({ success: false, error: 'Not authenticated' });
+            }
+            
+            // Check if files were uploaded
+            if (!data.file) {
+                return callback({ success: false, error: 'No file was uploaded.' });
+            }
+
+            // Get the uploaded file
+            const uploadedFile = data.file;
+            const userId = users[socket.id].id;
+
+            // Check file type
+            const fileType = uploadedFile.type;
+            if (!fileType.startsWith('image/')) {
+                return callback({ success: false, error: 'Only image files are allowed.' });
+            }
+
+            // Generate a unique filename
+            const fileExtension = '.' + fileType.split('/')[1];
+            const fileName = `profile-${userId}-${Date.now()}${fileExtension}`;
+
+            // Upload to MEGA
+            const fileBuffer = Buffer.from(uploadedFile.data);
+            const megaUploadResult = await storage.uploadFile(fileBuffer, fileName, 'profile-pictures');
+
+            if (!megaUploadResult || !megaUploadResult.url) {
+                return callback({ success: false, error: 'Failed to upload to MEGA.' });
+            }
+
+            // Update user profile in Supabase
+            const { data: userData, error } = await getSupabaseClient(true)
+                .from('users')
+                .update({ avatar_url: megaUploadResult.url })
+                .eq('id', userId);
+
+            if (error) {
+                console.error('Error updating user profile:', error);
+                return callback({ success: false, error: 'Failed to update user profile.' });
+            }
+
+            // Update user in memory
+            if (users[socket.id]) {
+                users[socket.id].avatarUrl = megaUploadResult.url;
+            }
+
+            // Return success response
+            callback({
+                success: true,
+                fileUrl: megaUploadResult.url,
+                message: 'Profile picture uploaded successfully.'
+            });
+        } catch (error) {
+            console.error('Error uploading profile picture:', error);
+            callback({ success: false, error: 'Server error uploading profile picture.' });
         }
     });
 });

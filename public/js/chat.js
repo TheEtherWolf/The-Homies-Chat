@@ -3085,41 +3085,39 @@ class ChatManager {
     uploadProfilePicture(file) {
         console.log('[CHAT_DEBUG] Uploading profile picture:', file.name);
         
-        // Create form data
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('userId', this.currentUser.id);
-        
-        // Upload to server
-        fetch('/api/upload-profile-picture', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                console.log('[CHAT_DEBUG] Profile picture uploaded successfully:', data.fileUrl);
-                
-                // Update user avatar URL
-                this.currentUser.avatarUrl = data.fileUrl;
-                
-                // Update avatar in sidebar
-                const userAvatar = document.querySelector('.user-avatar img');
-                if (userAvatar) {
-                    userAvatar.src = data.fileUrl;
+        // Convert file to base64 for socket transfer
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const fileData = {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                data: e.target.result.split(',')[1] // Remove the data:image/jpeg;base64, part
+            };
+            
+            // Upload via socket.io
+            this.socket.emit('upload-profile-picture', { file: fileData }, (response) => {
+                if (response.success) {
+                    console.log('[CHAT_DEBUG] Profile picture uploaded successfully:', response.fileUrl);
+                    
+                    // Update user avatar URL
+                    this.currentUser.avatarUrl = response.fileUrl;
+                    
+                    // Update avatar in sidebar
+                    const userAvatar = document.querySelector('.user-avatar img');
+                    if (userAvatar) {
+                        userAvatar.src = response.fileUrl;
+                    }
+                    
+                    // Show success message
+                    this.addSystemMessage('Profile picture updated successfully!');
+                } else {
+                    console.error('[CHAT_DEBUG] Error uploading profile picture:', response.error);
+                    this.addSystemMessage('Error uploading profile picture. Please try again.');
                 }
-                
-                // Show success message
-                this.addSystemMessage('Profile picture updated successfully!');
-            } else {
-                console.error('[CHAT_DEBUG] Error uploading profile picture:', data.error);
-                this.addSystemMessage('Error uploading profile picture. Please try again.');
-            }
-        })
-        .catch(error => {
-            console.error('[CHAT_DEBUG] Error uploading profile picture:', error);
-            this.addSystemMessage('Error uploading profile picture. Please try again.');
-        });
+            });
+        };
+        reader.readAsDataURL(file);
     }
 }
 
