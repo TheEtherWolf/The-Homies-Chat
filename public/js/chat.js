@@ -97,6 +97,12 @@ class ChatManager {
 
         // Create emoji name mapping for search
         this.emojiNameMap = this._createEmojiNameMap();
+        
+        // Track last emoji insertion to prevent duplicates
+        this.lastEmojiInserted = {
+            emoji: null,
+            timestamp: 0
+        };
 
         // Toggle emoji picker visibility when emoji button is clicked
         this.emojiButton.addEventListener('click', (e) => {
@@ -182,6 +188,20 @@ class ChatManager {
         
         // Get the emoji from the button text
         const emoji = e.currentTarget.textContent;
+        
+        // Check if this is a duplicate click (same emoji within 500ms)
+        const now = Date.now();
+        if (this.lastEmojiInserted.emoji === emoji && 
+            now - this.lastEmojiInserted.timestamp < 500) {
+            console.log('[CHAT_DEBUG] Prevented duplicate emoji insertion');
+            return;
+        }
+        
+        // Update last inserted emoji
+        this.lastEmojiInserted = {
+            emoji: emoji,
+            timestamp: now
+        };
         
         // Insert the emoji at the current cursor position in the message input
         this.insertEmojiAtCursor(emoji);
