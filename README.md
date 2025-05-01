@@ -2,6 +2,21 @@
 
 A secure real-time chat application with video calling features, built specifically for Glitch deployment.
 
+## Version 3 Release Notes
+This branch contains The Homies Chat v3 with the following updates:
+- Redesigned modern sign-in screen with animations and improved UX
+- Fully functional emoji picker with categorized emojis and search
+- Message auto-deletion feature with 1-day cleanup
+- Keep-alive mechanism to prevent Glitch from putting the app to sleep
+
+**Important Note:** The following buttons are currently non-functional in this version:
+- DMs
+- New Group
+- Announcements
+- Memes
+
+These features are planned for future development.
+
 ## Features
 
 ### Phase 1: Core Account & Security
