@@ -488,96 +488,117 @@ io.on("connection", (socket) => {
                 });
             }
 
-            // Attempt to sign in with simplified approach
-            const user = await signInUser(username, password);
+            // Attempt to sign in the user
+            const { user, error } = await signInUser(username, password);
             
-            if (user && user.id) {
-                console.log(`User ${username} successfully logged in with ID: ${user.id}`);
+            if (error) {
+                console.error(`Login failed for ${username}:`, error);
+                return callback({ success: false, message: error.message || 'Login failed' });
+            }
+            
+            if (!user) {
+                console.error(`Login failed for ${username}: No user returned`);
+                return callback({ success: false, message: 'Invalid username or password' });
+            }
+            
+            // Get the user's avatar URL from Supabase
+            const { data: userData, error: userError } = await getSupabaseClient(true)
+                .from('users')
+                .select('avatar_url')
+                .eq('id', user.id)
+                .single();
                 
-                // Store user info in socket session
-                users[socket.id] = { 
-                    username: user.username,
-                    id: user.id // Corrected key from userId to id
-                };
+            const avatarUrl = userData?.avatar_url || null;
+            
+            // Register the user's session
+            users[socket.id] = {
+                socketId: socket.id,
+                authenticated: true,
+                username: user.username,
+                id: user.id,
+                avatarUrl: avatarUrl
+            };
+            
+            console.log(`User ${username} logged in successfully with ID: ${user.id}`);
+            
+            // Mark user as active
+            activeUsers.add(username);
+            updateUserList();
+            
+            // Load messages from Supabase for this user
+            console.log(`Loading messages for user ${username}`);
+            const messages = await loadMessagesFromSupabase();
+            
+            // Set up default channel messages if none exist
+            if (!channelMessages['general']) {
+                channelMessages['general'] = [];
+            }
+            
+            if (messages && messages.length > 0) {
+                // Add all messages to the general channel for now
+                const processedMessages = messages.map(msg => ({
+                    id: msg.id,
+                    sender: msg.sender_username || 'Unknown User',
+                    senderId: msg.sender_id,
+                    content: msg.content,
+                    timestamp: msg.created_at,
+                    channel: 'general'
+                }));
                 
-                // Mark user as active
-                activeUsers.add(username);
-                updateUserList();
-                
-                // Load messages from Supabase for this user
-                console.log(`Loading messages for user ${username}`);
-                const messages = await loadMessagesFromSupabase();
-                
-                // Set up default channel messages if none exist
-                if (!channelMessages['general']) {
-                    channelMessages['general'] = [];
-                }
-                
-                if (messages && messages.length > 0) {
-                    // Add all messages to the general channel for now
-                    const processedMessages = messages.map(msg => ({
-                        id: msg.id,
-                        sender: msg.sender_username || 'Unknown User',
-                        senderId: msg.sender_id,
-                        content: msg.content,
-                        timestamp: msg.created_at,
-                        channel: 'general'
-                    }));
-                    
-                    // Add only unique messages based on ID
-                    processedMessages.forEach(msg => {
-                        const isDuplicate = channelMessages['general'].some(existing => 
-                            existing.id === msg.id
-                        );
-                        
-                        if (!isDuplicate) {
-                            channelMessages['general'].push(msg);
-                        }
-                    });
-                    
-                    // Sort messages by timestamp
-                    channelMessages['general'].sort((a, b) => 
-                        new Date(a.timestamp) - new Date(b.timestamp)
+                // Add only unique messages based on ID
+                processedMessages.forEach(msg => {
+                    const isDuplicate = channelMessages['general'].some(existing => 
+                        existing.id === msg.id
                     );
                     
-                    console.log(`Loaded and processed ${messages.length} messages for user ${username}`);
-                } else {
-                    console.log(`No messages found for user ${username}`);
-                }
-                
-                // Notify user of successful login
-                callback({
-                    success: true,
-                    id: user.id, // Corrected key from userId to id
-                    username: user.username
-                });
-                
-                // Send chat history to the user
-                for (const channel in channelMessages) {
-                    if (channelMessages.hasOwnProperty(channel)) {
-                        socket.emit('message-history', {
-                            channel,
-                            messages: channelMessages[channel] || []
-                        });
+                    if (!isDuplicate) {
+                        channelMessages['general'].push(msg);
                     }
-                }
-            } else {
-                console.log(`Login failed for user: ${username}`);
-                callback({ 
-                    success: false, 
-                    message: 'Invalid username or password'
                 });
+                
+                // Sort messages by timestamp
+                channelMessages['general'].sort((a, b) => 
+                    new Date(a.timestamp) - new Date(b.timestamp)
+                );
+                
+                console.log(`Loaded and processed ${messages.length} messages for user ${username}`);
+            } else {
+                console.log(`No messages found for user ${username}`);
             }
-        } catch (error) {
-            console.error(`Error during login for ${username}:`, error);
-            callback({ 
-                success: false, 
-                message: 'An error occurred during login'
+            
+            // Broadcast to all clients that this user is now online
+            socket.broadcast.emit('user-status-change', {
+                username: user.username,
+                status: 'online'
             });
+            
+            // Return success with user info
+            callback({
+                success: true,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    avatarUrl: avatarUrl
+                }
+            });
+            
+            // Send chat history to the user
+            for (const channel in channelMessages) {
+                if (channelMessages.hasOwnProperty(channel)) {
+                    socket.emit('message-history', {
+                        channel,
+                        messages: channelMessages[channel] || []
+                    });
+                }
+            }
+        } catch (err) {
+            console.error(`Login error for ${username}:`, err);
+            return callback({ success: false, message: 'Server error during login' });
         }
     });
     
-    // Store username
+    // Join handler
     socket.on('join', (username) => {
         console.log(`User joined: ${username} with socket: ${socket.id}`);
         
@@ -2295,31 +2316,42 @@ io.on("connection", (socket) => {
             const fileExtension = '.' + fileType.split('/')[1];
             const fileName = `profile-${userId}-${Date.now()}${fileExtension}`;
 
+            console.log(`Processing profile picture upload for user ${userId}, file type: ${fileType}`);
+
+            // Convert base64 to buffer
+            const fileBuffer = Buffer.from(uploadedFile.data, 'base64');
+            
             // Upload to MEGA
-            const fileBuffer = Buffer.from(uploadedFile.data);
+            console.log(`Uploading profile picture to MEGA: ${fileName}`);
             const megaUploadResult = await storage.uploadFile(fileBuffer, fileName, 'profile-pictures');
 
-            if (!megaUploadResult || !megaUploadResult.url) {
-                return callback({ success: false, error: 'Failed to upload to MEGA.' });
+            console.log(`MEGA upload result:`, megaUploadResult);
+            
+            if (!megaUploadResult || !megaUploadResult.success) {
+                console.error('Failed to upload to MEGA:', megaUploadResult?.error || 'Unknown error');
+                return callback({ success: false, error: 'Failed to upload to MEGA: ' + (megaUploadResult?.error || 'Unknown error') });
             }
 
             // Update user profile in Supabase
+            console.log(`Updating user profile in Supabase with new avatar URL: ${megaUploadResult.url}`);
             const { data: userData, error } = await getSupabaseClient(true)
                 .from('users')
                 .update({ avatar_url: megaUploadResult.url })
                 .eq('id', userId);
 
             if (error) {
-                console.error('Error updating user profile:', error);
-                return callback({ success: false, error: 'Failed to update user profile.' });
+                console.error('Error updating user profile in Supabase:', error);
+                return callback({ success: false, error: 'Failed to update user profile in database.' });
             }
 
             // Update user in memory
             if (users[socket.id]) {
                 users[socket.id].avatarUrl = megaUploadResult.url;
+                console.log(`Updated user ${userId} avatar in memory: ${megaUploadResult.url}`);
             }
 
             // Return success response
+            console.log(`Profile picture upload complete for user ${userId}`);
             callback({
                 success: true,
                 fileUrl: megaUploadResult.url,
@@ -2327,7 +2359,7 @@ io.on("connection", (socket) => {
             });
         } catch (error) {
             console.error('Error uploading profile picture:', error);
-            callback({ success: false, error: 'Server error uploading profile picture.' });
+            callback({ success: false, error: 'Server error uploading profile picture: ' + error.message });
         }
     });
 });

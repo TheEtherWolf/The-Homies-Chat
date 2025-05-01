@@ -383,8 +383,70 @@ async function createBackup(messages) {
   }
 }
 
+/**
+ * Upload a file to MEGA
+ * @param {Buffer} fileBuffer - The file buffer to upload
+ * @param {string} fileName - The name to give the file
+ * @param {string} folderName - The folder to upload to (will be created if it doesn't exist)
+ * @returns {Promise<{success: boolean, url: string|null, error: string|null}>} Result object with success status and file URL
+ */
+async function uploadFile(fileBuffer, fileName, folderName = 'uploads') {
+  try {
+    console.log(`Attempting to upload file ${fileName} to MEGA folder ${folderName}`);
+    
+    // Check if we're connected to MEGA
+    if (!connected || !storage) {
+      // Try to connect
+      const connectResult = await connectToMega();
+      if (!connectResult) {
+        console.error('Failed to connect to MEGA for file upload');
+        return { success: false, url: null, error: 'MEGA connection failed' };
+      }
+    }
+    
+    // Find or create the target folder
+    let targetFolder = null;
+    
+    try {
+      // Get the root folder
+      const rootNodes = await storage.getChildren();
+      
+      // Look for the target folder
+      for (const node of rootNodes) {
+        if (node.name === folderName && node.directory) {
+          targetFolder = node;
+          break;
+        }
+      }
+      
+      // Create the folder if it doesn't exist
+      if (!targetFolder) {
+        console.log(`Creating folder ${folderName} in MEGA`);
+        targetFolder = await storage.mkdir(folderName);
+      }
+      
+      // Upload the file
+      console.log(`Uploading ${fileName} to MEGA folder ${folderName}`);
+      const uploadedFile = await targetFolder.upload(fileBuffer, fileName).complete;
+      
+      // Generate a public link
+      const link = await uploadedFile.link();
+      
+      console.log(`File uploaded successfully to MEGA: ${link}`);
+      return { success: true, url: link, error: null };
+    } catch (uploadError) {
+      console.error(`Error during MEGA file upload: ${uploadError.message}`);
+      return { success: false, url: null, error: uploadError.message };
+    }
+  } catch (error) {
+    console.error(`MEGA upload error: ${error.message}`);
+    return { success: false, url: null, error: error.message };
+  }
+}
+
 module.exports = {
   connectToMega,
   loadMessages,
-  saveMessages
+  saveMessages,
+  uploadFile
 };

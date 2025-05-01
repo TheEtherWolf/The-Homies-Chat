@@ -154,8 +154,9 @@ class AuthManager {
             if (response.success) {
                 // Store user data in session storage
                 sessionStorage.setItem('user', JSON.stringify({
-                    username: username,
-                    id: response.userId || response.id || 'unknown'
+                    username: response.user.username,
+                    id: response.user.id,
+                    avatarUrl: response.user.avatarUrl || null
                 }));
                 
                 console.log('[AUTH_DEBUG] Login successful, calling showLoginSuccess...');

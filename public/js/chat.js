@@ -3023,6 +3023,85 @@ class ChatManager {
         return emojiMap;
     }
     
+    // Upload profile picture to server
+    uploadProfilePicture(file) {
+        console.log('[CHAT_DEBUG] Uploading profile picture:', file.name);
+        
+        // Show loading message
+        this.addSystemMessage('Uploading profile picture...');
+        
+        // Convert file to base64 for socket transfer
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const fileData = {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                data: e.target.result.split(',')[1] // Remove the data:image/jpeg;base64, part
+            };
+            
+            // Upload via socket.io
+            this.socket.emit('upload-profile-picture', { file: fileData }, (response) => {
+                if (response.success) {
+                    console.log('[CHAT_DEBUG] Profile picture uploaded successfully:', response.fileUrl);
+                    
+                    // Update user avatar URL
+                    this.currentUser.avatarUrl = response.fileUrl;
+                    
+                    // Update all instances of the user's avatar in the UI
+                    this.updateUserAvatarInUI(response.fileUrl);
+                    
+                    // Show success message
+                    this.addSystemMessage('Profile picture updated successfully!');
+                } else {
+                    console.error('[CHAT_DEBUG] Error uploading profile picture:', response.error);
+                    this.addSystemMessage(`Error uploading profile picture: ${response.error}`);
+                }
+            });
+        };
+        reader.readAsDataURL(file);
+    }
+    
+    // Update all instances of the user's avatar in the UI
+    updateUserAvatarInUI(avatarUrl) {
+        console.log('[CHAT_DEBUG] Updating user avatar in UI:', avatarUrl);
+        
+        // Update avatar in sidebar
+        const userAvatar = document.querySelector('.user-avatar img');
+        if (userAvatar) {
+            userAvatar.src = avatarUrl;
+        }
+        
+        // Update avatar in settings modal
+        const profilePicturePreview = document.getElementById('profile-picture-preview');
+        if (profilePicturePreview) {
+            profilePicturePreview.src = avatarUrl;
+        }
+        
+        // Update avatar in any messages from this user
+        const username = this.currentUser.username;
+        const userMessages = document.querySelectorAll(`.message-container[data-username="${username}"] .avatar img`);
+        userMessages.forEach(avatar => {
+            avatar.src = avatarUrl;
+        });
+        
+        // Update session storage with new avatar URL
+        try {
+            // Get current session data
+            const sessionData = JSON.parse(sessionStorage.getItem('user')) || {};
+            
+            // Update avatar URL
+            sessionData.avatarUrl = avatarUrl;
+            
+            // Save back to session storage
+            sessionStorage.setItem('user', JSON.stringify(sessionData));
+            
+            console.log('[CHAT_DEBUG] Session storage updated with new avatar URL');
+        } catch (error) {
+            console.error('[CHAT_DEBUG] Error updating session storage:', error);
+        }
+    }
+    
     // Open settings modal
     openSettingsModal() {
         console.log('[CHAT_DEBUG] Opening settings modal');
@@ -3038,7 +3117,18 @@ class ChatManager {
         
         // Set current profile picture
         if (profilePicturePreview && this.currentUser) {
-            profilePicturePreview.src = this.currentUser.avatarUrl || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+            // Get the current avatar URL from the user object or from the sidebar
+            const currentAvatarUrl = this.currentUser.avatarUrl || 
+                                     document.querySelector('.user-avatar img')?.src || 
+                                     'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+            
+            console.log('[CHAT_DEBUG] Setting profile picture preview to:', currentAvatarUrl);
+            profilePicturePreview.src = currentAvatarUrl;
+            
+            // Also update the user object if it doesn't have the avatar URL
+            if (!this.currentUser.avatarUrl && currentAvatarUrl) {
+                this.currentUser.avatarUrl = currentAvatarUrl;
+            }
         }
         
         // Set up profile picture upload button
@@ -3053,6 +3143,18 @@ class ChatManager {
             profilePictureInput.onchange = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
+                
+                // Validate file type
+                if (!file.type.startsWith('image/')) {
+                    this.addSystemMessage('Error: Only image files are allowed.');
+                    return;
+                }
+                
+                // Validate file size (max 5MB)
+                if (file.size > 5 * 1024 * 1024) {
+                    this.addSystemMessage('Error: File size must be less than 5MB.');
+                    return;
+                }
                 
                 // Show preview
                 if (profilePicturePreview) {
@@ -3079,45 +3181,6 @@ class ChatManager {
                 this.addSystemMessage('Settings saved successfully!');
             };
         }
-    }
-    
-    // Upload profile picture to server
-    uploadProfilePicture(file) {
-        console.log('[CHAT_DEBUG] Uploading profile picture:', file.name);
-        
-        // Convert file to base64 for socket transfer
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const fileData = {
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                data: e.target.result.split(',')[1] // Remove the data:image/jpeg;base64, part
-            };
-            
-            // Upload via socket.io
-            this.socket.emit('upload-profile-picture', { file: fileData }, (response) => {
-                if (response.success) {
-                    console.log('[CHAT_DEBUG] Profile picture uploaded successfully:', response.fileUrl);
-                    
-                    // Update user avatar URL
-                    this.currentUser.avatarUrl = response.fileUrl;
-                    
-                    // Update avatar in sidebar
-                    const userAvatar = document.querySelector('.user-avatar img');
-                    if (userAvatar) {
-                        userAvatar.src = response.fileUrl;
-                    }
-                    
-                    // Show success message
-                    this.addSystemMessage('Profile picture updated successfully!');
-                } else {
-                    console.error('[CHAT_DEBUG] Error uploading profile picture:', response.error);
-                    this.addSystemMessage('Error uploading profile picture. Please try again.');
-                }
-            });
-        };
-        reader.readAsDataURL(file);
     }
 }
 
