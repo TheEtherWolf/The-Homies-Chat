@@ -2395,6 +2395,41 @@ io.on("connection", (socket) => {
     });
 });
 
+// Utility function to resolve username by user ID (with DB fallback)
+async function resolveUsernameById(userId) {
+    try {
+        // First check in-memory cache
+        for (const socketId in users) {
+            if (users[socketId] && users[socketId].id === userId) {
+                return users[socketId].username;
+            }
+        }
+        
+        // If not found in memory, query the database
+        console.log(`[USERNAME_RESOLVE] User ${userId} not found in memory, querying database`);
+        const { data, error } = await getSupabaseClient(true)
+            .from('users')
+            .select('username')
+            .eq('id', userId)
+            .single();
+            
+        if (error) {
+            console.error(`[USERNAME_RESOLVE] Database error resolving username for ${userId}:`, error);
+            return 'Unknown User';
+        }
+        
+        if (data && data.username) {
+            console.log(`[USERNAME_RESOLVE] Resolved username for ${userId} from database: ${data.username}`);
+            return data.username;
+        }
+        
+        return 'Unknown User';
+    } catch (err) {
+        console.error(`[USERNAME_RESOLVE] Error resolving username for ${userId}:`, err);
+        return 'Unknown User';
+    }
+}
+
 server.listen(process.env.PORT || 3000, () => {
     console.log('Server listening on port 3000');
 });
