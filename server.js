@@ -2289,21 +2289,28 @@ io.on("connection", (socket) => {
         try {
             // Check if user is authenticated
             if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+                console.error('[PROFILE_PIC] Authentication error - user not authenticated');
                 return callback({ success: false, error: 'Not authenticated' });
             }
             
             // Check if files were uploaded
             if (!data.file) {
+                console.error('[PROFILE_PIC] No file data received');
                 return callback({ success: false, error: 'No file was uploaded.' });
             }
 
             // Get the uploaded file
             const uploadedFile = data.file;
             const userId = users[socket.id].id;
+            const username = users[socket.id]?.username || 'unknown';
+
+            console.log(`[PROFILE_PIC] Processing profile picture upload for user ${username} (${userId})`);
+            console.log(`[PROFILE_PIC] File info - name: ${uploadedFile.name}, type: ${uploadedFile.type}, size: ${uploadedFile.size} bytes`);
 
             // Check file type
             const fileType = uploadedFile.type;
             if (!fileType.startsWith('image/')) {
+                console.error(`[PROFILE_PIC] Invalid file type: ${fileType}`);
                 return callback({ success: false, error: 'Only image files are allowed.' });
             }
 
@@ -2311,410 +2318,90 @@ io.on("connection", (socket) => {
             const fileExtension = '.' + fileType.split('/')[1];
             const fileName = `profile-${userId}-${Date.now()}${fileExtension}`;
 
-            console.log(`Processing profile picture upload for user ${userId}, file type: ${fileType}`);
+            console.log(`[PROFILE_PIC] Generated filename: ${fileName}`);
 
             // Convert base64 to buffer
-            const fileBuffer = Buffer.from(uploadedFile.data, 'base64');
+            let fileBuffer;
+            try {
+                fileBuffer = Buffer.from(uploadedFile.data, 'base64');
+                console.log(`[PROFILE_PIC] Successfully converted base64 to buffer, size: ${fileBuffer.length} bytes`);
+            } catch (bufferError) {
+                console.error(`[PROFILE_PIC] Error converting base64 to buffer: ${bufferError.message}`);
+                return callback({ success: false, error: 'Invalid image data format.' });
+            }
             
             // Upload to MEGA
-            console.log(`Uploading profile picture to MEGA: ${fileName}`);
+            console.log(`[PROFILE_PIC] Uploading profile picture to MEGA: ${fileName}`);
             const megaUploadResult = await storage.uploadFile(fileBuffer, fileName, 'profile-pictures');
 
-            console.log(`MEGA upload result:`, megaUploadResult);
+            console.log(`[PROFILE_PIC] MEGA upload result:`, megaUploadResult);
             
             if (!megaUploadResult || !megaUploadResult.success) {
-                console.error('Failed to upload to MEGA:', megaUploadResult?.error || 'Unknown error');
-                return callback({ success: false, error: 'Failed to upload to MEGA: ' + (megaUploadResult?.error || 'Unknown error') });
+                console.error('[PROFILE_PIC] Failed to upload to MEGA:', megaUploadResult?.error || 'Unknown error');
+                
+                // If we have a fallback URL in the result, use it
+                if (megaUploadResult && megaUploadResult.url) {
+                    console.log(`[PROFILE_PIC] Using fallback URL from MEGA: ${megaUploadResult.url}`);
+                } else {
+                    console.error('[PROFILE_PIC] No fallback URL available, aborting');
+                    return callback({ 
+                        success: false, 
+                        error: 'Failed to upload to MEGA: ' + (megaUploadResult?.error || 'Unknown error'),
+                        fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
+                    });
+                }
             }
 
+            // Get the URL from the result
+            const avatarUrl = megaUploadResult.url;
+            
             // Update user profile in Supabase
-            console.log(`Updating user profile in Supabase with new avatar URL: ${megaUploadResult.url}`);
-            const { data: userData, error } = await getSupabaseClient(true)
-                .from('users')
-                .update({ avatar_url: megaUploadResult.url })
-                .eq('id', userId);
+            console.log(`[PROFILE_PIC] Updating user profile in Supabase with new avatar URL: ${avatarUrl}`);
+            try {
+                const { data: userData, error } = await getSupabaseClient(true)
+                    .from('users')
+                    .update({ avatar_url: avatarUrl })
+                    .eq('id', userId);
 
-            if (error) {
-                console.error('Error updating user profile in Supabase:', error);
-                return callback({ success: false, error: 'Failed to update user profile in database.' });
+                if (error) {
+                    console.error('[PROFILE_PIC] Error updating user profile in Supabase:', error);
+                    return callback({ 
+                        success: true, 
+                        fileUrl: avatarUrl,
+                        message: 'Profile picture uploaded but database update failed. Changes may not persist after logout.'
+                    });
+                }
+                
+                console.log('[PROFILE_PIC] Successfully updated user profile in Supabase');
+            } catch (dbError) {
+                console.error('[PROFILE_PIC] Exception updating user profile in Supabase:', dbError);
+                return callback({ 
+                    success: true, 
+                    fileUrl: avatarUrl,
+                    message: 'Profile picture uploaded but database update failed. Changes may not persist after logout.'
+                });
             }
 
             // Update user in memory
             if (users[socket.id]) {
-                users[socket.id].avatarUrl = megaUploadResult.url;
-                console.log(`Updated user ${userId} avatar in memory: ${megaUploadResult.url}`);
+                users[socket.id].avatarUrl = avatarUrl;
+                console.log(`[PROFILE_PIC] Updated user ${userId} avatar in memory: ${avatarUrl}`);
             }
 
             // Return success response
-            console.log(`Profile picture upload complete for user ${userId}`);
+            console.log(`[PROFILE_PIC] Profile picture upload complete for user ${username}`);
             callback({
                 success: true,
-                fileUrl: megaUploadResult.url,
+                fileUrl: avatarUrl,
                 message: 'Profile picture uploaded successfully.'
             });
         } catch (error) {
-            console.error('Error uploading profile picture:', error);
-            callback({ success: false, error: 'Server error uploading profile picture: ' + error.message });
+            console.error('[PROFILE_PIC] Unhandled error uploading profile picture:', error);
+            callback({ 
+                success: false, 
+                error: 'Server error uploading profile picture: ' + error.message,
+                fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
+            });
         }
     });
-});
-
-// Utility function to resolve username by user ID (with DB fallback)
-async function resolveUsernameById(userId) {
-    // First, try to find in connected users
-    for (const socketId in users) {
-        if (users[socketId] && users[socketId].id === userId) {
-            return users[socketId].username;
-        }
-    }
-    // Fallback: fetch from DB
-    try {
-        const { data: user, error } = await getSupabaseClient(true)
-            .from('users')
-            .select('username')
-            .eq('id', userId)
-            .maybeSingle();
-        if (!error && user && user.username) {
-            return user.username;
-        }
-    } catch (err) {
-        console.error('Error resolving username by ID from DB:', err);
-    }
-    return 'Unknown User';
-}
-
-// Listen on the port provided by Glitch or default to 3000
-const PORT = process.env.PORT || 3000;
-
-// Keep-alive mechanism to prevent Glitch from sleeping
-function setupKeepAlive() {
-    // Set up a ping event that clients can use to keep the server awake
-    io.on('connection', (socket) => {
-        // Add keep-alive ping handler
-        socket.on('keep-alive-ping', () => {
-            // Just respond with a pong - no actual work needed
-            socket.emit('keep-alive-pong', { timestamp: new Date().toISOString() });
-            // Don't log this to avoid cluttering the logs
-        });
-    });
-
-    // Also set up a self-ping mechanism as backup
-    setInterval(() => {
-        // This is a no-op function that just keeps the event loop active
-        // No need to do anything here, just keeping the process awake
-    }, 240000); // 4 minutes
-}
-
-// Initialize the server
-async function initServer() {
-    // Initialize storage
-    await initializeStorage();
-    
-    // Add channel column if needed
-    await addChannelColumnIfNeeded();
-    
-    // Set up channels table
-    await setupChannelsTable();
-    
-    // Set up friends table
-    await setupFriendsTable();
-    
-    // Start the server
-    server.listen(PORT, () => {
-        console.log(`Server listening on *:${PORT}`);
-    });
-    
-    // Set up keep-alive mechanism
-    setupKeepAlive();
-}
-
-initServer();
-
-// Clean up stale connections every 5 minutes
-setInterval(() => {
-    console.log("Cleaning up stale connections...");
-    for (const username of activeUsers) {
-        const socketId = Object.keys(users).find(id => users[id] && users[id].username === username);
-        const socket = io.sockets.sockets.get(socketId);
-        if (!socket || !socket.connected) {
-            console.log(`Removing stale connection for user: ${username}`);
-            activeUsers.delete(username);
-            // Remove from users object as well
-            delete users[socketId];
-        }
-    }
-    updateUserList();
-}, 5 * 60 * 1000); // 5 minutes
-
-// Add channel management functions
-async function setupChannelsTable() {
-  try {
-    console.log('Setting up channels table...');
-    
-    // Check if channels table exists by trying to query it directly
-    const { data, error: checkError } = await getSupabaseClient(true)
-      .from('channels')
-      .select('count')
-      .limit(1);
-    
-    // If we get an error about the relation not existing, create the table through the Supabase dashboard
-    if (checkError && checkError.code === '42P01') {
-      console.log('Channels table does not exist. You need to create it in the Supabase dashboard.');
-      console.log('To create the table, go to your Supabase dashboard, SQL Editor, and run:');
-      console.log(`
-CREATE TABLE IF NOT EXISTS public.channels (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT UNIQUE NOT NULL,
-  created_by UUID REFERENCES public.users(id),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  description TEXT,
-  is_private BOOLEAN DEFAULT false
-);
-
--- Insert default channels if they don't exist
-INSERT INTO public.channels (name, description, is_private)
-VALUES ('general', 'General chat for everyone', false)
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO public.channels (name, description, is_private)
-VALUES ('random', 'Random discussions', false)
-ON CONFLICT (name) DO NOTHING;
-      `);
-      
-      // For now, let's create default channels in memory
-      if (!channelMessages['general']) {
-        channelMessages['general'] = [];
-      }
-      if (!channelMessages['random']) {
-        channelMessages['random'] = [];
-      }
-      
-      return;
-    }
-    
-    // If table exists, make sure default channels are there
-    const defaultChannels = [
-      { name: 'general', description: 'General chat for everyone', is_private: false },
-      { name: 'random', description: 'Random discussions', is_private: false }
-    ];
-    
-    for (const channel of defaultChannels) {
-      // Check if channel exists
-      const { data: existingChannel, error: lookupError } = await getSupabaseClient(true)
-        .from('channels')
-        .select('id')
-        .eq('name', channel.name)
-        .maybeSingle();
-      
-      // If channel doesn't exist, create it
-      if (!existingChannel && !lookupError) {
-        const { error } = await getSupabaseClient(true)
-          .from('channels')
-          .insert(channel);
-        
-        if (error) {
-          console.error(`Error creating default channel ${channel.name}:`, error);
-        } else {
-          console.log(`Created default channel: ${channel.name}`);
-        }
-      }
-      
-      // Initialize channel messages array
-      if (!channelMessages[channel.name]) {
-        channelMessages[channel.name] = [];
-      }
-    }
-    
-    console.log('Channels table setup complete');
-  } catch (error) {
-    console.error('Error setting up channels table:', error);
-    
-    // Initialize default channels in memory
-    if (!channelMessages['general']) {
-      channelMessages['general'] = [];
-    }
-    if (!channelMessages['random']) {
-      channelMessages['random'] = [];
-    }
-  }
-}
-
-// Add friends table initialization
-async function setupFriendsTable() {
-    console.log('Setting up friends table in Supabase');
-    
-    try {
-        const supabase = getSupabaseClient(true);
-        
-        // Check if friends table exists by trying to query it directly
-        const { data, error: checkError } = await supabase
-            .from('friends')
-            .select('count')
-            .limit(1);
-            
-        // If we get an error about the relation not existing, create the table through the Supabase dashboard
-        if (checkError && checkError.code === '42P01') {
-            console.log('Friends table does not exist. You need to create it in the Supabase dashboard.');
-            console.log('To create the table, go to your Supabase dashboard, SQL Editor, and run:');
-            console.log(`
-CREATE TABLE IF NOT EXISTS public.friends (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id_1 UUID NOT NULL,
-  user_id_2 UUID NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  
-  -- Prevent duplicate friendships
-  CONSTRAINT unique_friendship UNIQUE (user_id_1, user_id_2),
-  CONSTRAINT fk_user_1 FOREIGN KEY (user_id_1) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT fk_user_2 FOREIGN KEY (user_id_2) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- Add indexes for faster lookups
-CREATE INDEX IF NOT EXISTS idx_friends_user_id_1 ON public.friends(user_id_1);
-CREATE INDEX IF NOT EXISTS idx_friends_user_id_2 ON public.friends(user_id_2);
-CREATE INDEX IF NOT EXISTS idx_friends_status ON public.friends(status);
-
--- Trigger to update updated_at on row update
-CREATE OR REPLACE FUNCTION update_friends_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS set_friends_updated_at ON friends;
-CREATE TRIGGER set_friends_updated_at
-BEFORE UPDATE ON friends
-FOR EACH ROW
-EXECUTE FUNCTION update_friends_updated_at();
-
--- Add friend_code column to users table if it doesn't exist
-ALTER TABLE public.users 
-ADD COLUMN IF NOT EXISTS friend_code VARCHAR(20);
-            `);
-            return false;
-        }
-        
-        console.log('Friends table exists');
-        return true;
-    } catch (err) {
-        console.error('Error in setupFriendsTable:', err);
-        return false;
-    }
-}
-
-// Create a new channel
-async function createChannel(name, userId, description = '', isPrivate = false) {
-  try {
-    if (!name || typeof name !== 'string' || name.trim() === '') {
-      console.error('Invalid channel name');
-      return { success: false, error: 'Invalid channel name' };
-    }
-    
-    // Sanitize channel name - lowercase, no spaces, only alphanumeric and hyphens
-    const sanitizedName = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    
-    // Check if channel already exists
-    const { data: existingChannel } = await getSupabaseClient(true)
-      .from('channels')
-      .select('id')
-      .eq('name', sanitizedName)
-      .maybeSingle();
-      
-    if (existingChannel) {
-      console.log(`Channel ${sanitizedName} already exists`);
-      return { success: false, error: 'Channel already exists', id: existingChannel.id };
-    }
-    
-    // Create the new channel
-    const { data: newChannel, error } = await getSupabaseClient(true)
-      .from('channels')
-      .insert({
-        name: sanitizedName,
-        created_by: userId,
-        description: description,
-        is_private: isPrivate
-      })
-      .select()
-      .single();
-      
-    if (error) {
-      console.error('Error creating channel:', error);
-      return { success: false, error: error.message };
-    }
-    
-    console.log(`Created new channel: ${sanitizedName}`);
-    return { success: true, channel: newChannel };
-  } catch (error) {
-    console.error('Error in createChannel:', error);
-    return { success: false, error: 'Server error' };
-  }
-}
-
-// Get all channels
-async function getAllChannels() {
-  try {
-    const { data: channels, error } = await getSupabaseClient(true)
-      .from('channels')
-      .select('*')
-      .order('name');
-      
-    if (error) {
-      console.error('Error fetching channels:', error);
-      return [];
-    }
-    
-    return channels || [];
-  } catch (error) {
-    console.error('Error in getAllChannels:', error);
-    return [];
-  }
-}
-
-// Add migration function (moved from within io.on block)
-async function addChannelColumnIfNeeded() {
-    try {
-        console.log('Ensuring messages are properly associated with channels...');
-        
-        // Get all messages that don't have a channel set
-        const { data: messagesWithoutChannel, error: queryError } = await getSupabaseClient(true)
-            .from('messages')
-            .select('id')
-            .is('channel', null);
-        
-        if (queryError) {
-            console.error('Error checking messages without channel:', queryError);
-            return;
-        }
-        
-        // If we found messages without a channel, update them
-        if (messagesWithoutChannel && messagesWithoutChannel.length > 0) {
-            console.log(`Found ${messagesWithoutChannel.length} messages without a channel, updating to 'general'`);
-            
-            // Update in batches to avoid timeouts
-            const batchSize = 100;
-            for (let i = 0; i < messagesWithoutChannel.length; i += batchSize) {
-                const batch = messagesWithoutChannel.slice(i, i + batchSize);
-                const ids = batch.map(msg => msg.id);
-                
-                const { error: updateError } = await getSupabaseClient(true)
-                    .from('messages')
-                    .update({ channel: 'general' })
-                    .in('id', ids);
-                
-                if (updateError) {
-                    console.error(`Error updating batch ${i} to ${i + batch.length}:`, updateError);
-                }
-            }
-            
-            console.log('Finished updating messages without channels');
-        } else {
-            console.log('All messages have a channel assigned');
-        }
-    } catch (error) {
-        console.error('Database migration error:', error);
-    }
-}
+{{ ... }}
