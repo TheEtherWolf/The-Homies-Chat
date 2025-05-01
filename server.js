@@ -685,7 +685,8 @@ io.on("connection", (socket) => {
                     id: user.id,
                     username: user.username,
                     email: user.user_metadata?.email || '',
-                    avatarUrl: avatarUrl || user.user_metadata?.avatar_url || null
+                    avatarUrl: avatarUrl || user.user_metadata?.avatar_url || null,
+                    avatar_url: avatarUrl || user.user_metadata?.avatar_url || null // Include both formats for compatibility
                 }
             });
             
