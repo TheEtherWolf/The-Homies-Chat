@@ -447,52 +447,71 @@ body {
 /* Message actions styling */
 .message-actions {
   position: absolute;
-  right: 5px;
-  top: 5px;
-  z-index: 5;
+  right: auto;
+  left: -30px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
 .message.own-message .message-actions {
-  right: auto;
-  left: 5px;
+  left: auto;
+  right: -30px;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
 }
 
 .message-actions-btn {
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 16px;
   cursor: pointer;
   padding: 4px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: var(--transition);
-  opacity: 0;
-}
-
-.message:hover .message-actions-btn {
-  opacity: 0.8;
+  transition: all 0.2s ease;
 }
 
 .message-actions-btn:hover {
-  color: var(--text-light);
   background-color: rgba(255, 255, 255, 0.1);
-  opacity: 1;
+  color: var(--text-light);
+}
+
+.message-actions-btn i.bi-three-dots-vertical {
+  transform: rotate(90deg);
+}
+
+.message.own-message .message-actions-btn i.bi-three-dots-vertical {
+  transform: rotate(-90deg);
 }
 
 .message-actions-menu {
   position: absolute;
-  right: 0;
-  top: 100%;
-  background-color: var(--sidebar-color);
-  border-radius: var(--border-radius-sm);
+  bottom: 100%;
+  left: 0;
+  background-color: var(--dark-secondary);
+  border-radius: var(--border-radius-md);
   box-shadow: var(--box-shadow);
-  padding: 4px 0;
-  min-width: 150px;
-  z-index: 10;
+  min-width: 180px;
+  z-index: 100;
   display: none;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.message.own-message .message-actions-menu {
+  left: auto;
+  right: 0;
+}
+
+.message-actions-btn.active + .message-actions-menu {
+  display: block;
 }
 
 .message-actions-menu.show {
@@ -1084,6 +1103,7 @@ body {
 .auth-card .form-control:focus {
   background-color: rgba(26, 62, 70, 0.7);
   border-color: var(--primary-color);
+  color: var(--text-light);
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.25);
 }
 
