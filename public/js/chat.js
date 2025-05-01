@@ -95,6 +95,9 @@ class ChatManager {
             return;
         }
 
+        // Create emoji name mapping for search
+        this.emojiNameMap = this._createEmojiNameMap();
+
         // Toggle emoji picker visibility when emoji button is clicked
         this.emojiButton.addEventListener('click', (e) => {
             e.preventDefault();
@@ -183,9 +186,11 @@ class ChatManager {
         // Insert the emoji at the current cursor position in the message input
         this.insertEmojiAtCursor(emoji);
         
-        // Keep the emoji picker open
-        // Focus back on the message input
-        this.messageInput.focus();
+        // Keep the emoji picker open and ensure it doesn't close
+        setTimeout(() => {
+            // Focus back on the message input but don't close the picker
+            this.messageInput.focus();
+        }, 10);
     }
     
     // Handler for category button clicks
@@ -251,8 +256,12 @@ class ChatManager {
         // Filter emojis based on search term
         let hasVisibleEmojis = false;
         emojiButtons.forEach(btn => {
-            // Simple search - just check if emoji contains the search term
-            if (btn.textContent.includes(searchTerm)) {
+            const emoji = btn.textContent;
+            // Check if emoji matches the search term
+            const emojiName = this.emojiNameMap[emoji] || '';
+            
+            // Search in both emoji character and emoji name
+            if (emoji.includes(searchTerm) || emojiName.toLowerCase().includes(searchTerm)) {
                 btn.style.display = '';
                 hasVisibleEmojis = true;
             } else {
@@ -285,11 +294,13 @@ class ChatManager {
     
     // Handler for clicks outside the emoji picker
     _handleOutsideClick(e) {
+        // Only close if clicking outside the picker AND not on an emoji button or the emoji button itself
         if (this.emojiPicker && 
             !this.emojiPicker.classList.contains('d-none') && 
             !this.emojiPicker.contains(e.target) && 
             e.target !== this.emojiButton &&
-            !e.target.closest('.emoji-btn')) {
+            !e.target.closest('.emoji-btn') &&
+            !e.target.closest('.message-input-container')) { // Don't close when clicking in the message input area
             this.emojiPicker.classList.add('d-none');
         }
     }
@@ -323,6 +334,7 @@ class ChatManager {
     insertEmojiAtCursor(emoji) {
         if (!this.messageInput) return;
         
+        // Get current cursor position
         const cursorPos = this.messageInput.selectionStart;
         const textBefore = this.messageInput.value.substring(0, cursorPos);
         const textAfter = this.messageInput.value.substring(this.messageInput.selectionEnd);
@@ -332,6 +344,10 @@ class ChatManager {
         
         // Set cursor position after the inserted emoji
         this.messageInput.selectionStart = this.messageInput.selectionEnd = cursorPos + emoji.length;
+        
+        // Trigger an input event to ensure any listeners know the content changed
+        const inputEvent = new Event('input', { bubbles: true });
+        this.messageInput.dispatchEvent(inputEvent);
         
         // Add to recent emojis
         this.addToRecentEmojis(emoji);
@@ -2817,6 +2833,174 @@ class ChatManager {
             // No need to do anything with the response
             // This is just to keep the connection alive
         });
+    }
+
+    // Create emoji name mapping for search
+    _createEmojiNameMap() {
+        const emojiMap = {
+            // Smileys & Emotions
+            '😀': 'Grinning Face',
+            '😃': 'Grinning Face with Big Eyes',
+            '😄': 'Grinning Face with Smiling Eyes',
+            '😁': 'Beaming Face with Smiling Eyes',
+            '😆': 'Grinning Squinting Face',
+            '😂': 'Face with Tears of Joy',
+            '🤣': 'Rolling on the Floor Laughing',
+            '😊': 'Smiling Face with Smiling Eyes',
+            '😇': 'Smiling Face with Halo',
+            '😉': 'Winking Face',
+            '😍': 'Smiling Face with Heart-Eyes',
+            '😘': 'Face Blowing a Kiss',
+            '😗': 'Kissing Face',
+            '🤔': 'Thinking Face',
+            '🤐': 'Zipper-Mouth Face',
+            '🤨': 'Face with Raised Eyebrow',
+            '😐': 'Neutral Face',
+            '😑': 'Expressionless Face',
+            '😶': 'Face Without Mouth',
+            '😏': 'Smirking Face',
+            '😒': 'Unamused Face',
+            '😞': 'Disappointed Face',
+            '😥': 'Sad but Relieved Face',
+            '😢': 'Crying Face',
+            '😭': 'Loudly Crying Face',
+            '😠': 'Angry Face',
+            '😡': 'Pouting Face',
+            '😱': 'Face Screaming in Fear',
+            '🤮': 'Face Vomiting',
+            '😴': 'Sleeping Face',
+            '😷': 'Face with Medical Mask',
+            
+            // People & Gestures
+            '👋': 'Waving Hand',
+            '👍': 'Thumbs Up',
+            '👎': 'Thumbs Down',
+            '✊': 'Raised Fist',
+            '💪': 'Flexed Biceps',
+            '🙏': 'Folded Hands',
+            '👏': 'Clapping Hands',
+            '🙌': 'Raising Hands',
+            '🤝': 'Handshake',
+            '🤦': 'Facepalm',
+            '🤷': 'Shrug',
+            '🚶': 'Person Walking',
+            '🏃': 'Person Running',
+            '💃': 'Woman Dancing',
+            '🕺': 'Man Dancing',
+            '🚴': 'Person Biking',
+            '🏋️': 'Person Lifting Weights',
+            
+            // Animals
+            '🐶': 'Dog Face',
+            '🐱': 'Cat Face',
+            '🐭': 'Mouse Face',
+            '🐰': 'Rabbit Face',
+            '🦊': 'Fox Face',
+            '🐻': 'Bear Face',
+            '🐼': 'Panda Face',
+            '🦁': 'Lion Face',
+            '🐮': 'Cow Face',
+            '🐷': 'Pig Face',
+            '🐸': 'Frog Face',
+            '🐵': 'Monkey Face',
+            '🐔': 'Chicken',
+            '🐧': 'Penguin',
+            '🐘': 'Elephant',
+            '🦄': 'Unicorn',
+            
+            // Food & Drink
+            '🍎': 'Red Apple',
+            '🍏': 'Green Apple',
+            '🍇': 'Grapes',
+            '🍌': 'Banana',
+            '🍉': 'Watermelon',
+            '🍔': 'Hamburger',
+            '🍟': 'French Fries',
+            '🍕': 'Pizza',
+            '🌭': 'Hot Dog',
+            '🌮': 'Taco',
+            '🥪': 'Sandwich',
+            '🍝': 'Spaghetti',
+            '🍨': 'Ice Cream',
+            '🍩': 'Doughnut',
+            '🎂': 'Birthday Cake',
+            '🍫': 'Chocolate Bar',
+            '☕': 'Coffee',
+            '🍺': 'Beer',
+            '🍷': 'Wine Glass',
+            
+            // Places & Travel
+            '🏠': 'House',
+            '🏫': 'School',
+            '🏥': 'Hospital',
+            '🏦': 'Bank',
+            '🏨': 'Hotel',
+            '🏩': 'Love Hotel',
+            '🚓': 'Police Car',
+            '🚒': 'Fire Engine',
+            '🚑': 'Ambulance',
+            '✈️': 'Airplane',
+            '🚀': 'Rocket',
+            '🚁': 'Helicopter',
+            '⛵': 'Sailboat',
+            '🚗': 'Car',
+            '🚕': 'Taxi',
+            '🚌': 'Bus',
+            '🚆': 'Train',
+            '🚉': 'Station',
+            
+            // Activities
+            '⚽': 'Soccer Ball',
+            '🏀': 'Basketball',
+            '🏈': 'Football',
+            '⚾': 'Baseball',
+            '🎾': 'Tennis',
+            '🎳': 'Bowling',
+            '🎮': 'Video Game',
+            '🎲': 'Game Die',
+            '🎭': 'Performing Arts',
+            '🎤': 'Microphone',
+            '🎧': 'Headphone',
+            '🎵': 'Musical Note',
+            '🎸': 'Guitar',
+            '🎺': 'Trumpet',
+            
+            // Objects & Things
+            '🎁': 'Wrapped Gift',
+            '🎈': 'Balloon',
+            '🎉': 'Party Popper',
+            '🎊': 'Confetti Ball',
+            '💰': 'Money Bag',
+            '💡': 'Light Bulb',
+            '🔒': 'Lock',
+            '🔑': 'Key',
+            '⏰': 'Alarm Clock',
+            '📱': 'Phone',
+            '💻': 'Laptop',
+            '📷': 'Camera',
+            '📺': 'TV',
+            '🔋': 'Battery',
+            
+            // Symbols
+            '❤️': 'Red Heart',
+            '🧡': 'Orange Heart',
+            '💛': 'Yellow Heart',
+            '💚': 'Green Heart',
+            '💙': 'Blue Heart',
+            '💜': 'Purple Heart',
+            '🖤': 'Black Heart',
+            '🤍': 'White Heart',
+            '💔': 'Broken Heart',
+            '✨': 'Sparkles',
+            '🔥': 'Fire',
+            '⭐': 'Star',
+            '💫': 'Dizzy Symbol',
+            '✅': 'Check Mark',
+            '❌': 'X Mark',
+            '⚠️': 'Warning'
+        };
+        
+        return emojiMap;
     }
 }
 
