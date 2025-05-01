@@ -1831,99 +1831,83 @@ class ChatManager {
 
     // Setup message action handlers
     setupMessageActionHandlers(messageElement) {
-        if (!messageElement) return;
-        
         const actionsBtn = messageElement.querySelector('.message-actions-btn');
         const actionsMenu = messageElement.querySelector('.message-actions-menu');
         
-        if (actionsBtn && actionsMenu) {
-            // Toggle menu on button click
-            actionsBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                
-                // Close all other open menus first
-                document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
-                    if (menu !== actionsMenu) {
-                        menu.classList.remove('show');
-                    }
-                });
-                
-                // Toggle this menu
-                actionsMenu.classList.toggle('show');
+        if (!actionsBtn || !actionsMenu) return;
+        
+        // Toggle menu on button click
+        actionsBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent event from bubbling to document
+            
+            // Close all other open menus first
+            document.querySelectorAll('.message-actions-btn.active').forEach(btn => {
+                if (btn !== actionsBtn) {
+                    btn.classList.remove('active');
+                }
             });
             
-            // Setup action handlers
-            actionsMenu.querySelectorAll('.message-action-item').forEach(item => {
-                item.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    
-                    const action = item.getAttribute('data-action');
-                    const messageId = messageElement.getAttribute('data-message-id');
-                    const messageContent = messageElement.querySelector('.message-text')?.textContent.trim();
-                    
-                    if (action === 'copy' && messageContent) {
-                        // Copy to clipboard
-                        navigator.clipboard.writeText(messageContent)
-                            .then(() => {
-                                console.log('[CHAT_DEBUG] Message copied to clipboard');
-                                this.displaySystemMessage('Message copied to clipboard');
-                            })
-                            .catch(err => {
-                                console.error('[CHAT_DEBUG] Failed to copy message:', err);
-                            });
-                        
+            // Toggle active class to show/hide menu
+            actionsBtn.classList.toggle('active');
+        });
+        
+        // Handle copy action
+        const copyAction = actionsMenu.querySelector('[data-action="copy"]');
+        if (copyAction) {
+            copyAction.addEventListener('click', (e) => {
+                e.stopPropagation();
+                
+                // Get message text
+                const messageText = messageElement.querySelector('.message-text').textContent.trim();
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(messageText)
+                    .then(() => {
+                        console.log('[CHAT_DEBUG] Message copied to clipboard');
                         // Close menu
-                        actionsMenu.classList.remove('show');
-                    }
-                    else if (action === 'delete' && messageId) {
-                        // Delete message
-                        const userId = this.currentUser?.id;
-                        if (!userId) {
-                            console.error('[CHAT_DEBUG] Cannot delete message: No user ID available');
-                            this.addSystemMessage('Error: You must be logged in to delete messages');
-                            actionsMenu.classList.remove('show');
-                            return;
-                        }
-                        
-                        this.socket.emit('delete-message', { messageId, userId }, (response) => {
-                            if (response.success) {
-                                console.log(`[CHAT_DEBUG] Message marked as deleted: ${messageId}`);
-                                
-                                // Update the message in the UI to show it's been deleted
-                                const messageTextElement = messageElement.querySelector('.message-text');
-                                if (messageTextElement) {
-                                    messageTextElement.innerHTML = '<em>[This message has been deleted]</em>';
-                                    messageTextElement.classList.add('deleted-message');
-                                }
-                                
-                                // Remove action buttons since the message is now deleted
-                                const actionsButton = messageElement.querySelector('.message-actions-btn');
-                                if (actionsButton) {
-                                    actionsButton.style.display = 'none';
-                                }
-                                
-                                // Update the message in the cache
-                                for (const channelId in this.channelMessages) {
-                                    const index = this.channelMessages[channelId].findIndex(
-                                        msg => msg.id === messageId
-                                    );
-                                    
-                                    if (index !== -1) {
-                                        this.channelMessages[channelId][index].is_deleted = true;
-                                        this.channelMessages[channelId][index].content = '[This message has been deleted]';
-                                        console.log(`[CHAT_DEBUG] Marked message as deleted in channel cache: ${channelId}`);
-                                    }
-                                }
-                            } else {
-                                console.error(`[CHAT_DEBUG] Failed to delete message: ${messageId}`, response.error);
-                                this.displaySystemMessage('Failed to delete message: ' + (response.error || 'Unknown error'));
+                        actionsBtn.classList.remove('active');
+                    })
+                    .catch(err => {
+                        console.error('[CHAT_DEBUG] Error copying message:', err);
+                    });
+            });
+        }
+        
+        // Handle delete action
+        const deleteAction = actionsMenu.querySelector('[data-action="delete"]');
+        if (deleteAction) {
+            deleteAction.addEventListener('click', (e) => {
+                e.stopPropagation();
+                
+                // Get message ID
+                const messageId = messageElement.getAttribute('data-message-id');
+                
+                if (messageId) {
+                    // Emit delete message event
+                    this.socket.emit('delete-message', { messageId }, (response) => {
+                        if (response.success) {
+                            console.log('[CHAT_DEBUG] Message deleted successfully');
+                            
+                            // Update UI to show message as deleted
+                            const messageTextElement = messageElement.querySelector('.message-text');
+                            if (messageTextElement) {
+                                messageTextElement.classList.add('deleted');
+                                messageTextElement.innerHTML = '<em>[This message has been deleted]</em>';
                             }
                             
-                            // Close menu
-                            actionsMenu.classList.remove('show');
-                        });
-                    }
-                });
+                            // Remove message actions
+                            const messageActions = messageElement.querySelector('.message-actions');
+                            if (messageActions) {
+                                messageActions.remove();
+                            }
+                        } else {
+                            console.error('[CHAT_DEBUG] Error deleting message:', response?.error || 'Unknown error');
+                        }
+                    });
+                }
+                
+                // Close menu
+                actionsBtn.classList.remove('active');
             });
         }
     }
@@ -2774,12 +2758,10 @@ class ChatManager {
     // Close all message action menus when clicking elsewhere
     setupGlobalClickHandler() {
         document.addEventListener('click', (e) => {
-            // If the click is not inside any message-actions element, close all menus
-            if (!e.target.closest('.message-actions')) {
-                document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
-                    if (menu !== e.target) {
-                        menu.classList.remove('show');
-                    }
+            // Close all message action menus when clicking outside
+            if (!e.target.closest('.message-actions-btn') && !e.target.closest('.message-actions-menu')) {
+                document.querySelectorAll('.message-actions-btn.active').forEach(btn => {
+                    btn.classList.remove('active');
                 });
             }
         });
