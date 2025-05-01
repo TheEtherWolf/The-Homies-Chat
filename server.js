@@ -349,111 +349,66 @@ ON CONFLICT (name) DO NOTHING;
 // Add a route for profile picture uploads
 app.post('/api/upload-profile-picture', async (req, res) => {
     try {
-        // Check if user info was provided in the request body
-        if (!req.body.userId || !req.body.username) {
-            console.error('[PROFILE_PIC] Missing user information in request');
-            return res.status(401).json({ success: false, error: 'Missing user information' });
+        console.log('Received profile picture upload request');
+        
+        // Check if we have the necessary data
+        if (!req.body || !req.body.userId || !req.body.username) {
+            console.error('Missing required user data in profile picture upload request');
+            return res.status(400).json({ success: false, message: 'Missing required user data' });
         }
         
-        const userId = req.body.userId;
-        const username = req.body.username;
+        // Extract user info from request
+        const { userId, username } = req.body;
+        console.log(`Processing profile picture upload for user ${username} (${userId})`);
         
-        console.log(`[PROFILE_PIC] Processing profile picture upload for user ${username} (${userId})`);
-        
-        // Verify the user exists in Supabase
-        const { data: userData, error: userError } = await getSupabaseClient(true)
-            .from('users')
-            .select('id, username')
-            .eq('id', userId)
-            .single();
-            
-        if (userError || !userData) {
-            console.error('[PROFILE_PIC] User verification failed:', userError || 'User not found');
-            return res.status(401).json({ success: false, error: 'User verification failed' });
+        // Check if we have an image file
+        if (!req.body.imageData) {
+            console.error('No image data provided in profile picture upload request');
+            return res.status(400).json({ success: false, message: 'No image data provided' });
         }
         
-        // Check if files were uploaded
-        if (!req.body || !req.body.imageData) {
-            console.error('[PROFILE_PIC] No image data in request');
-            return res.status(400).json({ success: false, error: 'No image data was uploaded.' });
-        }
-        
-        // Get the image data
+        // Extract the base64 image data
         const imageData = req.body.imageData;
-        const fileType = req.body.fileType || 'image/jpeg';
+        const imageBuffer = Buffer.from(imageData.split(',')[1], 'base64');
         
-        // Validate the image data
-        if (!imageData.startsWith('data:image/')) {
-            console.error('[PROFILE_PIC] Invalid image data format');
-            return res.status(400).json({ success: false, error: 'Invalid image data format.' });
+        // Upload to Supabase storage
+        const fileName = `profile-pictures/${userId}_${Date.now()}.png`;
+        console.log(`Uploading profile picture to Supabase storage as ${fileName}`);
+        
+        const uploadResult = await uploadFileToSupabase(fileName, imageBuffer, 'image/png');
+        
+        if (!uploadResult || !uploadResult.publicUrl) {
+            console.error('Failed to upload profile picture to Supabase storage');
+            return res.status(500).json({ success: false, message: 'Failed to upload profile picture' });
         }
         
-        // Extract the base64 data
-        const base64Data = imageData.split(',')[1];
+        console.log(`Profile picture uploaded successfully to ${uploadResult.publicUrl}`);
         
-        // Convert base64 to buffer
-        const fileBuffer = Buffer.from(base64Data, 'base64');
-        console.log(`[PROFILE_PIC] Successfully converted base64 to buffer, size: ${fileBuffer.length} bytes`);
-        
-        // Generate a unique filename
-        const fileExtension = '.' + fileType.split('/')[1];
-        const fileName = `profile-${userId}-${Date.now()}${fileExtension}`;
-        
-        // Upload to Supabase Storage
-        console.log(`[PROFILE_PIC] Uploading profile picture to Supabase Storage: ${fileName}`);
-        const { uploadFileToSupabase } = require('./supabase-client');
-        const uploadResult = await uploadFileToSupabase(fileBuffer, fileName, 'profile-pictures');
-        
-        if (!uploadResult.success) {
-            console.error(`[PROFILE_PIC] Error uploading to Supabase Storage: ${uploadResult.error}`);
-            return res.status(500).json({ 
-                success: false, 
-                error: `Error uploading to Supabase Storage: ${uploadResult.error}`,
-                fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
-            });
-        }
-        
-        const avatarUrl = uploadResult.url;
-        console.log(`[PROFILE_PIC] File uploaded successfully to Supabase Storage: ${avatarUrl}`);
-        
-        // Update user profile in Supabase
-        console.log(`[PROFILE_PIC] Updating user profile in Supabase with avatar URL: ${avatarUrl}`);
-        const { data: updateData, error } = await getSupabaseClient(true)
+        // Update the user's avatar URL in the database
+        const { error: updateError } = await getSupabaseClient(true)
             .from('users')
-            .update({ avatar_url: avatarUrl })
+            .update({ 
+                avatar_url: uploadResult.publicUrl,
+                updated_at: new Date().toISOString()
+            })
             .eq('id', userId);
-        
-        if (error) {
-            console.error('[PROFILE_PIC] Error updating user profile in Supabase:', error);
-            return res.status(500).json({ 
-                success: true, // Still return success since the upload worked
-                fileUrl: avatarUrl,
-                message: 'Profile picture uploaded but database update failed. Changes may not persist after logout.'
-            });
+            
+        if (updateError) {
+            console.error('Error updating user avatar URL in database:', updateError);
+            return res.status(500).json({ success: false, message: 'Failed to update avatar URL in database' });
         }
         
-        // Update user in memory
-        for (const socketId in users) {
-            if (users[socketId] && users[socketId].id === userId) {
-                users[socketId].avatarUrl = avatarUrl;
-                console.log(`[PROFILE_PIC] Updated user ${userId} avatar in memory: ${avatarUrl}`);
-            }
-        }
+        console.log(`Updated avatar_url for user ${username} in database`);
         
-        // Return success response
-        console.log(`[PROFILE_PIC] Profile picture upload complete for user ${username}`);
-        return res.json({
-            success: true,
-            fileUrl: avatarUrl,
-            message: 'Profile picture uploaded successfully.'
+        // Return success with the new avatar URL
+        return res.json({ 
+            success: true, 
+            avatarUrl: uploadResult.publicUrl,
+            avatar_url: uploadResult.publicUrl // Include both formats for compatibility
         });
     } catch (error) {
-        console.error('[PROFILE_PIC] Unhandled error in upload handler:', error);
-        return res.status(500).json({ 
-            success: false, 
-            error: 'Server error handling upload: ' + error.message,
-            fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
-        });
+        console.error('Error processing profile picture upload:', error);
+        return res.status(500).json({ success: false, message: 'Server error processing profile picture upload' });
     }
 });
 
@@ -2394,6 +2349,24 @@ io.on("connection", (socket) => {
             console.error('Error in send-friend-request-by-code handler:', err);
             callback({ success: false, message: 'Server error sending request' });
         }
+    });
+    
+    // Handle avatar updates
+    socket.on('avatar-updated', (data) => {
+        console.log(`User ${data.userId} updated their avatar to ${data.avatarUrl}`);
+        
+        // Update the user's avatar URL in memory
+        for (const socketId in users) {
+            if (users[socketId] && users[socketId].id === data.userId) {
+                users[socketId].avatarUrl = data.avatarUrl;
+            }
+        }
+        
+        // Broadcast the avatar update to all other clients
+        socket.broadcast.emit('user-avatar-updated', {
+            userId: data.userId,
+            avatarUrl: data.avatarUrl
+        });
     });
     
     // Handle profile picture upload
