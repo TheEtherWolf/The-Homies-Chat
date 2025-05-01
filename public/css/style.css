@@ -1002,6 +1002,8 @@ body {
   height: 80px;
   width: auto;
   animation: pulse 3s infinite ease-in-out;
+  border-radius: 50%; /* Make the logo circular */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); /* Add a subtle shadow */
 }
 
 .auth-card {
