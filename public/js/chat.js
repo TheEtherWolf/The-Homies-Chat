@@ -104,6 +104,9 @@ class ChatManager {
             timestamp: 0
         };
 
+        // First, remove all existing event listeners
+        this._removeAllEmojiEventListeners();
+
         // Toggle emoji picker visibility when emoji button is clicked
         this.emojiButton.addEventListener('click', (e) => {
             e.preventDefault();
@@ -142,33 +145,23 @@ class ChatManager {
             });
         }
 
-        // Handle emoji selection
-        const emojiButtons = this.emojiPicker.querySelectorAll('.emoji-btn');
-        emojiButtons.forEach(btn => {
-            // Remove any existing click listeners to prevent double insertion
-            btn.removeEventListener('click', this._handleEmojiClick);
-            
-            // Add new click listener
-            btn.addEventListener('click', this._handleEmojiClick.bind(this));
+        // Use event delegation for emoji buttons to prevent multiple handlers
+        this.emojiPicker.addEventListener('click', (e) => {
+            // Check if the clicked element is an emoji button
+            if (e.target.classList.contains('emoji-btn')) {
+                this._handleEmojiClick(e);
+            }
         });
 
         // Handle emoji category switching
         const categoryButtons = this.emojiPicker.querySelectorAll('.emoji-category');
         categoryButtons.forEach(btn => {
-            // Remove any existing click listeners
-            btn.removeEventListener('click', this._handleCategoryClick);
-            
-            // Add new click listener
             btn.addEventListener('click', this._handleCategoryClick.bind(this));
         });
 
         // Handle emoji search
         const searchInput = this.emojiPicker.querySelector('#emoji-search-input');
         if (searchInput) {
-            // Remove any existing input listeners
-            searchInput.removeEventListener('input', this._handleEmojiSearch);
-            
-            // Add new input listener
             searchInput.addEventListener('input', this._handleEmojiSearch.bind(this));
         }
 
@@ -181,13 +174,23 @@ class ChatManager {
         this.updateRecentEmojis();
     }
     
+    // Remove all existing emoji event listeners
+    _removeAllEmojiEventListeners() {
+        // Remove old event listeners from emoji buttons
+        const oldEmojiButtons = this.emojiPicker.querySelectorAll('.emoji-btn');
+        oldEmojiButtons.forEach(btn => {
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+        });
+    }
+    
     // Handler for emoji button clicks
     _handleEmojiClick(e) {
         e.preventDefault();
         e.stopPropagation();
         
         // Get the emoji from the button text
-        const emoji = e.currentTarget.textContent;
+        const emoji = e.target.textContent;
         
         // Check if this is a duplicate click (same emoji within 500ms)
         const now = Date.now();
@@ -210,6 +213,11 @@ class ChatManager {
         setTimeout(() => {
             // Focus back on the message input but don't close the picker
             this.messageInput.focus();
+            
+            // Make sure the picker is still visible
+            if (this.emojiPicker.classList.contains('d-none')) {
+                this.emojiPicker.classList.remove('d-none');
+            }
         }, 10);
     }
     
@@ -430,11 +438,6 @@ class ChatManager {
                 const btn = document.createElement('button');
                 btn.className = 'emoji-btn';
                 btn.textContent = emoji;
-                btn.addEventListener('click', () => {
-                    this.insertEmojiAtCursor(emoji);
-                    this.emojiPicker.classList.add('d-none');
-                    this.messageInput.focus();
-                });
                 recentContainer.appendChild(btn);
             });
         }
