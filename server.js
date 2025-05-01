@@ -489,12 +489,7 @@ io.on("connection", (socket) => {
             }
 
             // Attempt to sign in the user
-            const { user, error } = await signInUser(username, password);
-            
-            if (error) {
-                console.error(`Login failed for ${username}:`, error);
-                return callback({ success: false, message: error.message || 'Login failed' });
-            }
+            const user = await signInUser(username, password);
             
             if (!user) {
                 console.error(`Login failed for ${username}: No user returned`);
@@ -578,8 +573,8 @@ io.on("connection", (socket) => {
                 user: {
                     id: user.id,
                     username: user.username,
-                    email: user.email,
-                    avatarUrl: avatarUrl
+                    email: user.user_metadata?.email || '',
+                    avatarUrl: avatarUrl || user.user_metadata?.avatar_url || null
                 }
             });
             
@@ -2033,7 +2028,7 @@ io.on("connection", (socket) => {
                     friendship_id: result.id,
                     friend_id: acceptorUser.id,
                     friend_username: acceptorUser.username,
-                    friend_avatar_url: acceptorUser.avatar_url, 
+                    friend_avatar_url: acceptorUser.avatarUrl, 
                     friend_status: acceptorUser.status, 
                     friendship_status: 'accepted',
                     since: result.updated_at || new Date().toISOString() // Use updated_at if available
@@ -2042,7 +2037,7 @@ io.on("connection", (socket) => {
                     friendship_id: result.id,
                     friend_id: requesterId,
                     friend_username: requesterUser?.username || 'Unknown', // Handle offline case
-                    friend_avatar_url: requesterUser?.avatar_url,
+                    friend_avatar_url: requesterUser?.avatarUrl,
                     friend_status: requesterUser?.status,
                     friendship_status: 'accepted',
                     since: result.updated_at || new Date().toISOString()

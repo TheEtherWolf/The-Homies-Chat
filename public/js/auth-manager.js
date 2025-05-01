@@ -151,13 +151,17 @@ class AuthManager {
         console.log('[AUTH_DEBUG] Emitting login-user event...');
         window.socket.emit('login-user', { username, password }, (response) => {
             console.log('[AUTH_DEBUG] Login response received:', response);
-            if (response.success) {
+            if (response.success && response.user) {
                 // Store user data in session storage
-                sessionStorage.setItem('user', JSON.stringify({
+                const userData = {
                     username: response.user.username,
                     id: response.user.id,
-                    avatarUrl: response.user.avatarUrl || null
-                }));
+                    avatarUrl: response.user.avatarUrl || null,
+                    email: response.user.email || null
+                };
+                
+                console.log('[AUTH_DEBUG] Saving user data to session storage:', userData);
+                sessionStorage.setItem('user', JSON.stringify(userData));
                 
                 console.log('[AUTH_DEBUG] Login successful, calling showLoginSuccess...');
                 this.showLoginSuccess();
