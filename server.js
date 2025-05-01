@@ -349,31 +349,28 @@ ON CONFLICT (name) DO NOTHING;
 // Add a route for profile picture uploads
 app.post('/api/upload-profile-picture', async (req, res) => {
     try {
-        // Check if user is authenticated via session
-        const sessionId = req.cookies.sessionId;
-        if (!sessionId) {
-            console.error('[PROFILE_PIC] No session ID in request');
-            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        // Check if user info was provided in the request body
+        if (!req.body.userId || !req.body.username) {
+            console.error('[PROFILE_PIC] Missing user information in request');
+            return res.status(401).json({ success: false, error: 'Missing user information' });
         }
         
-        // Find the user by session ID
-        let userId = null;
-        let username = null;
-        
-        for (const socketId in users) {
-            if (users[socketId] && users[socketId].sessionId === sessionId) {
-                userId = users[socketId].id;
-                username = users[socketId].username;
-                break;
-            }
-        }
-        
-        if (!userId) {
-            console.error('[PROFILE_PIC] No user found for session ID');
-            return res.status(401).json({ success: false, error: 'Not authenticated' });
-        }
+        const userId = req.body.userId;
+        const username = req.body.username;
         
         console.log(`[PROFILE_PIC] Processing profile picture upload for user ${username} (${userId})`);
+        
+        // Verify the user exists in Supabase
+        const { data: userData, error: userError } = await getSupabaseClient(true)
+            .from('users')
+            .select('id, username')
+            .eq('id', userId)
+            .single();
+            
+        if (userError || !userData) {
+            console.error('[PROFILE_PIC] User verification failed:', userError || 'User not found');
+            return res.status(401).json({ success: false, error: 'User verification failed' });
+        }
         
         // Check if files were uploaded
         if (!req.body || !req.body.imageData) {
@@ -421,7 +418,7 @@ app.post('/api/upload-profile-picture', async (req, res) => {
         
         // Update user profile in Supabase
         console.log(`[PROFILE_PIC] Updating user profile in Supabase with avatar URL: ${avatarUrl}`);
-        const { data: userData, error } = await getSupabaseClient(true)
+        const { data: updateData, error } = await getSupabaseClient(true)
             .from('users')
             .update({ avatar_url: avatarUrl })
             .eq('id', userId);

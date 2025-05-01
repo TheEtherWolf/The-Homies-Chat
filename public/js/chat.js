@@ -2197,11 +2197,11 @@ class ChatManager {
                         // Send delete request to server
                         this.socket.emit('delete-message', { messageId }, (response) => {
                             if (response.success) {
-                                console.log(`[CHAT_DEBUG] Message deleted successfully`);
+                                console.log('[CHAT_DEBUG] Message deleted successfully');
                                 // Remove the message from UI immediately 
                                 messageElement.remove();
                             } else {
-                                console.error(`[CHAT_DEBUG] Failed to delete message: ${messageId}`, response.error);
+                                console.error('[CHAT_DEBUG] Failed to delete message: ${messageId}', response.error);
                                 alert(`Failed to delete message: ${response.message}`);
                             }
                         });
@@ -3048,6 +3048,13 @@ class ChatManager {
         this._compressImage(file).then(imageData => {
             console.log(`[CHAT_DEBUG] File compressed and converted to data URL, sending to server`);
             
+            // Make sure we have the current user info
+            if (!this.currentUser || !this.currentUser.id) {
+                console.error('[CHAT_DEBUG] No current user information available');
+                this.addSystemMessage('Error: User information not available. Please try logging in again.');
+                return;
+            }
+            
             // Use fetch API instead of socket.io
             fetch('/api/upload-profile-picture', {
                 method: 'POST',
@@ -3056,7 +3063,9 @@ class ChatManager {
                 },
                 body: JSON.stringify({
                     imageData: imageData,
-                    fileType: 'image/jpeg' // We convert all images to JPEG during compression
+                    fileType: 'image/jpeg', // We convert all images to JPEG during compression
+                    userId: this.currentUser.id,
+                    username: this.currentUser.username
                 }),
                 credentials: 'include' // Include cookies for session authentication
             })
