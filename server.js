@@ -2305,6 +2305,7 @@ io.on("connection", (socket) => {
             const username = users[socket.id]?.username || 'unknown';
 
             console.log(`[PROFILE_PIC] Processing profile picture upload for user ${username} (${userId})`);
+            console.log(`[PROFILE_PIC] File info - size: ${uploadedFile.size} bytes, type: ${uploadedFile.type}`);
             
             // Check file type
             const fileType = uploadedFile.type;
@@ -2324,62 +2325,113 @@ io.on("connection", (socket) => {
                 console.log(`[PROFILE_PIC] Successfully converted base64 to buffer, size: ${fileBuffer.length} bytes`);
             } catch (bufferError) {
                 console.error(`[PROFILE_PIC] Error converting base64 to buffer: ${bufferError.message}`);
-                return callback({ success: false, error: 'Invalid image data format.' });
-            }
-            
-            // Upload to MEGA
-            console.log(`[PROFILE_PIC] Uploading profile picture to MEGA: ${fileName}`);
-            const megaUploadResult = await storage.uploadFile(fileBuffer, fileName, 'profile-pictures');
-
-            console.log(`[PROFILE_PIC] MEGA upload result:`, megaUploadResult);
-            
-            // Use the URL from the result, even if the upload "failed" but provided a fallback URL
-            const avatarUrl = megaUploadResult?.url || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
-            
-            if (!avatarUrl) {
-                console.error('[PROFILE_PIC] No URL returned from MEGA upload');
                 return callback({ 
                     success: false, 
-                    error: 'Failed to get avatar URL from storage.',
+                    error: 'Invalid image data format.',
                     fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
                 });
             }
-
-            // Update user profile in Supabase
-            console.log(`[PROFILE_PIC] Updating user profile in Supabase with avatar URL: ${avatarUrl}`);
-            const { data: userData, error } = await getSupabaseClient(true)
-                .from('users')
-                .update({ avatar_url: avatarUrl })
-                .eq('id', userId);
-
-            if (error) {
-                console.error('[PROFILE_PIC] Error updating user profile in Supabase:', error);
-                // Still return success with the URL so the client can display it
-                return callback({ 
-                    success: true, 
-                    fileUrl: avatarUrl,
-                    message: 'Profile picture uploaded but database update failed. Changes may not persist after logout.'
-                });
-            }
-
-            // Update user in memory
-            if (users[socket.id]) {
-                users[socket.id].avatarUrl = avatarUrl;
-                console.log(`[PROFILE_PIC] Updated user ${userId} avatar in memory: ${avatarUrl}`);
-            }
-
-            // Return success response
-            console.log(`[PROFILE_PIC] Profile picture upload complete for user ${username}`);
-            callback({
-                success: true,
-                fileUrl: avatarUrl,
-                message: 'Profile picture uploaded successfully.'
+            
+            // Use a separate async function for the upload to avoid blocking the socket
+            const handleUpload = async () => {
+                try {
+                    // Upload to MEGA
+                    console.log(`[PROFILE_PIC] Uploading profile picture to MEGA: ${fileName}`);
+                    const megaUploadResult = await storage.uploadFile(fileBuffer, fileName, 'profile-pictures');
+                    
+                    console.log(`[PROFILE_PIC] MEGA upload result:`, megaUploadResult);
+                    
+                    // Use the URL from the result, even if the upload "failed" but provided a fallback URL
+                    const avatarUrl = megaUploadResult?.url || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+                    
+                    if (!avatarUrl) {
+                        console.error('[PROFILE_PIC] No URL returned from MEGA upload');
+                        return { 
+                            success: false, 
+                            error: 'Failed to get avatar URL from storage.',
+                            fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
+                        };
+                    }
+                    
+                    // Update user profile in Supabase
+                    console.log(`[PROFILE_PIC] Updating user profile in Supabase with avatar URL: ${avatarUrl}`);
+                    try {
+                        const { data: userData, error } = await getSupabaseClient(true)
+                            .from('users')
+                            .update({ avatar_url: avatarUrl })
+                            .eq('id', userId);
+                        
+                        if (error) {
+                            console.error('[PROFILE_PIC] Error updating user profile in Supabase:', error);
+                            return { 
+                                success: true, 
+                                fileUrl: avatarUrl,
+                                message: 'Profile picture uploaded but database update failed. Changes may not persist after logout.'
+                            };
+                        }
+                    } catch (dbError) {
+                        console.error('[PROFILE_PIC] Database error:', dbError);
+                        return { 
+                            success: true, 
+                            fileUrl: avatarUrl,
+                            message: 'Profile picture uploaded but database update failed. Changes may not persist after logout.'
+                        };
+                    }
+                    
+                    // Update user in memory
+                    if (users[socket.id]) {
+                        users[socket.id].avatarUrl = avatarUrl;
+                        console.log(`[PROFILE_PIC] Updated user ${userId} avatar in memory: ${avatarUrl}`);
+                    }
+                    
+                    // Return success response
+                    console.log(`[PROFILE_PIC] Profile picture upload complete for user ${username}`);
+                    return {
+                        success: true,
+                        fileUrl: avatarUrl,
+                        message: 'Profile picture uploaded successfully.'
+                    };
+                } catch (uploadError) {
+                    console.error('[PROFILE_PIC] Upload error:', uploadError);
+                    return { 
+                        success: false, 
+                        error: 'Server error uploading profile picture: ' + uploadError.message,
+                        fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
+                    };
+                }
+            };
+            
+            // Start the upload process and immediately return to prevent timeout
+            handleUpload().then(result => {
+                // Only call the callback if the socket is still connected
+                if (users[socket.id]) {
+                    callback(result);
+                } else {
+                    console.log(`[PROFILE_PIC] User disconnected before upload completed, but upload was processed`);
+                }
+            }).catch(err => {
+                console.error('[PROFILE_PIC] Unhandled error in upload process:', err);
+                // Only call the callback if the socket is still connected
+                if (users[socket.id]) {
+                    callback({ 
+                        success: false, 
+                        error: 'Server error processing upload: ' + err.message,
+                        fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
+                    });
+                }
+            });
+            
+            // Immediately return a preliminary response to keep the connection alive
+            callback({ 
+                success: true, 
+                message: 'Upload in progress, please wait...',
+                inProgress: true
             });
         } catch (error) {
-            console.error('[PROFILE_PIC] Unhandled error uploading profile picture:', error);
+            console.error('[PROFILE_PIC] Unhandled error in upload handler:', error);
             callback({ 
                 success: false, 
-                error: 'Server error uploading profile picture: ' + error.message,
+                error: 'Server error handling upload: ' + error.message,
                 fallbackUrl: 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'
             });
         }

@@ -3025,7 +3025,20 @@ class ChatManager {
     
     // Upload profile picture to server
     uploadProfilePicture(file) {
-        console.log('[CHAT_DEBUG] Uploading profile picture:', file.name);
+        console.log('[CHAT_DEBUG] Uploading profile picture:', file.name, 'size:', file.size, 'type:', file.type);
+        
+        // Check file size - limit to 5MB to prevent disconnections
+        const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+        if (file.size > MAX_FILE_SIZE) {
+            this.addSystemMessage(`Error: Profile picture is too large (${Math.round(file.size/1024/1024)}MB). Maximum size is 5MB.`);
+            return;
+        }
+        
+        // Check file type
+        if (!file.type.startsWith('image/')) {
+            this.addSystemMessage('Error: Only image files are allowed for profile pictures.');
+            return;
+        }
         
         // Show loading message
         this.addSystemMessage('Uploading profile picture...');
@@ -3040,8 +3053,25 @@ class ChatManager {
                 data: e.target.result.split(',')[1] // Remove the data:image/jpeg;base64, part
             };
             
-            // Upload via socket.io
+            console.log(`[CHAT_DEBUG] File converted to base64, sending to server (${Math.round(fileData.data.length/1024)}KB)`);
+            
+            // Upload via socket.io with a timeout
+            const uploadTimeout = setTimeout(() => {
+                this.addSystemMessage('Profile picture upload timed out. Please try again.');
+                console.error('[CHAT_DEBUG] Profile picture upload timed out');
+            }, 30000); // 30 second timeout
+            
             this.socket.emit('upload-profile-picture', { file: fileData }, (response) => {
+                // If this is the preliminary response (upload in progress), don't clear timeout yet
+                if (response.inProgress) {
+                    console.log('[CHAT_DEBUG] Upload in progress, waiting for completion...');
+                    this.addSystemMessage('Upload in progress, please wait...');
+                    return;
+                }
+                
+                // Clear timeout for final response
+                clearTimeout(uploadTimeout);
+                
                 if (response.success) {
                     console.log('[CHAT_DEBUG] Profile picture uploaded successfully:', response.fileUrl);
                     
@@ -3055,10 +3085,25 @@ class ChatManager {
                     this.addSystemMessage('Profile picture updated successfully!');
                 } else {
                     console.error('[CHAT_DEBUG] Error uploading profile picture:', response.error);
-                    this.addSystemMessage(`Error uploading profile picture: ${response.error}`);
+                    
+                    // If there's a fallback URL, use it
+                    if (response.fallbackUrl) {
+                        console.log('[CHAT_DEBUG] Using fallback URL:', response.fallbackUrl);
+                        this.currentUser.avatarUrl = response.fallbackUrl;
+                        this.updateUserAvatarInUI(response.fallbackUrl);
+                        this.addSystemMessage(`Profile picture upload had an issue, but we're using a fallback image.`);
+                    } else {
+                        this.addSystemMessage(`Error uploading profile picture: ${response.error}`);
+                    }
                 }
             });
         };
+        
+        reader.onerror = (error) => {
+            console.error('[CHAT_DEBUG] Error reading file:', error);
+            this.addSystemMessage('Error reading file. Please try again.');
+        };
+        
         reader.readAsDataURL(file);
     }
     
