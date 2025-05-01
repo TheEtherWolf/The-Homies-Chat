@@ -39,20 +39,29 @@
     <div class="container-fluid">
         <!-- Authentication screens -->
         <div id="auth-container" class="d-flex flex-column justify-content-center align-items-center h-100">
+            <div class="auth-logo">
+                <img src="assets/logo.png" alt="The Homies App Logo">
+            </div>
             <div class="auth-card shadow">
-                <div class="card-header text-center bg-primary text-white">
+                <div class="card-header text-center">
                     <h2 id="auth-title">Welcome to The Homies App</h2>
                 </div>
                 <div class="card-body">
                     <!-- Login Form -->
                     <form id="login-form" class="d-flex flex-column">
                         <div class="mb-3">
-                            <label for="login-username" class="form-label" style="color: white;">Username</label>
-                            <input type="text" class="form-control" id="login-username" required>
+                            <label for="login-username" class="form-label">Username</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                <input type="text" class="form-control" id="login-username" placeholder="Enter your username" required>
+                            </div>
                         </div>
-                        <div class="mb-3">
-                            <label for="login-password" class="form-label" style="color: white;">Password</label>
-                            <input type="password" class="form-control" id="login-password" required>
+                        <div class="mb-4">
+                            <label for="login-password" class="form-label">Password</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                                <input type="password" class="form-control" id="login-password" placeholder="Enter your password" required>
+                            </div>
                         </div>
                         <button type="submit" class="btn btn-primary mb-3">Sign In</button>
                         <div class="text-center">
@@ -63,20 +72,32 @@
                     <!-- Registration Form -->
                     <form id="register-form" class="d-none d-flex flex-column">
                         <div class="mb-3">
-                            <label for="register-username" class="form-label" style="color: white;">Username</label>
-                            <input type="text" class="form-control" id="register-username" required>
+                            <label for="register-username" class="form-label">Username</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                <input type="text" class="form-control" id="register-username" placeholder="Choose a username" required>
+                            </div>
                         </div>
                         <div class="mb-3">
-                            <label for="register-email" class="form-label" style="color: white;">Email</label>
-                            <input type="email" class="form-control" id="register-email" required>
+                            <label for="register-email" class="form-label">Email</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                                <input type="email" class="form-control" id="register-email" placeholder="Enter your email" required>
+                            </div>
                         </div>
                         <div class="mb-3">
-                            <label for="register-password" class="form-label" style="color: white;">Password</label>
-                            <input type="password" class="form-control" id="register-password" required>
+                            <label for="register-password" class="form-label">Password</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                                <input type="password" class="form-control" id="register-password" placeholder="Create a password" required>
+                            </div>
                         </div>
-                        <div class="mb-3">
-                            <label for="register-confirm-password" class="form-label" style="color: white;">Confirm Password</label>
-                            <input type="password" class="form-control" id="register-confirm-password" required>
+                        <div class="mb-4">
+                            <label for="register-confirm-password" class="form-label">Confirm Password</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
+                                <input type="password" class="form-control" id="register-confirm-password" placeholder="Confirm your password" required>
+                            </div>
                         </div>
                         <button type="submit" class="btn btn-primary mb-3">Create Account</button>
                         <div class="text-center">
@@ -85,6 +106,10 @@
                     </form>
                 </div>
                 <div id="auth-message" class="alert d-none text-center"></div>
+            </div>
+            <div class="auth-footer mt-4">
+                <p>&copy; 2025 The Homies App. All rights reserved.</p>
+                <p>Secure messaging for you and your homies.</p>
             </div>
         </div>
 
