@@ -1773,64 +1773,93 @@ io.on("connection", (socket) => {
             
             console.log(`Preparing to save message with sender_id: ${sender.id}`);
             
+            // Save message to local storage regardless of Supabase availability
             try {
-                // Save message to Supabase
-                const { error } = await getSupabaseClient(true)
-                    .from('messages')
-                    .insert({
-                        id: messageId,
-                        content: message.content,
-                        sender_id: sender.id, // Corrected key from userId to id
-                        channel: message.channel,
-                        created_at: timestamp,
-                        recipient_id: message.recipientId || null,
-                        is_dm: message.isDM || false,
-                        is_deleted: false,
-                        type: message.type || 'text',
-                        file_url: message.fileUrl || null,
-                        file_type: message.fileType || null,
-                        file_size: message.fileSize || null
-                    });
-                    
-                if (error) {
-                    console.error('Error saving message to Supabase:', error);
-                    socket.emit('error', { message: 'Failed to save message. Please try again.' });
-                    if (callback) callback({ success: false, message: 'Database error' });
-                    return;
+                // Add message to channel messages
+                const channel = message.channel || 'general';
+                if (!channelMessages[channel]) {
+                    channelMessages[channel] = [];
                 }
                 
-                // If we get here, the message was saved successfully
-                if (callback) callback({ success: true, messageId });
+                // Add message to channel
+                channelMessages[channel].push({
+                    id: messageId,
+                    content: message.content,
+                    sender: sender.username,
+                    sender_id: sender.id,
+                    timestamp: timestamp,
+                    created_at: timestamp,
+                    channel: channel
+                });
                 
-                // Broadcast to the appropriate recipients
-                if (message.isDM && message.recipientId) {
-                    // Find the recipient's socket
-                    const recipientSocket = Object.keys(users).filter(id => 
-                        users[id] && users[id].id === message.recipientId
-                    );
-                    
-                    // Send to sender and recipient
-                    socket.emit('message', fullMessage);
-                    
-                    if (recipientSocket) {
-                        io.to(recipientSocket).emit('message', fullMessage);
+                // Save messages to storage
+                await storage.saveMessages({ channels: channelMessages });
+                console.log(`Message saved to local storage for channel ${channel}`);
+            } catch (storageError) {
+                console.error('Error saving message to local storage:', storageError);
+                // Continue anyway, as we'll still send the message to clients
+            }
+            
+            // Try to save to Supabase if available
+            try {
+                const { getSupabaseClient } = require('./supabase-client');
+                const supabase = getSupabaseClient(true);
+                
+                if (supabase) {
+                    // Save message to Supabase
+                    const { error } = await supabase
+                        .from('messages')
+                        .insert({
+                            id: messageId,
+                            content: message.content,
+                            sender_id: sender.id, // Corrected key from userId to id
+                            channel: message.channel,
+                            created_at: timestamp,
+                            recipient_id: message.recipientId || null,
+                            is_dm: message.isDM || false,
+                            is_deleted: false,
+                            type: message.type || 'text',
+                            file_url: message.fileUrl || null,
+                            file_type: message.fileType || null,
+                            file_size: message.fileSize || null
+                        });
+                        
+                    if (error) {
+                        console.error('Error saving message to Supabase:', error);
+                        // Continue anyway, as we've already saved to local storage
+                    } else {
+                        console.log('Message successfully saved to Supabase');
                     }
-                    
-                    console.log(`DM sent from ${sender.username} to ${message.recipientId}`);
                 } else {
-                    // Broadcast to all users in the channel
-                    io.emit('message', fullMessage);
-                    console.log(`Message broadcast to channel ${message.channel}`);
+                    console.log('Supabase client not available, message saved to local storage only');
                 }
             } catch (dbError) {
-                console.error('Database error saving message:', dbError);
-                if (callback) callback({ success: false, message: 'Database error' });
-                socket.emit('error', { message: 'Failed to save message due to database error.' });
+                console.error('Database error saving message to Supabase:', dbError);
+                // Continue anyway, as we've already saved to local storage
+            }
+            
+            // If we get here, the message was saved successfully to at least local storage
+            if (callback) callback({ success: true, messageId });
+            
+            // Broadcast to the appropriate recipients
+            if (message.isDM && message.recipientId) {
+                // Find the recipient's socket
+                const recipientSocket = Object.keys(users).find(id => 
+                    users[id] && users[id].id === message.recipientId
+                );
                 
-                // Even if DB save fails, still send the message to clients
-                // This ensures messages appear in the UI even if DB is down
+                // Send to sender and recipient
+                socket.emit('message', fullMessage);
+                
+                if (recipientSocket) {
+                    io.to(recipientSocket).emit('message', fullMessage);
+                }
+                
+                console.log(`DM sent from ${sender.username} to ${message.recipientId}`);
+            } else {
+                // Broadcast to all users in the channel
                 io.emit('message', fullMessage);
-                console.log(`Message broadcast despite DB error to channel ${message.channel}`);
+                console.log(`Message broadcast to channel ${message.channel}`);
             }
         } catch (err) {
             console.error('Error processing message:', err);

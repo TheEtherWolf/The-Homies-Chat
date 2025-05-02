@@ -22,13 +22,21 @@ let serviceSupabase = null;
 try {
   console.log('Initializing Supabase clients with URL:', SUPABASE_URL);
   
-  // Initialize the regular client
-  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-  console.log('Supabase regular client initialized successfully');
-  
-  // Initialize the service client for server operations
-  serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-  console.log('Supabase service client initialized successfully for server operations');
+  // Check if we're missing required dependencies
+  if (SUPABASE_URL === 'https://your-supabase-url.supabase.co' || 
+      SUPABASE_KEY === 'your-supabase-anon-key' || 
+      SUPABASE_SERVICE_KEY === 'your-supabase-service-key') {
+    console.warn('⚠️ Using placeholder Supabase credentials. Messages will be saved to local backup only.');
+    // Don't initialize clients with placeholder credentials
+  } else {
+    // Initialize the regular client
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    console.log('Supabase regular client initialized successfully');
+    
+    // Initialize the service client for server operations
+    serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    console.log('Supabase service client initialized successfully for server operations');
+  }
 } catch (error) {
   console.error('Error initializing Supabase clients:', error);
 }
