@@ -1806,10 +1806,10 @@ io.on("connection", (socket) => {
                 const supabase = getSupabaseClient(true);
                 
                 if (supabase) {
-                    // Save message to Supabase
+                    // Save message to Supabase using upsert instead of insert to handle duplicates
                     const { error } = await supabase
                         .from('messages')
-                        .insert({
+                        .upsert({
                             id: messageId,
                             content: message.content,
                             sender_id: sender.id, // Corrected key from userId to id
@@ -1822,7 +1822,7 @@ io.on("connection", (socket) => {
                             file_url: message.fileUrl || null,
                             file_type: message.fileType || null,
                             file_size: message.fileSize || null
-                        });
+                        }, { onConflict: 'id' });
                         
                     if (error) {
                         console.error('Error saving message to Supabase:', error);

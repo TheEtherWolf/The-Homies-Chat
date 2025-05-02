@@ -627,7 +627,7 @@ async function saveMessagesToSupabase(messages) {
         
         const { error } = await serviceSupabase
           .from('messages')
-          .upsert(batch);
+          .upsert(batch, { onConflict: 'id' });
         
         if (error) {
           console.error(`Error saving batch ${Math.floor(i/batchSize) + 1} to Supabase:`, error);
