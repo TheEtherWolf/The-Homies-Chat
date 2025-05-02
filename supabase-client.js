@@ -8,9 +8,9 @@ const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 // Environment variables for Supabase
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY; 
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY; // Service role key
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://your-supabase-url.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'your-supabase-anon-key'; 
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'your-supabase-service-key'; // Service role key
 
 // Create a regular client for client-side operations
 let supabase = null;
@@ -19,16 +19,18 @@ let supabase = null;
 let serviceSupabase = null;
 
 // Initialize Supabase clients
-if (SUPABASE_URL && SUPABASE_KEY) {
+try {
+  console.log('Initializing Supabase clients with URL:', SUPABASE_URL);
+  
+  // Initialize the regular client
   supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  console.log('Supabase regular client initialized successfully');
   
-  // If a service key is provided, create a separate client for server operations
-  if (SUPABASE_SERVICE_KEY) {
-    serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-    console.log('Supabase service client initialized for server operations');
-  }
-  
-  console.log('Supabase initialized with regular client');
+  // Initialize the service client for server operations
+  serviceSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  console.log('Supabase service client initialized successfully for server operations');
+} catch (error) {
+  console.error('Error initializing Supabase clients:', error);
 }
 
 /**
@@ -37,64 +39,23 @@ if (SUPABASE_URL && SUPABASE_KEY) {
  * @returns {Object} Supabase client
  */
 function getSupabaseClient(serverOperation = false) {
-  // Use service client for server operations if available
-  if (serverOperation && serviceSupabase) {
+  // Check if clients are initialized
+  if (!supabase || (serverOperation && !serviceSupabase)) {
+    console.error(`Supabase client not initialized. serverOperation=${serverOperation}`);
+    throw new Error('Supabase client not initialized');
+  }
+  
+  // Use service client for server operations
+  if (serverOperation) {
     return serviceSupabase;
   }
+  
   // Otherwise use regular client
   return supabase;
 }
 
 // Set NODE_ENV to development if not set
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
-
-// Initialize Supabase client
-try {
-  // Only allow mock client in strict development mode
-  if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true' && 
-      (!SUPABASE_URL || !SUPABASE_KEY)) {
-    console.log('Development mode: Using mock Supabase client');
-    // Create dummy client for development mode
-    supabase = {
-      auth: {
-        signUp: () => ({ user: { id: 'dev-' + Date.now() }, error: null }),
-        signInWithPassword: (credentials) => ({ 
-          user: { id: 'dev-' + Date.now(), email: credentials.email }, 
-          error: null 
-        }),
-        signOut: () => ({ error: null })
-      },
-      from: (table) => ({
-        select: () => ({ data: [], error: null }),
-        insert: () => ({ data: { id: 'dev-' + Date.now() }, error: null }),
-        update: () => ({ data: null, error: null }),
-        delete: () => ({ data: null, error: null })
-      })
-    };
-  } else {
-    // Enforce Supabase credentials in production
-    if (process.env.NODE_ENV === 'production' && (!SUPABASE_URL || !SUPABASE_KEY)) {
-      throw new Error('Supabase credentials are required in production mode');
-    }
-  }
-} catch (error) {
-  console.error('Failed to initialize Supabase client:', error);
-  
-  // Create dummy client when there's an error
-  supabase = {
-    auth: {
-      signUp: () => ({ user: null, error: new Error('Supabase not configured') }),
-      signInWithPassword: () => ({ user: null, error: new Error('Supabase not configured') }),
-      signOut: () => ({ error: null })
-    },
-    from: () => ({
-      select: () => ({ data: [], error: new Error('Supabase not configured') }),
-      insert: () => ({ data: null, error: new Error('Supabase not configured') }),
-      update: () => ({ data: null, error: new Error('Supabase not configured') }),
-      delete: () => ({ data: null, error: new Error('Supabase not configured') })
-    })
-  };
-}
 
 /**
  * Check if a string is a valid UUID

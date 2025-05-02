@@ -271,7 +271,7 @@ class ChatManager {
         document.getElementById('settings-button')?.addEventListener('click', () => {
             console.log('[CHAT_DEBUG] Settings button clicked');
             // Update the avatar preview in the settings modal
-            const avatarPreview = document.getElementById('settings-avatar-preview');
+            const avatarPreview = document.getElementById('profile-picture-preview');
             if (avatarPreview && this.currentUser.avatarUrl) {
                 avatarPreview.src = this.currentUser.avatarUrl;
             }
@@ -281,9 +281,16 @@ class ChatManager {
             settingsModal.show();
         });
         
-        // Profile picture upload handler
-        document.getElementById('avatar-upload')?.addEventListener('change', async (event) => {
-            console.log('[CHAT_DEBUG] Avatar upload input changed');
+        // Profile picture change button click handler
+        document.getElementById('change-profile-picture-btn')?.addEventListener('click', () => {
+            console.log('[CHAT_DEBUG] Change profile picture button clicked');
+            // Trigger the file input click
+            document.getElementById('profile-picture-input')?.click();
+        });
+        
+        // Profile picture input change handler
+        document.getElementById('profile-picture-input')?.addEventListener('change', async (event) => {
+            console.log('[CHAT_DEBUG] Profile picture input changed');
             const file = event.target.files[0];
             if (!file) return;
             
@@ -300,7 +307,7 @@ class ChatManager {
             }
             
             // Show preview
-            const avatarPreview = document.getElementById('settings-avatar-preview');
+            const avatarPreview = document.getElementById('profile-picture-preview');
             if (avatarPreview) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
@@ -452,6 +459,202 @@ class ChatManager {
                 window.socket.emit('keep-alive', { userId: this.currentUser?.id });
             }
         }, 5 * 60 * 1000); // 5 minutes
+    }
+    
+    // Setup emoji picker functionality
+    setupEmojiPicker() {
+        console.log('[CHAT_DEBUG] Setting up emoji picker');
+        
+        // Initialize emoji picker state
+        this.emojiPickerVisible = false;
+        this.recentEmojis = JSON.parse(localStorage.getItem('recentEmojis') || '[]');
+        
+        // Setup emoji button click handler
+        if (this.emojiButton) {
+            this.emojiButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.toggleEmojiPicker();
+            });
+        }
+        
+        // Setup emoji picker close button
+        const closeButton = document.getElementById('emoji-picker-close');
+        if (closeButton) {
+            closeButton.addEventListener('click', () => {
+                this.hideEmojiPicker();
+            });
+        }
+        
+        // Setup emoji category buttons
+        const categoryButtons = document.querySelectorAll('.emoji-category');
+        categoryButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const category = button.getAttribute('data-category');
+                this.switchEmojiCategory(category);
+            });
+        });
+        
+        // Setup emoji selection
+        const emojiButtons = document.querySelectorAll('.emoji-btn');
+        emojiButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const emoji = button.textContent;
+                this.insertEmoji(emoji);
+                this.addToRecentEmojis(emoji);
+            });
+        });
+        
+        // Setup emoji search
+        const searchInput = document.getElementById('emoji-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                this.searchEmojis(searchInput.value);
+            });
+        }
+        
+        // Populate recent emojis
+        this.updateRecentEmojis();
+        
+        console.log('[CHAT_DEBUG] Emoji picker setup complete');
+    }
+    
+    // Toggle emoji picker visibility
+    toggleEmojiPicker() {
+        if (this.emojiPickerVisible) {
+            this.hideEmojiPicker();
+        } else {
+            this.showEmojiPicker();
+        }
+    }
+    
+    // Show emoji picker
+    showEmojiPicker() {
+        if (this.emojiPicker) {
+            // Position the picker
+            const inputRect = this.messageInput.getBoundingClientRect();
+            this.emojiPicker.style.bottom = `${window.innerHeight - inputRect.top + 10}px`;
+            this.emojiPicker.style.left = `${inputRect.left}px`;
+            
+            // Show the picker
+            this.emojiPicker.classList.remove('d-none');
+            this.emojiPickerVisible = true;
+            
+            // Update recent emojis
+            this.updateRecentEmojis();
+        }
+    }
+    
+    // Hide emoji picker
+    hideEmojiPicker() {
+        if (this.emojiPicker) {
+            this.emojiPicker.classList.add('d-none');
+            this.emojiPickerVisible = false;
+        }
+    }
+    
+    // Switch emoji category
+    switchEmojiCategory(category) {
+        // Update active category button
+        document.querySelectorAll('.emoji-category').forEach(button => {
+            button.classList.remove('active');
+            if (button.getAttribute('data-category') === category) {
+                button.classList.add('active');
+            }
+        });
+        
+        // Show selected category content
+        document.querySelectorAll('.emoji-category-content').forEach(content => {
+            content.classList.remove('active');
+            if (content.getAttribute('data-category') === category) {
+                content.classList.add('active');
+            }
+        });
+    }
+    
+    // Insert emoji into message input
+    insertEmoji(emoji) {
+        if (this.messageInput) {
+            const cursorPos = this.messageInput.selectionStart;
+            const text = this.messageInput.value;
+            const newText = text.substring(0, cursorPos) + emoji + text.substring(cursorPos);
+            this.messageInput.value = newText;
+            this.messageInput.focus();
+            this.messageInput.selectionStart = cursorPos + emoji.length;
+            this.messageInput.selectionEnd = cursorPos + emoji.length;
+        }
+    }
+    
+    // Add emoji to recent emojis
+    addToRecentEmojis(emoji) {
+        // Remove emoji if it already exists in the list
+        this.recentEmojis = this.recentEmojis.filter(e => e !== emoji);
+        
+        // Add emoji to the beginning of the list
+        this.recentEmojis.unshift(emoji);
+        
+        // Limit to 20 recent emojis
+        if (this.recentEmojis.length > 20) {
+            this.recentEmojis = this.recentEmojis.slice(0, 20);
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('recentEmojis', JSON.stringify(this.recentEmojis));
+        
+        // Update the UI
+        this.updateRecentEmojis();
+    }
+    
+    // Update recent emojis in the UI
+    updateRecentEmojis() {
+        const recentContainer = document.querySelector('.emoji-category-content[data-category="recent"]');
+        if (recentContainer) {
+            // Clear container
+            recentContainer.innerHTML = '';
+            
+            // Add recent emojis
+            if (this.recentEmojis.length === 0) {
+                const message = document.createElement('div');
+                message.className = 'text-center p-3';
+                message.textContent = 'No recent emojis';
+                recentContainer.appendChild(message);
+            } else {
+                this.recentEmojis.forEach(emoji => {
+                    const button = document.createElement('button');
+                    button.className = 'emoji-btn';
+                    button.textContent = emoji;
+                    button.addEventListener('click', () => {
+                        this.insertEmoji(emoji);
+                        this.addToRecentEmojis(emoji);
+                    });
+                    recentContainer.appendChild(button);
+                });
+            }
+        }
+    }
+    
+    // Search emojis
+    searchEmojis(query) {
+        if (!query) {
+            // If search is empty, show all emojis
+            document.querySelectorAll('.emoji-btn').forEach(button => {
+                button.style.display = '';
+            });
+            return;
+        }
+        
+        // Convert query to lowercase for case-insensitive search
+        query = query.toLowerCase();
+        
+        // Search through all emoji buttons
+        document.querySelectorAll('.emoji-btn').forEach(button => {
+            const emoji = button.textContent;
+            // Simple search: if emoji contains query, show it
+            if (emoji.includes(query)) {
+                button.style.display = '';
+            } else {
+                button.style.display = 'none';
+            }
+        });
     }
     
     // ... rest of the code remains the same ...
