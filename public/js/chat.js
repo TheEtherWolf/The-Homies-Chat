@@ -123,21 +123,6 @@ class ChatManager {
         }
     }
     
-    // Update UI with user info
-    _updateUserUI() {
-        // Update current user display
-        if (this.currentUserDisplay) {
-            this.currentUserDisplay.textContent = this.currentUser.username;
-        }
-        
-        // Update user avatar
-        const userAvatar = document.querySelector('.user-avatar img');
-        if (userAvatar && this.currentUser.avatarUrl) {
-            userAvatar.src = this.currentUser.avatarUrl;
-            console.log('[CHAT_DEBUG] Updated user avatar with URL:', this.currentUser.avatarUrl);
-        }
-    }
-
     // Initialize chat manager with user data
     initialize(user) {
         console.log('[CHAT_DEBUG] ChatManager initialize called with user:', user);
@@ -197,6 +182,21 @@ class ChatManager {
         console.log('[CHAT_DEBUG] Chat interface initialized');
     }
     
+    // Update UI with user info
+    _updateUserUI() {
+        // Update current user display
+        if (this.currentUserDisplay) {
+            this.currentUserDisplay.textContent = this.currentUser.username;
+        }
+        
+        // Update user avatar
+        const userAvatar = document.querySelector('.user-avatar img');
+        if (userAvatar && this.currentUser.avatarUrl) {
+            userAvatar.src = this.currentUser.avatarUrl;
+            console.log('[CHAT_DEBUG] Updated user avatar with URL:', this.currentUser.avatarUrl);
+        }
+    }
+
     // Update user avatar URL in session storage and UI
     updateUserAvatar(avatarUrl) {
         console.log('[CHAT_DEBUG] Updating user avatar URL:', avatarUrl);
@@ -330,6 +330,20 @@ class ChatManager {
             const settingsModal = bootstrap.Modal.getInstance(document.getElementById('settings-modal'));
             settingsModal.hide();
         });
+        
+        // Send message button click handler
+        this.sendButton?.addEventListener('click', () => {
+            console.log('[CHAT_DEBUG] Send message button clicked');
+            this.sendMessage();
+        });
+        
+        // Message input keypress handler
+        this.messageInput?.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                console.log('[CHAT_DEBUG] Enter key pressed, sending message');
+                this.sendMessage();
+            }
+        });
     }
     
     // Compress image before upload
@@ -417,10 +431,89 @@ class ChatManager {
     _setupSocketListeners() {
         console.log('[CHAT_DEBUG] Setting up socket listeners');
         
-        // Existing socket listeners...
+        // Handle connection events
+        this.socket.on('connect', () => {
+            console.log('[CHAT_DEBUG] Socket connected');
+            this.isSocketConnected = true;
+            
+            // Perform initial data fetch if needed
+            if (this.needsInitialDataFetch && this.currentUser) {
+                this.performInitialDataFetch();
+            }
+        });
+        
+        this.socket.on('disconnect', () => {
+            console.log('[CHAT_DEBUG] Socket disconnected');
+            this.isSocketConnected = false;
+        });
+        
+        // Handle active users updates
+        this.socket.on('active-users', (users) => {
+            console.log('[CHAT_DEBUG] Received active users:', users);
+            // Update UI with active users
+            this._updateActiveUsersList(users);
+        });
+        
+        // Handle message history
+        this.socket.on('message-history', (data) => {
+            console.log(`[CHAT_DEBUG] Received message history for ${data.channel}:`, data.messages.length);
+            
+            // Store messages in cache
+            this.channelMessages[data.channel] = data.messages;
+            
+            // If this is the current channel, display messages
+            if (data.channel === this.currentChannel) {
+                this._displayChannelMessages(data.channel);
+            }
+        });
+        
+        // Handle incoming messages
+        this.socket.on('chat-message', (message) => {
+            console.log('[CHAT_DEBUG] Received new message:', message);
+            
+            // Add message to appropriate channel cache
+            const channel = message.channel || 'general';
+            if (!this.channelMessages[channel]) {
+                this.channelMessages[channel] = [];
+            }
+            this.channelMessages[channel].push(message);
+            
+            // If this is the current channel, display the message
+            if (channel === this.currentChannel) {
+                this._displayMessage(message);
+            }
+            
+            // Play notification sound if message is not from current user
+            if (message.senderId !== this.currentUser.id) {
+                this._playNotificationSound();
+            }
+        });
+        
+        // Handle friend requests
+        this.socket.on('friend-request-received', (data) => {
+            console.log('[CHAT_DEBUG] Received friend request:', data);
+            // Show friend request notification
+            this._showFriendRequestNotification(data);
+        });
+        
+        // Handle friend request responses
+        this.socket.on('friend-request-response', (data) => {
+            console.log('[CHAT_DEBUG] Friend request response:', data);
+            // Update UI based on response
+            if (data.accepted) {
+                this._addFriendToList(data.friendship);
+            }
+        });
+        
+        // Handle user status changes
+        this.socket.on('user-status-change', (data) => {
+            console.log('[CHAT_DEBUG] User status change:', data);
+            // Update user status in UI
+            this._updateUserStatus(data.username, data.status);
+        });
         
         // Listen for avatar updates from other users
-        window.socket.on('user-avatar-updated', (data) => {
+        this.socket.on('user-avatar-updated', (data) => {
             console.log(`[CHAT_DEBUG] User ${data.userId} updated their avatar to ${data.avatarUrl}`);
             
             // Update in allUsers object
@@ -446,6 +539,225 @@ class ChatManager {
             
             console.log(`[CHAT_DEBUG] Updated avatar in ${updatedCount} messages from user ${data.userId}`);
         });
+    }
+    
+    // Send a message
+    sendMessage() {
+        if (!this.messageInput || !this.messageInput.value.trim()) {
+            return;
+        }
+        
+        const messageContent = this.messageInput.value.trim();
+        console.log(`[CHAT_DEBUG] Sending message to ${this.currentChannel}: ${messageContent}`);
+        
+        // Prepare message data
+        const messageData = {
+            content: messageContent,
+            channel: this.currentChannel,
+            timestamp: new Date().toISOString()
+        };
+        
+        // Send message via socket
+        this.socket.emit('send-message', messageData, (response) => {
+            console.log('[CHAT_DEBUG] Message send response:', response);
+            
+            if (response.success) {
+                // Clear input field
+                this.messageInput.value = '';
+                this.messageInput.focus();
+            } else {
+                // Show error
+                console.error('[CHAT_DEBUG] Error sending message:', response.message);
+                alert('Failed to send message: ' + response.message);
+            }
+        });
+    }
+    
+    // Display channel messages
+    _displayChannelMessages(channel) {
+        console.log(`[CHAT_DEBUG] Displaying messages for channel ${channel}`);
+        
+        // Clear messages container
+        if (this.messagesContainer) {
+            this.messagesContainer.innerHTML = '';
+            
+            // Add channel header
+            const dateHeader = document.createElement('div');
+            dateHeader.className = 'date-separator';
+            dateHeader.innerHTML = '<span>Today</span>';
+            this.messagesContainer.appendChild(dateHeader);
+            
+            const welcomeMessage = document.createElement('div');
+            welcomeMessage.className = 'system-message';
+            welcomeMessage.textContent = `Welcome to the beginning of #${channel}`;
+            this.messagesContainer.appendChild(welcomeMessage);
+            
+            // Get messages for this channel
+            const messages = this.channelMessages[channel] || [];
+            
+            // Display messages
+            messages.forEach(message => {
+                this._displayMessage(message, false); // Don't scroll for bulk loading
+            });
+            
+            // Scroll to bottom
+            this._scrollToBottom();
+        }
+    }
+    
+    // Display a single message
+    _displayMessage(message, scrollToBottom = true) {
+        if (!this.messagesContainer) return;
+        
+        // Create message element
+        const messageEl = document.createElement('div');
+        messageEl.className = 'message-item';
+        messageEl.setAttribute('data-message-id', message.id || '');
+        messageEl.setAttribute('data-sender-id', message.senderId || '');
+        
+        // Get sender info
+        const sender = message.sender || 'Unknown User';
+        const senderId = message.senderId || '';
+        const isCurrentUser = senderId === this.currentUser.id;
+        
+        // Get avatar URL
+        let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+        
+        // If it's the current user, use their avatar
+        if (isCurrentUser && this.currentUser.avatarUrl) {
+            avatarUrl = this.currentUser.avatarUrl;
+        } 
+        // Otherwise check if we have this user's info in allUsers
+        else if (senderId && this.allUsers[senderId] && this.allUsers[senderId].avatarUrl) {
+            avatarUrl = this.allUsers[senderId].avatarUrl;
+        }
+        
+        // Format timestamp
+        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
+        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        // Build message HTML
+        messageEl.innerHTML = `
+            <div class="message-avatar">
+                <img src="${avatarUrl}" alt="${sender}" class="rounded-circle">
+            </div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="message-sender">${sender}</span>
+                    <span class="message-time">${timeString}</span>
+                </div>
+                <div class="message-text">${this._formatMessageContent(message.content)}</div>
+            </div>
+        `;
+        
+        // Add to messages container
+        this.messagesContainer.appendChild(messageEl);
+        
+        // Scroll to bottom if requested
+        if (scrollToBottom) {
+            this._scrollToBottom();
+        }
+    }
+    
+    // Format message content (handle links, emojis, etc.)
+    _formatMessageContent(content) {
+        if (!content) return '';
+        
+        // Convert URLs to links
+        content = content.replace(
+            /(https?:\/\/[^\s]+)/g, 
+            '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+        );
+        
+        // Return formatted content
+        return content;
+    }
+    
+    // Scroll messages container to bottom
+    _scrollToBottom() {
+        if (this.messagesContainer) {
+            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        }
+    }
+    
+    // Play notification sound
+    _playNotificationSound() {
+        // Check if notification sounds are enabled
+        const notificationSoundsEnabled = document.getElementById('notification-sounds')?.checked !== false;
+        
+        if (notificationSoundsEnabled) {
+            // Create and play notification sound
+            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/notification.mp3?v=1746110048911');
+            audio.volume = 0.5;
+            audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing notification sound:', err));
+        }
+    }
+    
+    // Update active users list
+    _updateActiveUsersList(users) {
+        // Update UI with active users
+        console.log('[CHAT_DEBUG] Updating active users list:', users);
+    }
+    
+    // Show friend request notification
+    _showFriendRequestNotification(data) {
+        console.log('[CHAT_DEBUG] Showing friend request notification:', data);
+        
+        // Set friend request data
+        document.getElementById('friend-request-username').textContent = data.senderUsername;
+        
+        // Store the friendship ID for accept/reject actions
+        this.pendingFriendRequestId = data.friendshipId;
+        
+        // Show the modal
+        const friendRequestModal = new bootstrap.Modal(document.getElementById('friend-request-modal'));
+        friendRequestModal.show();
+    }
+    
+    // Add friend to list
+    _addFriendToList(friendship) {
+        console.log('[CHAT_DEBUG] Adding friend to list:', friendship);
+        
+        // Update UI with new friend
+    }
+    
+    // Update user status
+    _updateUserStatus(username, status) {
+        console.log(`[CHAT_DEBUG] Updating status for ${username} to ${status}`);
+        
+        // Update UI with user status
+    }
+    
+    // Perform initial data fetch when socket is connected
+    performInitialDataFetch() {
+        console.log('[CHAT_DEBUG] Performing initial data fetch');
+        
+        if (!this.socket || !this.socket.connected) {
+            console.error('[CHAT_DEBUG] Cannot fetch data: Socket not connected');
+            return;
+        }
+        
+        if (!this.currentUser || !this.currentUser.id) {
+            console.error('[CHAT_DEBUG] Cannot fetch data: User not authenticated');
+            return;
+        }
+        
+        // Fetch active users
+        this.socket.emit('get-active-users');
+        
+        // Fetch message history for current channel
+        this.socket.emit('get-channel-messages', { channel: this.currentChannel });
+        
+        // Fetch friend list
+        this.socket.emit('get-friends-list');
+        
+        // Fetch pending friend requests
+        this.socket.emit('get-friend-requests');
+        
+        // Mark as fetched
+        this.needsInitialDataFetch = false;
+        
+        console.log('[CHAT_DEBUG] Initial data fetch complete');
     }
     
     // Set up keep-alive mechanism to prevent Glitch from sleeping
