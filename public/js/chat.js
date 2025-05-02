@@ -548,12 +548,16 @@ class ChatManager {
         }
         
         const messageContent = this.messageInput.value.trim();
-        console.log(`[CHAT_DEBUG] Sending message to ${this.currentChannel}: ${messageContent}`);
+        
+        // Ensure channel name is properly formatted for the server (without hashtag)
+        const dataChannel = this.currentChannel.startsWith('#') ? this.currentChannel.substring(1) : this.currentChannel;
+        
+        console.log(`[CHAT_DEBUG] Sending message to ${dataChannel}: ${messageContent}`);
         
         // Prepare message data
         const messageData = {
             content: messageContent,
-            channel: this.currentChannel,
+            channel: dataChannel,
             timestamp: new Date().toISOString()
         };
         
@@ -577,6 +581,20 @@ class ChatManager {
     _displayChannelMessages(channel) {
         console.log(`[CHAT_DEBUG] Displaying messages for channel ${channel}`);
         
+        // Ensure channel name has hashtag prefix for UI consistency
+        const displayChannel = channel.startsWith('#') ? channel : `#${channel}`;
+        const dataChannel = channel.startsWith('#') ? channel.substring(1) : channel;
+        
+        // Update chat header
+        if (this.chatTitle) {
+            this.chatTitle.textContent = displayChannel;
+        }
+        
+        // Update message input placeholder
+        if (this.messageInput) {
+            this.messageInput.placeholder = `Message ${displayChannel}`;
+        }
+        
         // Clear messages container
         if (this.messagesContainer) {
             this.messagesContainer.innerHTML = '';
@@ -589,11 +607,11 @@ class ChatManager {
             
             const welcomeMessage = document.createElement('div');
             welcomeMessage.className = 'system-message';
-            welcomeMessage.textContent = `Welcome to the beginning of #${channel}`;
+            welcomeMessage.textContent = `Welcome to the beginning of ${displayChannel}`;
             this.messagesContainer.appendChild(welcomeMessage);
             
             // Get messages for this channel
-            const messages = this.channelMessages[channel] || [];
+            const messages = this.channelMessages[dataChannel] || [];
             
             // Display messages
             messages.forEach(message => {
@@ -609,9 +627,15 @@ class ChatManager {
     _displayMessage(message, scrollToBottom = true) {
         if (!this.messagesContainer) return;
         
+        // Check if message is deleted
+        const isDeleted = message.is_deleted === true;
+        
         // Create message element
         const messageEl = document.createElement('div');
-        messageEl.className = 'message-item';
+        messageEl.className = 'message';
+        if (message.senderId === this.currentUser.id) {
+            messageEl.classList.add('own-message');
+        }
         messageEl.setAttribute('data-message-id', message.id || '');
         messageEl.setAttribute('data-sender-id', message.senderId || '');
         
@@ -636,19 +660,49 @@ class ChatManager {
         const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
         const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
+        // Determine message content
+        let messageContent = isDeleted 
+            ? '<em class="deleted-message">[This message has been deleted]</em>' 
+            : this._formatMessageContent(message.content);
+        
         // Build message HTML
         messageEl.innerHTML = `
-            <div class="message-avatar">
-                <img src="${avatarUrl}" alt="${sender}" class="rounded-circle">
-            </div>
+            <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
             <div class="message-content">
                 <div class="message-header">
-                    <span class="message-sender">${sender}</span>
-                    <span class="message-time">${timeString}</span>
+                    <span class="message-author">${sender}</span>
+                    <span class="message-timestamp">${timeString}</span>
                 </div>
-                <div class="message-text">${this._formatMessageContent(message.content)}</div>
+                <div class="message-text">${messageContent}</div>
             </div>
+            ${isCurrentUser && !isDeleted ? '<div class="message-actions"><button class="message-actions-btn" title="Message Options"><i class="bi bi-three-dots-vertical"></i></button><div class="message-actions-menu"><div class="message-action-item danger" data-action="delete"><i class="bi bi-trash"></i>Delete Message</div></div></div>' : ''}
         `;
+        
+        // Add delete button event listener if it's the current user's message
+        if (isCurrentUser && !isDeleted) {
+            const actionBtn = messageEl.querySelector('.message-actions-btn');
+            const actionMenu = messageEl.querySelector('.message-actions-menu');
+            const deleteAction = messageEl.querySelector('.message-action-item[data-action="delete"]');
+            
+            if (actionBtn && actionMenu) {
+                actionBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    actionMenu.classList.toggle('show');
+                });
+                
+                // Close menu when clicking outside
+                document.addEventListener('click', () => {
+                    actionMenu.classList.remove('show');
+                });
+            }
+            
+            if (deleteAction) {
+                deleteAction.addEventListener('click', () => {
+                    this._deleteMessage(message.id);
+                    actionMenu.classList.remove('show');
+                });
+            }
+        }
         
         // Add to messages container
         this.messagesContainer.appendChild(messageEl);
@@ -657,6 +711,23 @@ class ChatManager {
         if (scrollToBottom) {
             this._scrollToBottom();
         }
+    }
+    
+    // Delete a message
+    _deleteMessage(messageId) {
+        if (!messageId) return;
+        
+        console.log(`[CHAT_DEBUG] Deleting message: ${messageId}`);
+        
+        // Send delete request to server
+        this.socket.emit('delete-message', { messageId }, (response) => {
+            console.log('[CHAT_DEBUG] Delete message response:', response);
+            
+            if (!response.success) {
+                console.error('[CHAT_DEBUG] Error deleting message:', response.message);
+                alert('Failed to delete message: ' + response.message);
+            }
+        });
     }
     
     // Format message content (handle links, emojis, etc.)
