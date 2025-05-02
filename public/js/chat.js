@@ -468,7 +468,7 @@ class ChatManager {
         });
         
         // Handle incoming messages
-        this.socket.on('chat-message', (message) => {
+        this.socket.on('message', (message) => {
             console.log('[CHAT_DEBUG] Received new message:', message);
             
             // Add message to appropriate channel cache
@@ -479,7 +479,8 @@ class ChatManager {
             this.channelMessages[channel].push(message);
             
             // If this is the current channel, display the message
-            if (channel === this.currentChannel) {
+            if (channel === this.currentChannel || 
+                (this.currentChannel.startsWith('#') && channel === this.currentChannel.substring(1))) {
                 this._displayMessage(message);
             }
             
@@ -561,18 +562,18 @@ class ChatManager {
             timestamp: new Date().toISOString()
         };
         
-        // Send message via socket
+        // Clear input field immediately for better UX
+        this.messageInput.value = '';
+        this.messageInput.focus();
+        
+        // Send message via socket with callback
         this.socket.emit('send-message', messageData, (response) => {
-            console.log('[CHAT_DEBUG] Message send response:', response);
-            
-            if (response.success) {
-                // Clear input field
-                this.messageInput.value = '';
-                this.messageInput.focus();
-            } else {
-                // Show error
+            if (response && !response.success) {
                 console.error('[CHAT_DEBUG] Error sending message:', response.message);
-                alert('Failed to send message: ' + response.message);
+                // Only show alert for actual errors, not just DB storage issues
+                if (response.message !== 'Database error') {
+                    alert('Failed to send message: ' + response.message);
+                }
             }
         });
     }

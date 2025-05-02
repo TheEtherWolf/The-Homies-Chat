@@ -1729,9 +1729,10 @@ io.on("connection", (socket) => {
     });
 
     // Replace chat-message with send-message handler
-    socket.on('send-message', async (message) => {
+    socket.on('send-message', async (message, callback) => {
         if (!users[socket.id]) {
             console.error('User not authenticated for message sending');
+            if (callback) callback({ success: false, message: 'Not authenticated' });
             return;
         }
         
@@ -1739,6 +1740,7 @@ io.on("connection", (socket) => {
             // Validate the message
             if (!message || !message.content) {
                 console.error('Invalid message format');
+                if (callback) callback({ success: false, message: 'Invalid message format' });
                 return;
             }
             
@@ -1749,6 +1751,7 @@ io.on("connection", (socket) => {
             if (!sender || !sender.id) { // Corrected key from userId to id
                 console.error('Cannot send message: Invalid or missing sender ID');
                 socket.emit('error', { message: 'User session invalid. Please refresh the page.' });
+                if (callback) callback({ success: false, message: 'User session invalid' });
                 return;
             }
             
@@ -1770,55 +1773,71 @@ io.on("connection", (socket) => {
             
             console.log(`Preparing to save message with sender_id: ${sender.id}`);
             
-            // Save message to Supabase
-            const { error } = await getSupabaseClient(true)
-                .from('messages')
-                .insert({
-                    id: messageId,
-                    content: message.content,
-                    sender_id: sender.id, // Corrected key from userId to id
-                    channel: message.channel,
-                    created_at: timestamp,
-                    recipient_id: message.recipientId || null,
-                    is_dm: message.isDM || false,
-                    is_deleted: false,
-                    type: message.type || 'text',
-                    file_url: message.fileUrl || null,
-                    file_type: message.fileType || null,
-                    file_size: message.fileSize || null
-                });
-                
-            if (error) {
-                console.error('Error saving message to Supabase:', error);
-                socket.emit('error', { message: 'Failed to save message. Please try again.' });
-                return;
-            }
-            
-            // Broadcast to the appropriate recipients
-            if (message.isDM && message.recipientId) {
-                // Find the recipient's socket
-                const recipientSocket = Object.keys(users).filter(id => 
-                    users[id] && users[id].id === message.recipientId
-                );
-                
-                // Send to sender and recipient
-                socket.emit('message', fullMessage);
-                
-                if (recipientSocket) {
-                    io.to(recipientSocket).emit('message', fullMessage);
+            try {
+                // Save message to Supabase
+                const { error } = await getSupabaseClient(true)
+                    .from('messages')
+                    .insert({
+                        id: messageId,
+                        content: message.content,
+                        sender_id: sender.id, // Corrected key from userId to id
+                        channel: message.channel,
+                        created_at: timestamp,
+                        recipient_id: message.recipientId || null,
+                        is_dm: message.isDM || false,
+                        is_deleted: false,
+                        type: message.type || 'text',
+                        file_url: message.fileUrl || null,
+                        file_type: message.fileType || null,
+                        file_size: message.fileSize || null
+                    });
+                    
+                if (error) {
+                    console.error('Error saving message to Supabase:', error);
+                    socket.emit('error', { message: 'Failed to save message. Please try again.' });
+                    if (callback) callback({ success: false, message: 'Database error' });
+                    return;
                 }
                 
-                console.log(`DM sent from ${sender.username} to ${message.recipientId}`);
-            } else {
-                // Broadcast to all users in the channel
+                // If we get here, the message was saved successfully
+                if (callback) callback({ success: true, messageId });
+                
+                // Broadcast to the appropriate recipients
+                if (message.isDM && message.recipientId) {
+                    // Find the recipient's socket
+                    const recipientSocket = Object.keys(users).filter(id => 
+                        users[id] && users[id].id === message.recipientId
+                    );
+                    
+                    // Send to sender and recipient
+                    socket.emit('message', fullMessage);
+                    
+                    if (recipientSocket) {
+                        io.to(recipientSocket).emit('message', fullMessage);
+                    }
+                    
+                    console.log(`DM sent from ${sender.username} to ${message.recipientId}`);
+                } else {
+                    // Broadcast to all users in the channel
+                    io.emit('message', fullMessage);
+                    console.log(`Message broadcast to channel ${message.channel}`);
+                }
+            } catch (dbError) {
+                console.error('Database error saving message:', dbError);
+                if (callback) callback({ success: false, message: 'Database error' });
+                socket.emit('error', { message: 'Failed to save message due to database error.' });
+                
+                // Even if DB save fails, still send the message to clients
+                // This ensures messages appear in the UI even if DB is down
                 io.emit('message', fullMessage);
-                console.log(`Message broadcast to channel ${message.channel}`);
+                console.log(`Message broadcast despite DB error to channel ${message.channel}`);
             }
         } catch (err) {
             console.error('Error processing message:', err);
+            if (callback) callback({ success: false, message: 'Server error' });
         }
     });
-
+    
     // Friends system handlers
     
     // Generate a friend code for the user if they don't have one
