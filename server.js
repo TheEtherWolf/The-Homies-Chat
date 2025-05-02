@@ -2530,6 +2530,20 @@ io.on("connection", (socket) => {
             typing: data.typing
         });
     });
+    
+    // Handle keep-alive signals from clients
+    socket.on('keep-alive', (data) => {
+        // Just log the keep-alive signal, no need to do anything else
+        const username = data.userId ? 
+            (users[socket.id]?.username || 'Unknown User') : 
+            'Unauthenticated User';
+        
+        console.log(`Received keep-alive signal from ${username} (${socket.id})`);
+    });
+});
+
+server.listen(process.env.PORT || 3000, () => {
+    console.log('Server listening on port 3000');
 });
 
 // Utility function to resolve username by user ID (with DB fallback)
@@ -2566,7 +2580,3 @@ async function resolveUsernameById(userId) {
         return 'Unknown User';
     }
 }
-
-server.listen(process.env.PORT || 3000, () => {
-    console.log('Server listening on port 3000');
-});

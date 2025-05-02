@@ -441,5 +441,18 @@ class ChatManager {
         });
     }
     
+    // Set up keep-alive mechanism to prevent Glitch from sleeping
+    setupKeepAlive() {
+        console.log('[CHAT_DEBUG] Setting up keep-alive mechanism');
+        
+        // Send a keep-alive signal to the server every 5 minutes
+        this.keepAliveInterval = setInterval(() => {
+            if (window.socket && window.socket.connected) {
+                console.log('[CHAT_DEBUG] Sending keep-alive signal');
+                window.socket.emit('keep-alive', { userId: this.currentUser?.id });
+            }
+        }, 5 * 60 * 1000); // 5 minutes
+    }
+    
     // ... rest of the code remains the same ...
 }
