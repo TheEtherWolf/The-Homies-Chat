@@ -40,11 +40,14 @@ class ChatManager {
         this.allUsers = {}; // Store all fetched users: { 'userId': {username, id, status?, avatar_url?} }
         this.currentUser = null; // Store current user info { username, id }
         this.isInitialized = false;
-        this.needsInitialDataFetch = false; // Flag to fetch users/status on connect
+        this.needsInitialDataFetch = true; // Flag to fetch users/status on connect
         this.isSocketConnected = this.socket ? this.socket.connected : false; // Track connection state
         this.inGeneralChat = false; // Flag to track if we're in the general chat
         this.currentChannel = 'general'; // Default channel
         this.isDMMode = false; // Track if we're in DM mode or channels mode
+        this.isLoadingMoreMessages = false;
+        this.hasMoreMessages = {}; // Track if more messages are available per channel
+        this.oldestMessageTimestamp = {}; // Track oldest message timestamp per channel
 
         // Set up keep-alive mechanism to prevent Glitch from sleeping
         this.setupKeepAlive();
@@ -345,6 +348,17 @@ class ChatManager {
                 this.sendMessage();
             }
         });
+        
+        // Scroll event listener for lazy loading
+        this.messagesContainer?.addEventListener('scroll', () => {
+            const scrollPosition = this.messagesContainer.scrollTop;
+            const scrollHeight = this.messagesContainer.scrollHeight;
+            const clientHeight = this.messagesContainer.clientHeight;
+            
+            if (scrollPosition <= 0 && !this.isLoadingMoreMessages && this.hasMoreMessages[this.currentChannel]) {
+                this.loadMoreMessages();
+            }
+        });
     }
     
     // Compress image before upload
@@ -466,6 +480,10 @@ class ChatManager {
             if (data.channel === this.currentChannel) {
                 this._displayChannelMessages(data.channel);
             }
+            
+            // Update hasMoreMessages flag
+            this.hasMoreMessages[data.channel] = data.hasMoreMessages;
+            this.oldestMessageTimestamp[data.channel] = data.oldestMessageTimestamp;
         });
         
         // Handle incoming messages
@@ -509,7 +527,7 @@ class ChatManager {
         
         // Handle user status changes
         this.socket.on('user-status-change', (data) => {
-            console.log('[CHAT_DEBUG] User status change:', data);
+            console.log(`[CHAT_DEBUG] User status change:", data`);
             // Update user status in UI
             this._updateUserStatus(data.username, data.status);
         });
@@ -612,6 +630,13 @@ class ChatManager {
             welcomeMessage.textContent = `Welcome to the beginning of ${displayChannel}`;
             this.messagesContainer.appendChild(welcomeMessage);
             
+            // Add loading indicator for lazy loading
+            const loadingIndicator = document.createElement('div');
+            loadingIndicator.id = 'message-loading-indicator';
+            loadingIndicator.className = 'message-loading d-none';
+            loadingIndicator.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+            this.messagesContainer.appendChild(loadingIndicator);
+            
             // Get messages for this channel
             const messages = this.channelMessages[dataChannel] || [];
             
@@ -625,125 +650,201 @@ class ChatManager {
         }
     }
     
-    // Display a single message
+    // Create message element without adding it to the DOM
+    _createMessageElement(message) {
+        // Create message container
+        const messageElement = document.createElement('div');
+        const isOwnMessage = message.senderId === this.currentUser?.id;
+        
+        // Set classes based on message type
+        messageElement.className = `message ${isOwnMessage ? 'own-message' : ''}`;
+        messageElement.setAttribute('data-message-id', message.id);
+        
+        // Create message content
+        let messageHTML = '';
+        
+        // Add avatar
+        messageHTML += `
+            <div class="message-avatar">
+                <img src="${this._getUserAvatar(message.senderId)}" alt="${message.sender}" class="avatar">
+            </div>
+        `;
+        
+        // Add message content container
+        messageHTML += '<div class="message-content">';
+        
+        // Add message header
+        messageHTML += `
+            <div class="message-header">
+                <span class="message-author">${message.sender}</span>
+                <span class="message-timestamp">${this._formatTimestamp(message.timestamp)}</span>
+                
+                <div class="dropdown message-actions">
+                    <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-three-dots"></i>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item message-delete" href="#">Delete</a></li>
+                        <li><a class="dropdown-item message-copy" href="#">Copy Text</a></li>
+                    </ul>
+                </div>
+            </div>
+        `;
+        
+        // Add message body
+        if (message.is_deleted) {
+            messageHTML += '<div class="message-body deleted">[This message has been deleted]</div>';
+        } else {
+            messageHTML += `<div class="message-body">${this._formatMessageContent(message.content)}</div>`;
+        }
+        
+        // Close message content container
+        messageHTML += '</div>';
+        
+        // Set message HTML
+        messageElement.innerHTML = messageHTML;
+        
+        // Add event listeners for message actions
+        this._addMessageEventListeners(messageElement);
+        
+        return messageElement;
+    }
+    
+    // Display a message in the chat
     _displayMessage(message, scrollToBottom = true) {
         if (!this.messagesContainer) return;
         
-        // Check if message is deleted
-        const isDeleted = message.is_deleted === true;
-        
         // Create message element
-        const messageEl = document.createElement('div');
-        messageEl.className = 'message';
-        if (message.senderId === this.currentUser.id) {
-            messageEl.classList.add('own-message');
-        }
-        messageEl.setAttribute('data-message-id', message.id || '');
-        messageEl.setAttribute('data-sender-id', message.senderId || '');
+        const messageElement = this._createMessageElement(message);
         
-        // Get sender info
-        const sender = message.sender || 'Unknown User';
-        const senderId = message.senderId || '';
-        const isCurrentUser = senderId === this.currentUser.id;
+        // Add to DOM
+        this.messagesContainer.appendChild(messageElement);
         
-        // Get avatar URL
-        let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
-        
-        // If it's the current user, use their avatar
-        if (isCurrentUser && this.currentUser.avatarUrl) {
-            avatarUrl = this.currentUser.avatarUrl;
-        } 
-        // Otherwise check if we have this user's info in allUsers
-        else if (senderId && this.allUsers[senderId] && this.allUsers[senderId].avatarUrl) {
-            avatarUrl = this.allUsers[senderId].avatarUrl;
-        }
-        
-        // Format timestamp
-        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
-        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
-        // Determine message content
-        let messageContent = isDeleted 
-            ? '<em class="deleted-message">[This message has been deleted]</em>' 
-            : this._formatMessageContent(message.content);
-        
-        // Build message HTML
-        messageEl.innerHTML = `
-            <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
-            <div class="message-content">
-                <div class="message-header">
-                    <span class="message-author">${sender}</span>
-                    <span class="message-timestamp">${timeString}</span>
-                </div>
-                <div class="message-text">${messageContent}</div>
-            </div>
-            ${isCurrentUser && !isDeleted ? '<div class="message-actions"><button class="message-actions-btn" title="Message Options"><i class="bi bi-three-dots-vertical"></i></button><div class="message-actions-menu"><div class="message-action-item danger" data-action="delete"><i class="bi bi-trash"></i>Delete Message</div></div></div>' : ''}
-        `;
-        
-        // Add delete button event listener if it's the current user's message
-        if (isCurrentUser && !isDeleted) {
-            const actionBtn = messageEl.querySelector('.message-actions-btn');
-            const actionMenu = messageEl.querySelector('.message-actions-menu');
-            const deleteAction = messageEl.querySelector('.message-action-item[data-action="delete"]');
-            
-            if (actionBtn && actionMenu) {
-                actionBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    actionMenu.classList.toggle('show');
-                });
-                
-                // Close menu when clicking outside
-                document.addEventListener('click', () => {
-                    actionMenu.classList.remove('show');
-                });
-            }
-            
-            if (deleteAction) {
-                deleteAction.addEventListener('click', () => {
-                    this._deleteMessage(message.id);
-                    actionMenu.classList.remove('show');
-                });
-            }
-        }
-        
-        // Add to messages container
-        this.messagesContainer.appendChild(messageEl);
-        
-        // Scroll to bottom if requested
+        // Scroll to bottom if needed
         if (scrollToBottom) {
             this._scrollToBottom();
         }
     }
     
-    // Delete a message
-    _deleteMessage(messageId) {
-        if (!messageId) return;
-        
-        console.log(`[CHAT_DEBUG] Deleting message: ${messageId}`);
-        
-        // Send delete request to server
-        this.socket.emit('delete-message', { messageId }, (response) => {
-            console.log('[CHAT_DEBUG] Delete message response:', response);
-            
-            if (!response.success) {
-                console.error('[CHAT_DEBUG] Error deleting message:', response.message);
-                alert('Failed to delete message: ' + response.message);
-            }
-        });
-    }
-    
-    // Format message content (handle links, emojis, etc.)
+    // Format message content (convert URLs to links, etc.)
     _formatMessageContent(content) {
         if (!content) return '';
         
         // Convert URLs to links
-        content = content.replace(
-            /(https?:\/\/[^\s]+)/g, 
-            '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-        );
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        content = content.replace(urlRegex, url => `<a href="${url}" target="_blank">${url}</a>`);
         
-        // Return formatted content
+        // Convert newlines to <br>
+        content = content.replace(/\n/g, '<br>');
+        
+        // Convert emoji shortcodes to actual emojis
+        // This is a simple implementation - you might want to use a library for this
+        const emojiMap = {
+            ':)': '😊',
+            ':D': '😃',
+            ':(': '😞',
+            ':P': '😛',
+            ';)': '😉',
+            '<3': '❤️'
+        };
+        
+        Object.keys(emojiMap).forEach(code => {
+            content = content.replace(new RegExp(code, 'g'), emojiMap[code]);
+        });
+        
         return content;
+    }
+    
+    // Format timestamp
+    _formatTimestamp(timestamp) {
+        if (!timestamp) return '';
+        
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    // Get user avatar URL
+    _getUserAvatar(userId) {
+        // Default avatar
+        let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+        
+        // If it's the current user, use their avatar
+        if (userId === this.currentUser?.id && this.currentUser?.avatarUrl) {
+            avatarUrl = this.currentUser.avatarUrl;
+        } 
+        // Otherwise check if we have this user's info in allUsers
+        else if (userId && this.allUsers[userId] && this.allUsers[userId].avatarUrl) {
+            avatarUrl = this.allUsers[userId].avatarUrl;
+        }
+        
+        return avatarUrl;
+    }
+    
+    // Add event listeners to message element
+    _addMessageEventListeners(messageElement) {
+        // Get message ID
+        const messageId = messageElement.getAttribute('data-message-id');
+        if (!messageId) return;
+        
+        // Add delete button event listener
+        const deleteButton = messageElement.querySelector('.message-delete');
+        if (deleteButton) {
+            deleteButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                this._deleteMessage(messageId);
+            });
+        }
+        
+        // Add copy text button event listener
+        const copyButton = messageElement.querySelector('.message-copy');
+        if (copyButton) {
+            copyButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                const messageBody = messageElement.querySelector('.message-body');
+                if (messageBody) {
+                    // Copy text to clipboard
+                    navigator.clipboard.writeText(messageBody.textContent)
+                        .then(() => {
+                            // Show toast or notification
+                            console.log('[CHAT_DEBUG] Message copied to clipboard');
+                        })
+                        .catch(err => {
+                            console.error('[CHAT_DEBUG] Failed to copy message:', err);
+                        });
+                }
+            });
+        }
+    }
+    
+    // Delete message
+    _deleteMessage(messageId) {
+        console.log(`[CHAT_DEBUG] Deleting message with ID: ${messageId}`);
+        
+        // Emit delete message event
+        this.socket.emit('delete-message', { messageId }, (response) => {
+            if (response.success) {
+                console.log('[CHAT_DEBUG] Message deleted successfully');
+                
+                // Update UI
+                const messageElement = document.querySelector(`.message[data-message-id="${messageId}"]`);
+                if (messageElement) {
+                    const messageBody = messageElement.querySelector('.message-body');
+                    if (messageBody) {
+                        messageBody.innerHTML = '<em class="deleted-message">[This message has been deleted]</em>';
+                        messageBody.classList.add('deleted');
+                    }
+                    
+                    // Remove message actions
+                    const messageActions = messageElement.querySelector('.message-actions');
+                    if (messageActions) {
+                        messageActions.remove();
+                    }
+                }
+            } else {
+                console.error('[CHAT_DEBUG] Failed to delete message:', response.error);
+                alert('Failed to delete message: ' + response.error);
+            }
+        });
     }
     
     // Scroll messages container to bottom
@@ -1049,6 +1150,67 @@ class ChatManager {
             } else {
                 button.style.display = 'none';
             }
+        });
+    }
+    
+    // Load more messages
+    loadMoreMessages() {
+        if (this.isLoadingMoreMessages) return;
+        
+        this.isLoadingMoreMessages = true;
+        
+        // Show loading indicator
+        const loadingIndicator = document.getElementById('message-loading-indicator');
+        if (loadingIndicator) {
+            loadingIndicator.classList.remove('d-none');
+        }
+        
+        const channel = this.currentChannel;
+        const oldestMessageTimestamp = this.oldestMessageTimestamp[channel];
+        
+        // Save current scroll position and height
+        const scrollPosition = this.messagesContainer.scrollTop;
+        const scrollHeight = this.messagesContainer.scrollHeight;
+        
+        this.socket.emit('get-channel-messages', { channel, oldestMessageTimestamp }, (response) => {
+            console.log('[CHAT_DEBUG] Received more messages:', response);
+            
+            // Update hasMoreMessages flag
+            this.hasMoreMessages[channel] = response.hasMoreMessages;
+            this.oldestMessageTimestamp[channel] = response.oldestMessageTimestamp;
+            
+            // Add messages to cache
+            const messages = response.messages;
+            
+            if (messages && messages.length > 0) {
+                // Add messages to the beginning of the array
+                this.channelMessages[channel] = [...messages, ...this.channelMessages[channel]];
+                
+                // Display messages at the top of the container
+                const fragment = document.createDocumentFragment();
+                messages.forEach(message => {
+                    const messageElement = this._createMessageElement(message);
+                    fragment.appendChild(messageElement);
+                });
+                
+                // Insert messages at the beginning (after the loading indicator)
+                if (loadingIndicator && loadingIndicator.nextSibling) {
+                    this.messagesContainer.insertBefore(fragment, loadingIndicator.nextSibling);
+                } else {
+                    this.messagesContainer.prepend(fragment);
+                }
+                
+                // Maintain scroll position
+                const newScrollHeight = this.messagesContainer.scrollHeight;
+                this.messagesContainer.scrollTop = scrollPosition + (newScrollHeight - scrollHeight);
+            }
+            
+            // Hide loading indicator
+            if (loadingIndicator) {
+                loadingIndicator.classList.add('d-none');
+            }
+            
+            this.isLoadingMoreMessages = false;
         });
     }
     
