@@ -605,16 +605,41 @@ class ChatManager {
     
     // Display channel messages
     _displayChannelMessages(channel) {
-        if (!channel || !this.messagesContainer) return;
+        console.log(`[CHAT_DEBUG] Displaying messages for channel ${channel}`);
+        
+        // Ensure channel name has hashtag prefix for UI consistency
+        const displayChannel = channel.startsWith('#') ? channel : `#${channel}`;
+        const dataChannel = channel.startsWith('#') ? channel.substring(1) : channel;
+        
+        // Update chat header
+        if (this.chatTitle) {
+            this.chatTitle.textContent = displayChannel;
+        }
+        
+        // Update message input placeholder
+        if (this.messageInput) {
+            this.messageInput.placeholder = `Message ${displayChannel}`;
+        }
         
         // Clear messages container
-        this.messagesContainer.innerHTML = '';
-        
-        // Get messages for channel
-        const messages = this.channelMessages[channel] || [];
-        
-        if (messages.length > 0) {
-            // Sort messages by timestamp
+        if (this.messagesContainer) {
+            this.messagesContainer.innerHTML = '';
+            
+            // Add channel header
+            const dateHeader = document.createElement('div');
+            dateHeader.className = 'date-separator';
+            dateHeader.innerHTML = '<span>Today</span>';
+            this.messagesContainer.appendChild(dateHeader);
+            
+            const welcomeMessage = document.createElement('div');
+            welcomeMessage.className = 'system-message';
+            welcomeMessage.textContent = `Welcome to the beginning of ${displayChannel}`;
+            this.messagesContainer.appendChild(welcomeMessage);
+            
+            // Get messages for this channel
+            const messages = this.channelMessages[dataChannel] || [];
+            
+            // Sort messages by timestamp for display
             const sortedMessages = [...messages].sort((a, b) => {
                 return new Date(a.timestamp) - new Date(b.timestamp);
             });
@@ -623,11 +648,12 @@ class ChatManager {
             if (sortedMessages.length > 0) {
                 this.oldestMessageTimestamp = sortedMessages[0].timestamp;
                 this.hasMoreMessagesToLoad = true;
+                console.log(`[CHAT_DEBUG] Set oldest message timestamp to ${this.oldestMessageTimestamp}`);
             }
             
             // Display messages
             sortedMessages.forEach(message => {
-                this._displayMessage(message);
+                this._displayMessage(message, false); // Don't scroll for bulk loading
             });
             
             // Scroll to bottom
@@ -635,11 +661,6 @@ class ChatManager {
             
             // Setup scroll listener for lazy loading
             this._setupScrollListener();
-        } else {
-            console.log(`No messages found for ${channel}, requesting from server`);
-            
-            // Request messages from server
-            this._requestChannelMessages(channel);
         }
     }
     
@@ -647,11 +668,14 @@ class ChatManager {
     _setupScrollListener() {
         if (this.messagesContainer) {
             // Remove any existing scroll listener
-            this.messagesContainer.removeEventListener('scroll', this._handleScroll);
+            if (this._boundHandleScroll) {
+                this.messagesContainer.removeEventListener('scroll', this._boundHandleScroll);
+            }
             
             // Add scroll listener
             this._boundHandleScroll = this._handleScroll.bind(this);
             this.messagesContainer.addEventListener('scroll', this._boundHandleScroll);
+            console.log('[CHAT_DEBUG] Scroll listener set up for lazy loading');
         }
     }
     
@@ -666,6 +690,7 @@ class ChatManager {
         const scrollThreshold = 100; // px from top
         
         if (scrollTop < scrollThreshold) {
+            console.log(`[CHAT_DEBUG] Scroll threshold reached (${scrollTop}px), loading more messages...`);
             this._loadMoreMessages();
         }
     }
@@ -673,38 +698,49 @@ class ChatManager {
     // Load more messages (lazy loading)
     _loadMoreMessages() {
         if (this.isLoadingMoreMessages || !this.hasMoreMessagesToLoad || !this.oldestMessageTimestamp) {
+            console.log('[CHAT_DEBUG] Cannot load more messages:', 
+                this.isLoadingMoreMessages ? 'Already loading' : 
+                !this.hasMoreMessagesToLoad ? 'No more messages' : 
+                'No oldest timestamp');
             return;
         }
         
-        console.log('Loading more messages...');
+        console.log('[CHAT_DEBUG] Loading more messages before', this.oldestMessageTimestamp);
         this.isLoadingMoreMessages = true;
         
         // Show loading indicator
         this._showLoadingIndicator();
         
-        // Remember scroll position
+        // Remember scroll position and height
         const scrollHeight = this.messagesContainer.scrollHeight;
+        const scrollPosition = this.messagesContainer.scrollTop;
+        
+        // Get the channel name without hashtag for data operations
+        const dataChannel = this.currentChannel.startsWith('#') ? 
+            this.currentChannel.substring(1) : this.currentChannel;
         
         // Request more messages from server
         this.socket.emit('get-more-messages', {
-            channel: this.currentChannel,
+            channel: dataChannel,
             before: this.oldestMessageTimestamp
         }, (response) => {
             // Hide loading indicator
             this._hideLoadingIndicator();
             
+            console.log('[CHAT_DEBUG] Got response for older messages:', response);
+            
             if (response && response.success && response.messages && response.messages.length > 0) {
-                console.log(`Received ${response.messages.length} more messages`);
+                console.log(`[CHAT_DEBUG] Received ${response.messages.length} more messages`);
                 
                 // Add messages to cache
-                if (!this.channelMessages[this.currentChannel]) {
-                    this.channelMessages[this.currentChannel] = [];
+                if (!this.channelMessages[dataChannel]) {
+                    this.channelMessages[dataChannel] = [];
                 }
                 
                 // Add new messages to the beginning of the array
-                this.channelMessages[this.currentChannel] = [
+                this.channelMessages[dataChannel] = [
                     ...response.messages,
-                    ...this.channelMessages[this.currentChannel]
+                    ...this.channelMessages[dataChannel]
                 ];
                 
                 // Sort messages by timestamp
@@ -715,16 +751,21 @@ class ChatManager {
                 // Update oldest message timestamp
                 if (sortedMessages.length > 0) {
                     this.oldestMessageTimestamp = sortedMessages[0].timestamp;
+                    console.log(`[CHAT_DEBUG] Updated oldest message timestamp to ${this.oldestMessageTimestamp}`);
                 }
                 
                 // Prepend messages to the container
                 this._prependMessages(sortedMessages);
                 
                 // Maintain scroll position
-                const newScrollHeight = this.messagesContainer.scrollHeight;
-                this.messagesContainer.scrollTop = newScrollHeight - scrollHeight;
+                setTimeout(() => {
+                    const newScrollHeight = this.messagesContainer.scrollHeight;
+                    const heightDifference = newScrollHeight - scrollHeight;
+                    this.messagesContainer.scrollTop = scrollPosition + heightDifference;
+                    console.log('[CHAT_DEBUG] Adjusted scroll position after loading more messages');
+                }, 50);
             } else {
-                console.log('No more messages to load');
+                console.log('[CHAT_DEBUG] No more messages to load or error in response');
                 this.hasMoreMessagesToLoad = false;
             }
             

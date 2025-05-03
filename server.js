@@ -2593,9 +2593,10 @@ io.on("connection", (socket) => {
     socket.on('get-more-messages', async (data, callback) => {
         try {
             const { channel, before } = data;
-            console.log(`Fetching more messages for channel ${channel} before timestamp ${before}`);
+            console.log(`[LAZY_LOADING] Fetching more messages for channel ${channel} before timestamp ${before}`);
             
             if (!channel || !before) {
+                console.error('[LAZY_LOADING] Missing required parameters:', { channel, before });
                 return callback({ success: false, message: 'Missing required parameters' });
             }
             
@@ -2613,15 +2614,15 @@ io.on("connection", (socket) => {
                         return new Date(msgTimestamp) < new Date(before);
                     }).slice(0, 20); // Limit to 20 messages
                     
-                    console.log(`Loaded ${messages.length} older DM messages from local storage for channel ${channel}`);
+                    console.log(`[LAZY_LOADING] Loaded ${messages.length} older DM messages from local storage for channel ${channel}`);
                 } catch (err) {
-                    console.error('Error loading older DM messages:', err);
+                    console.error('[LAZY_LOADING] Error loading older DM messages:', err);
                     return callback({ success: false, message: err.message });
                 }
             } else {
                 // For regular channels, load from Supabase
                 try {
-                    console.log(`Querying Supabase for older messages in channel: ${channel} before ${before}`);
+                    console.log(`[LAZY_LOADING] Querying Supabase for older messages in channel: ${channel} before ${before}`);
                     const result = await getSupabaseClient(true)
                         .from('messages')
                         .select('*')
@@ -2631,7 +2632,7 @@ io.on("connection", (socket) => {
                         .limit(20); // Limit to 20 messages
                     
                     if (result.error) {
-                        console.error('Error loading older channel messages:', result.error);
+                        console.error('[LAZY_LOADING] Error loading older channel messages:', result.error);
                         return callback({ success: false, message: result.error.message });
                     }
                     
@@ -2641,9 +2642,14 @@ io.on("connection", (socket) => {
                               (msg.deleted === undefined || msg.deleted === null || msg.deleted === false);
                     });
                     
-                    console.log(`Found ${messages.length} older messages for channel ${channel}`);
+                    console.log(`[LAZY_LOADING] Found ${messages.length} older messages for channel ${channel}`);
+                    
+                    // Add debug info about the messages
+                    if (messages.length > 0) {
+                        console.log('[LAZY_LOADING] Sample message data:', JSON.stringify(messages[0], null, 2));
+                    }
                 } catch (err) {
-                    console.error('Exception in older message loading:', err);
+                    console.error('[LAZY_LOADING] Exception in older message loading:', err);
                     return callback({ success: false, message: err.message });
                 }
             }
@@ -2666,13 +2672,15 @@ io.on("connection", (socket) => {
                 };
             }));
             
+            console.log(`[LAZY_LOADING] Returning ${clientMessages.length} transformed messages to client`);
+            
             // Return the messages to the client
             callback({
                 success: true,
                 messages: clientMessages
             });
         } catch (error) {
-            console.error('Error fetching more messages:', error);
+            console.error('[LAZY_LOADING] Error fetching more messages:', error);
             callback({ success: false, message: 'Error fetching messages' });
         }
     });
