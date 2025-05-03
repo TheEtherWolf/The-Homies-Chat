@@ -923,8 +923,11 @@ class ChatManager {
             this.emojiPicker.classList.remove('d-none');
             this.emojiPickerVisible = true;
             
-            // Update recent emojis
-            this.updateRecentEmojis();
+            // Update recent emojis only if the recent category is active
+            const activeCategory = document.querySelector('.emoji-category.active');
+            if (activeCategory && activeCategory.getAttribute('data-category') === 'recent') {
+                this.updateRecentEmojis();
+            }
         }
     }
     
@@ -953,6 +956,11 @@ class ChatManager {
                 content.classList.add('active');
             }
         });
+        
+        // Only update recent emojis when switching to the recent category
+        if (category === 'recent') {
+            this.updateRecentEmojis();
+        }
     }
     
     // Insert emoji into message input
@@ -984,8 +992,11 @@ class ChatManager {
         // Save to localStorage
         localStorage.setItem('recentEmojis', JSON.stringify(this.recentEmojis));
         
-        // Update the UI
-        this.updateRecentEmojis();
+        // Only update the UI if the recent category is active
+        const activeCategory = document.querySelector('.emoji-category.active');
+        if (activeCategory && activeCategory.getAttribute('data-category') === 'recent') {
+            this.updateRecentEmojis();
+        }
     }
     
     // Update recent emojis in the UI
