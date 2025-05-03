@@ -658,7 +658,8 @@ class ChatManager {
         
         // Set classes based on message type
         messageElement.className = `message ${isOwnMessage ? 'own-message' : ''}`;
-        messageElement.setAttribute('data-message-id', message.id);
+        messageElement.setAttribute('data-message-id', message.id || '');
+        messageElement.setAttribute('data-sender-id', message.senderId || '');
         
         // Create message content
         let messageHTML = '';
@@ -684,7 +685,7 @@ class ChatManager {
                         <i class="bi bi-three-dots"></i>
                     </button>
                     <ul class="dropdown-menu">
-                        <li><a class="dropdown-item message-delete" href="#">Delete</a></li>
+                        ${isOwnMessage ? '<li><a class="dropdown-item message-delete" href="#">Delete</a></li>' : ''}
                         <li><a class="dropdown-item message-copy" href="#">Copy Text</a></li>
                     </ul>
                 </div>

@@ -812,7 +812,11 @@ io.on("connection", (socket) => {
                     channel: msg.channel || channel,
                     is_deleted: msg.is_deleted || false,
                     recipientId: msg.recipient_id || null,
-                    isDM: msg.is_dm || false
+                    isDM: msg.is_dm || false,
+                    type: msg.type || 'text',
+                    fileUrl: msg.file_url || null,
+                    fileType: msg.file_type || null,
+                    fileSize: msg.file_size || null
                 };
             }));
             
@@ -919,7 +923,11 @@ io.on("connection", (socket) => {
                     channel: msg.channel || channel,
                     is_deleted: msg.is_deleted || false,
                     recipientId: msg.recipient_id || null,
-                    isDM: msg.is_dm || false
+                    isDM: msg.is_dm || false,
+                    type: msg.type || 'text',
+                    fileUrl: msg.file_url || null,
+                    fileType: msg.file_type || null,
+                    fileSize: msg.file_size || null
                 };
             }));
             
@@ -1892,7 +1900,11 @@ io.on("connection", (socket) => {
                 timestamp: timestamp,
                 channel: message.channel,
                 isDM: message.isDM || false,
-                recipientId: message.recipientId || null
+                recipientId: message.recipientId || null,
+                type: message.type || 'text',
+                fileUrl: message.fileUrl || null,
+                fileType: message.fileType || null,
+                fileSize: message.fileSize || null
             };
             
             console.log(`Preparing to save message with sender_id: ${sender.id}`);
