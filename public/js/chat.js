@@ -660,205 +660,114 @@ class ChatManager {
         }
     }
     
-    // Create message element without adding it to the DOM
-    _createMessageElement(message) {
-        // Create message container
-        const messageElement = document.createElement('div');
-        const isOwnMessage = message.senderId === this.currentUser?.id;
-        
-        // Set classes based on message type
-        messageElement.className = `message ${isOwnMessage ? 'own-message' : ''}`;
-        messageElement.setAttribute('data-message-id', message.id || '');
-        messageElement.setAttribute('data-sender-id', message.senderId || '');
-        
-        // Create message content
-        let messageHTML = '';
-        
-        // Add avatar
-        messageHTML += `
-            <div class="message-avatar">
-                <img src="${this._getUserAvatar(message.senderId)}" alt="${message.sender}" class="avatar">
-            </div>
-        `;
-        
-        // Add message content container
-        messageHTML += '<div class="message-content">';
-        
-        // Add message header
-        messageHTML += `
-            <div class="message-header">
-                <span class="message-author">${message.sender}</span>
-                <span class="message-timestamp">${this._formatTimestamp(message.timestamp)}</span>
-                
-                <div class="dropdown message-actions">
-                    <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                        <i class="bi bi-three-dots"></i>
-                    </button>
-                    <ul class="dropdown-menu">
-                        ${isOwnMessage ? '<li><a class="dropdown-item message-delete" href="#">Delete</a></li>' : ''}
-                        <li><a class="dropdown-item message-copy" href="#">Copy Text</a></li>
-                    </ul>
-                </div>
-            </div>
-        `;
-        
-        // Add message body
-        if (message.is_deleted) {
-            messageHTML += '<div class="message-body deleted">[This message has been deleted]</div>';
-        } else {
-            messageHTML += `<div class="message-body">${this._formatMessageContent(message.content)}</div>`;
-        }
-        
-        // Close message content container
-        messageHTML += '</div>';
-        
-        // Set message HTML
-        messageElement.innerHTML = messageHTML;
-        
-        // Add event listeners for message actions
-        this._addMessageEventListeners(messageElement);
-        
-        return messageElement;
-    }
-    
-    // Display a message in the chat
+    // Display a single message
     _displayMessage(message, scrollToBottom = true) {
         if (!this.messagesContainer) return;
         
-        // Create message element
-        const messageElement = this._createMessageElement(message);
-        
-        // Add to DOM
-        this.messagesContainer.appendChild(messageElement);
-        
-        // Scroll to bottom if needed
-        if (scrollToBottom) {
-            this._scrollToBottom();
-        }
-    }
-    
-    // Format message content (convert URLs to links, etc.)
-    _formatMessageContent(content) {
-        if (!content) return '';
-        
-        // Convert URLs to links
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
-        content = content.replace(urlRegex, url => `<a href="${url}" target="_blank">${url}</a>`);
-        
-        // Convert newlines to <br>
-        content = content.replace(/\n/g, '<br>');
-        
-        // Convert emoji shortcodes to actual emojis
-        // This is a simple implementation - you might want to use a library for this
-        const emojiMap = {
-            ':)': '😊',
-            ':D': '😃',
-            ':(': '😞',
-            ':P': '😛',
-            ';)': '😉',
-            '<3': '❤️'
-        };
-        
-        // Use a safer approach to replace emoji codes
-        for (const [code, emoji] of Object.entries(emojiMap)) {
-            // Escape special regex characters in the code
-            const escapedCode = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            content = content.replace(new RegExp(escapedCode, 'g'), emoji);
-        }
-        
-        return content;
-    }
-    
-    // Format timestamp
-    _formatTimestamp(timestamp) {
-        if (!timestamp) return '';
-        
-        const date = new Date(timestamp);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    
-    // Get user avatar URL
-    _getUserAvatar(userId) {
-        // Default avatar
-        let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
-        
-        // If it's the current user, use their avatar
-        if (userId === this.currentUser?.id && this.currentUser?.avatarUrl) {
-            avatarUrl = this.currentUser.avatarUrl;
-        } 
-        // Otherwise check if we have this user's info in allUsers
-        else if (userId && this.allUsers[userId] && this.allUsers[userId].avatarUrl) {
-            avatarUrl = this.allUsers[userId].avatarUrl;
-        }
-        
-        return avatarUrl;
-    }
-    
-    // Add event listeners to message element
-    _addMessageEventListeners(messageElement) {
-        // Get message ID
-        const messageId = messageElement.getAttribute('data-message-id');
-        if (!messageId) return;
-        
-        // Add delete button event listener
-        const deleteButton = messageElement.querySelector('.message-delete');
-        if (deleteButton) {
-            deleteButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                this._deleteMessage(messageId);
-            });
-        }
-        
-        // Add copy text button event listener
-        const copyButton = messageElement.querySelector('.message-copy');
-        if (copyButton) {
-            copyButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                const messageBody = messageElement.querySelector('.message-body');
-                if (messageBody) {
-                    // Copy text to clipboard
-                    navigator.clipboard.writeText(messageBody.textContent)
-                        .then(() => {
-                            // Show toast or notification
-                            console.log('[CHAT_DEBUG] Message copied to clipboard');
-                        })
-                        .catch(err => {
-                            console.error('[CHAT_DEBUG] Failed to copy message:', err);
-                        });
-                }
-            });
-        }
-    }
-    
-    // Delete message
-    _deleteMessage(messageId) {
-        console.log(`[CHAT_DEBUG] Deleting message with ID: ${messageId}`);
-        
-        // Emit delete message event
-        this.socket.emit('delete-message', { messageId }, (response) => {
-            if (response.success) {
-                console.log('[CHAT_DEBUG] Message deleted successfully');
-                
-                // Update UI
-                const messageElement = document.querySelector(`.message[data-message-id="${messageId}"]`);
-                if (messageElement) {
-                    const messageBody = messageElement.querySelector('.message-body');
-                    if (messageBody) {
-                        messageBody.innerHTML = '<em class="deleted-message">[This message has been deleted]</em>';
-                        messageBody.classList.add('deleted');
-                    }
-                    
-                    // Remove message actions
-                    const messageActions = messageElement.querySelector('.message-actions');
-                    if (messageActions) {
-                        messageActions.remove();
-                    }
-                }
-            } else {
-                console.error('[CHAT_DEBUG] Failed to delete message:', response.error);
-                alert('Failed to delete message: ' + response.error);
+        try {
+            // Check if message is deleted
+            const isDeleted = message.is_deleted === true;
+            
+            // Create message element
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message';
+            if (message.senderId === this.currentUser?.id) {
+                messageEl.classList.add('own-message');
             }
-        });
+            messageEl.setAttribute('data-message-id', message.id || '');
+            messageEl.setAttribute('data-sender-id', message.senderId || '');
+            
+            // Get sender info
+            const sender = message.sender || 'Unknown User';
+            const senderId = message.senderId || '';
+            const isCurrentUser = senderId === this.currentUser?.id;
+            
+            // Get avatar URL
+            let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+            
+            // If it's the current user, use their avatar
+            if (isCurrentUser && this.currentUser?.avatarUrl) {
+                avatarUrl = this.currentUser.avatarUrl;
+            } 
+            // Otherwise check if we have this user's info in allUsers
+            else if (senderId && this.allUsers[senderId] && this.allUsers[senderId].avatarUrl) {
+                avatarUrl = this.allUsers[senderId].avatarUrl;
+            }
+            
+            // Format timestamp
+            const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
+            const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            // Determine message content
+            let messageContent = isDeleted 
+                ? '<em class="deleted-message">[This message has been deleted]</em>' 
+                : message.content;
+            
+            // Build message HTML
+            messageEl.innerHTML = `
+                <div class="message-avatar">
+                    <img src="${avatarUrl}" alt="${sender}" class="avatar">
+                </div>
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="message-author">${sender}</span>
+                        <span class="message-timestamp">${timeString}</span>
+                        
+                        ${isCurrentUser && !isDeleted ? `
+                        <div class="dropdown message-actions">
+                            <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-three-dots"></i>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item message-delete" href="#">Delete</a></li>
+                                <li><a class="dropdown-item message-copy" href="#">Copy Text</a></li>
+                            </ul>
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="message-body">${messageContent}</div>
+                </div>
+            `;
+            
+            // Add event listeners for message actions
+            if (isCurrentUser && !isDeleted) {
+                const deleteButton = messageEl.querySelector('.message-delete');
+                if (deleteButton) {
+                    deleteButton.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this._deleteMessage(message.id);
+                    });
+                }
+                
+                const copyButton = messageEl.querySelector('.message-copy');
+                if (copyButton) {
+                    copyButton.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const messageBody = messageEl.querySelector('.message-body');
+                        if (messageBody) {
+                            // Copy text to clipboard
+                            navigator.clipboard.writeText(messageBody.textContent)
+                                .then(() => {
+                                    console.log('[CHAT_DEBUG] Message copied to clipboard');
+                                })
+                                .catch(err => {
+                                    console.error('[CHAT_DEBUG] Failed to copy message:', err);
+                                });
+                        }
+                    });
+                }
+            }
+            
+            // Add to messages container
+            this.messagesContainer.appendChild(messageEl);
+            
+            // Scroll to bottom if requested
+            if (scrollToBottom) {
+                this._scrollToBottom();
+            }
+        } catch (error) {
+            console.error('[CHAT_DEBUG] Error displaying message:', error, message);
+        }
     }
     
     // Scroll messages container to bottom
@@ -1200,11 +1109,109 @@ class ChatManager {
                 // Add messages to the beginning of the array
                 this.channelMessages[channel] = [...messages, ...this.channelMessages[channel]];
                 
-                // Display messages at the top of the container
+                // Create a document fragment to hold all new messages
                 const fragment = document.createDocumentFragment();
+                
+                // Create message elements
                 messages.forEach(message => {
-                    const messageElement = this._createMessageElement(message);
-                    fragment.appendChild(messageElement);
+                    try {
+                        // Check if message is deleted
+                        const isDeleted = message.is_deleted === true;
+                        
+                        // Create message element
+                        const messageEl = document.createElement('div');
+                        messageEl.className = 'message';
+                        if (message.senderId === this.currentUser?.id) {
+                            messageEl.classList.add('own-message');
+                        }
+                        messageEl.setAttribute('data-message-id', message.id || '');
+                        messageEl.setAttribute('data-sender-id', message.senderId || '');
+                        
+                        // Get sender info
+                        const sender = message.sender || 'Unknown User';
+                        const senderId = message.senderId || '';
+                        const isCurrentUser = senderId === this.currentUser?.id;
+                        
+                        // Get avatar URL
+                        let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+                        
+                        // If it's the current user, use their avatar
+                        if (isCurrentUser && this.currentUser?.avatarUrl) {
+                            avatarUrl = this.currentUser.avatarUrl;
+                        } 
+                        // Otherwise check if we have this user's info in allUsers
+                        else if (senderId && this.allUsers[senderId] && this.allUsers[senderId].avatarUrl) {
+                            avatarUrl = this.allUsers[senderId].avatarUrl;
+                        }
+                        
+                        // Format timestamp
+                        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
+                        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        
+                        // Determine message content
+                        let messageContent = isDeleted 
+                            ? '<em class="deleted-message">[This message has been deleted]</em>' 
+                            : message.content;
+                        
+                        // Build message HTML
+                        messageEl.innerHTML = `
+                            <div class="message-avatar">
+                                <img src="${avatarUrl}" alt="${sender}" class="avatar">
+                            </div>
+                            <div class="message-content">
+                                <div class="message-header">
+                                    <span class="message-author">${sender}</span>
+                                    <span class="message-timestamp">${timeString}</span>
+                                    
+                                    ${isCurrentUser && !isDeleted ? `
+                                    <div class="dropdown message-actions">
+                                        <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item message-delete" href="#">Delete</a></li>
+                                            <li><a class="dropdown-item message-copy" href="#">Copy Text</a></li>
+                                        </ul>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                <div class="message-body">${messageContent}</div>
+                            </div>
+                        `;
+                        
+                        // Add event listeners for message actions
+                        if (isCurrentUser && !isDeleted) {
+                            const deleteButton = messageEl.querySelector('.message-delete');
+                            if (deleteButton) {
+                                deleteButton.addEventListener('click', (e) => {
+                                    e.preventDefault();
+                                    this._deleteMessage(message.id);
+                                });
+                            }
+                            
+                            const copyButton = messageEl.querySelector('.message-copy');
+                            if (copyButton) {
+                                copyButton.addEventListener('click', (e) => {
+                                    e.preventDefault();
+                                    const messageBody = messageEl.querySelector('.message-body');
+                                    if (messageBody) {
+                                        // Copy text to clipboard
+                                        navigator.clipboard.writeText(messageBody.textContent)
+                                            .then(() => {
+                                                console.log('[CHAT_DEBUG] Message copied to clipboard');
+                                            })
+                                            .catch(err => {
+                                                console.error('[CHAT_DEBUG] Failed to copy message:', err);
+                                            });
+                                    }
+                                });
+                            }
+                        }
+                        
+                        fragment.appendChild(messageEl);
+                    } catch (error) {
+                        console.error('[CHAT_DEBUG] Error creating message element:', error, message);
+                    }
                 });
                 
                 // Insert messages at the beginning (after the loading indicator)
