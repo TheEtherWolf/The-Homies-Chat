@@ -341,6 +341,7 @@ class ChatManager {
         this.messageInput?.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
                 console.log('[CHAT_DEBUG] Enter key pressed, sending message');
+                event.preventDefault(); // Prevent the default behavior (adding a newline)
                 this.sendMessage();
             }
         });
@@ -851,7 +852,6 @@ class ChatManager {
         
         // Initialize emoji picker state
         this.emojiPickerVisible = false;
-        this.recentEmojis = JSON.parse(localStorage.getItem('recentEmojis') || '[]');
         
         // Setup emoji button click handler
         if (this.emojiButton) {
@@ -896,9 +896,6 @@ class ChatManager {
             });
         }
         
-        // Populate recent emojis
-        this.updateRecentEmojis();
-        
         console.log('[CHAT_DEBUG] Emoji picker setup complete');
     }
     
@@ -914,6 +911,9 @@ class ChatManager {
     // Show emoji picker
     showEmojiPicker() {
         if (this.emojiPicker) {
+            // Load recent emojis only when opening the picker
+            this.recentEmojis = JSON.parse(localStorage.getItem('recentEmojis') || '[]');
+            
             // Position the picker
             const inputRect = this.messageInput.getBoundingClientRect();
             this.emojiPicker.style.bottom = `${window.innerHeight - inputRect.top + 10}px`;
