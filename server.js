@@ -758,7 +758,8 @@ io.on("connection", (socket) => {
                         .from('messages')
                         .select('*')
                         .eq('channel', channel)
-                        .order('created_at', { ascending: true });
+                        .order('created_at', { ascending: false }) // Newest first
+                        .limit(20); // Limit to 20 most recent messages
                     
                     if (result.error) {
                         console.error('Error loading channel messages:', result.error);

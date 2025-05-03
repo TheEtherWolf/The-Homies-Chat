@@ -461,8 +461,8 @@ class ChatManager {
             console.log('[CHAT_DEBUG] Socket connected');
             this.isSocketConnected = true;
             
-            // Perform initial data fetch if needed
-            if (this.needsInitialDataFetch && this.currentUser) {
+            // Perform initial data fetch immediately on connection
+            if (this.currentUser) {
                 this.performInitialDataFetch();
             }
         });
@@ -485,6 +485,18 @@ class ChatManager {
             
             // Store messages in cache
             this.channelMessages[data.channel] = data.messages;
+            
+            // Sort messages by timestamp (newest messages come last)
+            if (this.channelMessages[data.channel] && this.channelMessages[data.channel].length > 0) {
+                this.channelMessages[data.channel].sort((a, b) => {
+                    return new Date(a.timestamp) - new Date(b.timestamp);
+                });
+                
+                // Set oldest message timestamp for lazy loading
+                this.oldestMessageTimestamp = this.channelMessages[data.channel][0].timestamp;
+                this.hasMoreMessagesToLoad = true;
+                console.log(`[CHAT_DEBUG] Set oldest message timestamp to ${this.oldestMessageTimestamp}`);
+            }
             
             // If this is the current channel, display messages
             if (data.channel === this.currentChannel) {
