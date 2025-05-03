@@ -800,17 +800,23 @@ io.on("connection", (socket) => {
             const clientMessages = await Promise.all(messages.map(async (msg) => {
                 let senderUsername = 'Unknown User';
                 if (msg.sender_id) {
-                    senderUsername = await resolveUsernameById(msg.sender_id);
+                    try {
+                        senderUsername = await resolveUsernameById(msg.sender_id);
+                    } catch (err) {
+                        console.error(`Error resolving username for ${msg.sender_id}:`, err);
+                    }
                 }
+                
+                // Create a complete message object with all required fields
                 return {
-                    id: msg.id,
-                    content: msg.content,
+                    id: msg.id || generateUUID(),
+                    content: msg.content || '',
                     sender: senderUsername,
                     username: senderUsername, // Add username field for client compatibility
-                    senderId: msg.sender_id,
-                    timestamp: msg.created_at || msg.timestamp,
+                    senderId: msg.sender_id || '',
+                    timestamp: msg.created_at || msg.timestamp || new Date().toISOString(),
                     channel: msg.channel || channel,
-                    is_deleted: msg.is_deleted || false,
+                    is_deleted: msg.is_deleted || msg.deleted || false,
                     recipientId: msg.recipient_id || null,
                     isDM: msg.is_dm || false,
                     type: msg.type || 'text',
@@ -830,6 +836,9 @@ io.on("connection", (socket) => {
             const oldestMessageTimestamp = messages.length > 0 ? 
                 messages[messages.length - 1].created_at : null;
             
+            console.log(`Sending ${clientMessages.length} messages to client for channel ${channel}`);
+            
+            // Send message history to client
             socket.emit('message-history', { 
                 channel, 
                 messages: clientMessages,
@@ -911,17 +920,23 @@ io.on("connection", (socket) => {
             const clientMessages = await Promise.all(messages.map(async (msg) => {
                 let senderUsername = 'Unknown User';
                 if (msg.sender_id) {
-                    senderUsername = await resolveUsernameById(msg.sender_id);
+                    try {
+                        senderUsername = await resolveUsernameById(msg.sender_id);
+                    } catch (err) {
+                        console.error(`Error resolving username for ${msg.sender_id}:`, err);
+                    }
                 }
+                
+                // Create a complete message object with all required fields
                 return {
-                    id: msg.id,
-                    content: msg.content,
+                    id: msg.id || generateUUID(),
+                    content: msg.content || '',
                     sender: senderUsername,
                     username: senderUsername, // Add username field for client compatibility
-                    senderId: msg.sender_id,
-                    timestamp: msg.created_at || msg.timestamp,
+                    senderId: msg.sender_id || '',
+                    timestamp: msg.created_at || msg.timestamp || new Date().toISOString(),
                     channel: msg.channel || channel,
-                    is_deleted: msg.is_deleted || false,
+                    is_deleted: msg.is_deleted || msg.deleted || false,
                     recipientId: msg.recipient_id || null,
                     isDM: msg.is_dm || false,
                     type: msg.type || 'text',
