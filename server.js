@@ -723,8 +723,7 @@ io.on("connection", (socket) => {
                         .select('*')
                         .or(`recipient_id.eq.${data.participants[0]},recipient_id.eq.${data.participants[1]}`)
                         .or(`sender_id.eq.${data.participants[0]},sender_id.eq.${data.participants[1]}`)
-                        .order('created_at', { ascending: false }) // Descending order for pagination
-                        .limit(20); // Limit to 20 messages per page
+                        .order('created_at', { ascending: true });
                         
                     if (result.error) {
                         console.error('Error loading DM messages:', result.error);
@@ -755,21 +754,11 @@ io.on("connection", (socket) => {
                 // For regular channels, load from Supabase
                 try {
                     console.log(`Querying Supabase for messages in channel: ${channel}`);
-                    
-                    // Build the query
-                    let query = getSupabaseClient(true)
+                    const result = await getSupabaseClient(true)
                         .from('messages')
                         .select('*')
                         .eq('channel', channel)
-                        .order('created_at', { ascending: false }) // Descending order for pagination
-                        .limit(20); // Limit to 20 messages per page
-                    
-                    // Add pagination if oldestMessageTimestamp is provided
-                    if (data.oldestMessageTimestamp) {
-                        query = query.lt('created_at', data.oldestMessageTimestamp);
-                    }
-                    
-                    const result = await query;
+                        .order('created_at', { ascending: true });
                     
                     if (result.error) {
                         console.error('Error loading channel messages:', result.error);
@@ -800,50 +789,31 @@ io.on("connection", (socket) => {
             const clientMessages = await Promise.all(messages.map(async (msg) => {
                 let senderUsername = 'Unknown User';
                 if (msg.sender_id) {
-                    try {
-                        senderUsername = await resolveUsernameById(msg.sender_id);
-                    } catch (err) {
-                        console.error(`Error resolving username for ${msg.sender_id}:`, err);
-                    }
+                    senderUsername = await resolveUsernameById(msg.sender_id);
                 }
-                
-                // Create a complete message object with all required fields
                 return {
-                    id: msg.id || generateUUID(),
-                    content: msg.content || '',
+                    id: msg.id,
+                    content: msg.content,
                     sender: senderUsername,
                     username: senderUsername, // Add username field for client compatibility
-                    senderId: msg.sender_id || '',
-                    timestamp: msg.created_at || msg.timestamp || new Date().toISOString(),
+                    senderId: msg.sender_id,
+                    timestamp: msg.created_at || msg.timestamp,
                     channel: msg.channel || channel,
-                    is_deleted: msg.is_deleted || msg.deleted || false,
-                    recipientId: msg.recipient_id || null,
-                    isDM: msg.is_dm || false,
-                    type: msg.type || 'text',
-                    fileUrl: msg.file_url || null,
-                    fileType: msg.file_type || null,
-                    fileSize: msg.file_size || null
+                    recipientId: msg.recipient_id,
+                    isDM: msg.is_dm || data.isDM || false,
+                    type: msg.type,
+                    fileUrl: msg.file_url,
+                    fileType: msg.file_type,
+                    fileSize: msg.file_size
                 };
             }));
             
-            // Sort messages by timestamp (oldest first)
-            clientMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            
-            // Determine if there are more messages to load
-            const hasMoreMessages = messages.length === 20;
-            
-            // Get the oldest message timestamp for pagination
-            const oldestMessageTimestamp = messages.length > 0 ? 
-                messages[messages.length - 1].created_at : null;
-            
+            // Send messages to client
             console.log(`Sending ${clientMessages.length} messages to client for channel ${channel}`);
-            
-            // Send message history to client
             socket.emit('message-history', { 
                 channel, 
                 messages: clientMessages,
-                hasMoreMessages,
-                oldestMessageTimestamp
+                error: error ? error.message : null
             });
             
         } catch (err) {
@@ -851,123 +821,6 @@ io.on("connection", (socket) => {
             socket.emit('message-history', { 
                 channel, 
                 messages: [],
-                hasMoreMessages: false,
-                oldestMessageTimestamp: null,
-                error: err.message
-            });
-        }
-    });
-    
-    // Handle request for more messages (lazy loading)
-    socket.on('get-channel-messages', async (data, callback) => {
-        const channel = data.channel || 'general';
-        const oldestMessageTimestamp = data.oldestMessageTimestamp;
-        
-        console.log(`Requested more messages for channel: ${channel}, before timestamp: ${oldestMessageTimestamp}`);
-        
-        try {
-            let messages = [];
-            
-            // For regular channels, load from Supabase
-            try {
-                console.log(`Querying Supabase for older messages in channel: ${channel}`);
-                
-                // Build the query
-                let query = getSupabaseClient(true)
-                    .from('messages')
-                    .select('*')
-                    .eq('channel', channel)
-                    .order('created_at', { ascending: false }) // Descending order for pagination
-                    .limit(20); // Limit to 20 messages per page
-                
-                // Add pagination
-                if (oldestMessageTimestamp) {
-                    query = query.lt('created_at', oldestMessageTimestamp);
-                }
-                
-                const result = await query;
-                
-                if (result.error) {
-                    console.error('Error loading more channel messages:', result.error);
-                    if (callback) callback({ 
-                        messages: [], 
-                        hasMoreMessages: false,
-                        oldestMessageTimestamp: null,
-                        error: result.error.message 
-                    });
-                    return;
-                } else {
-                    // Try to filter by is_deleted if column exists
-                    messages = result.data.filter(msg => {
-                        return (msg.is_deleted === undefined || msg.is_deleted === null || msg.is_deleted === false) &&
-                              (msg.deleted === undefined || msg.deleted === null || msg.deleted === false);
-                    });
-                    
-                    console.log(`Found ${messages.length} more messages for channel ${channel}`);
-                }
-            } catch (err) {
-                console.error('Exception in loading more channel messages:', err);
-                if (callback) callback({ 
-                    messages: [], 
-                    hasMoreMessages: false,
-                    oldestMessageTimestamp: null,
-                    error: err.message 
-                });
-                return;
-            }
-            
-            // Transform the messages for client consumption
-            const clientMessages = await Promise.all(messages.map(async (msg) => {
-                let senderUsername = 'Unknown User';
-                if (msg.sender_id) {
-                    try {
-                        senderUsername = await resolveUsernameById(msg.sender_id);
-                    } catch (err) {
-                        console.error(`Error resolving username for ${msg.sender_id}:`, err);
-                    }
-                }
-                
-                // Create a complete message object with all required fields
-                return {
-                    id: msg.id || generateUUID(),
-                    content: msg.content || '',
-                    sender: senderUsername,
-                    username: senderUsername, // Add username field for client compatibility
-                    senderId: msg.sender_id || '',
-                    timestamp: msg.created_at || msg.timestamp || new Date().toISOString(),
-                    channel: msg.channel || channel,
-                    is_deleted: msg.is_deleted || msg.deleted || false,
-                    recipientId: msg.recipient_id || null,
-                    isDM: msg.is_dm || false,
-                    type: msg.type || 'text',
-                    fileUrl: msg.file_url || null,
-                    fileType: msg.file_type || null,
-                    fileSize: msg.file_size || null
-                };
-            }));
-            
-            // Sort messages by timestamp (oldest first)
-            clientMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            
-            // Determine if there are more messages to load
-            const hasMoreMessages = messages.length === 20;
-            
-            // Get the oldest message timestamp for pagination
-            const newOldestMessageTimestamp = messages.length > 0 ? 
-                messages[messages.length - 1].created_at : oldestMessageTimestamp;
-            
-            if (callback) callback({ 
-                messages: clientMessages,
-                hasMoreMessages,
-                oldestMessageTimestamp: newOldestMessageTimestamp
-            });
-            
-        } catch (err) {
-            console.error(`Error retrieving more messages for channel ${channel}:`, err);
-            if (callback) callback({ 
-                messages: [], 
-                hasMoreMessages: false,
-                oldestMessageTimestamp: null,
                 error: err.message 
             });
         }
@@ -1915,11 +1768,7 @@ io.on("connection", (socket) => {
                 timestamp: timestamp,
                 channel: message.channel,
                 isDM: message.isDM || false,
-                recipientId: message.recipientId || null,
-                type: message.type || 'text',
-                fileUrl: message.fileUrl || null,
-                fileType: message.fileType || null,
-                fileSize: message.fileSize || null
+                recipientId: message.recipientId || null
             };
             
             console.log(`Preparing to save message with sender_id: ${sender.id}`);
