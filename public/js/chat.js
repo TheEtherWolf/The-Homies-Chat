@@ -45,6 +45,12 @@ class ChatManager {
         this.inGeneralChat = false; // Flag to track if we're in the general chat
         this.currentChannel = 'general'; // Default channel
         this.isDMMode = false; // Track if we're in DM mode or channels mode
+        
+        // Lazy loading state
+        this.isLoadingMoreMessages = false;
+        this.hasMoreMessagesToLoad = true;
+        this.oldestMessageTimestamp = null;
+        this.messagesPerPage = 20;
 
         // Set up keep-alive mechanism to prevent Glitch from sleeping
         this.setupKeepAlive();
@@ -259,6 +265,24 @@ class ChatManager {
         });
         
         console.log(`[CHAT_DEBUG] Updated avatar in ${updatedCount} messages`);
+    }
+    
+    // Get user by ID
+    _getUserById(userId) {
+        if (!userId || !this.allUsers) return null;
+        
+        // Check if we have the user in our local cache
+        for (const user of Object.values(this.allUsers)) {
+            if (user.id === userId) {
+                return user;
+            }
+        }
+        
+        // Return a default user object if not found
+        return {
+            id: userId,
+            username: 'Unknown User'
+        };
     }
     
     // Setup UI event listeners
@@ -581,47 +605,185 @@ class ChatManager {
     
     // Display channel messages
     _displayChannelMessages(channel) {
-        console.log(`[CHAT_DEBUG] Displaying messages for channel ${channel}`);
-        
-        // Ensure channel name has hashtag prefix for UI consistency
-        const displayChannel = channel.startsWith('#') ? channel : `#${channel}`;
-        const dataChannel = channel.startsWith('#') ? channel.substring(1) : channel;
-        
-        // Update chat header
-        if (this.chatTitle) {
-            this.chatTitle.textContent = displayChannel;
-        }
-        
-        // Update message input placeholder
-        if (this.messageInput) {
-            this.messageInput.placeholder = `Message ${displayChannel}`;
-        }
+        if (!channel || !this.messagesContainer) return;
         
         // Clear messages container
-        if (this.messagesContainer) {
-            this.messagesContainer.innerHTML = '';
+        this.messagesContainer.innerHTML = '';
+        
+        // Get messages for channel
+        const messages = this.channelMessages[channel] || [];
+        
+        if (messages.length > 0) {
+            // Sort messages by timestamp
+            const sortedMessages = [...messages].sort((a, b) => {
+                return new Date(a.timestamp) - new Date(b.timestamp);
+            });
             
-            // Add channel header
-            const dateHeader = document.createElement('div');
-            dateHeader.className = 'date-separator';
-            dateHeader.innerHTML = '<span>Today</span>';
-            this.messagesContainer.appendChild(dateHeader);
-            
-            const welcomeMessage = document.createElement('div');
-            welcomeMessage.className = 'system-message';
-            welcomeMessage.textContent = `Welcome to the beginning of ${displayChannel}`;
-            this.messagesContainer.appendChild(welcomeMessage);
-            
-            // Get messages for this channel
-            const messages = this.channelMessages[dataChannel] || [];
+            // Update oldest message timestamp for lazy loading
+            if (sortedMessages.length > 0) {
+                this.oldestMessageTimestamp = sortedMessages[0].timestamp;
+                this.hasMoreMessagesToLoad = true;
+            }
             
             // Display messages
-            messages.forEach(message => {
-                this._displayMessage(message, false); // Don't scroll for bulk loading
+            sortedMessages.forEach(message => {
+                this._displayMessage(message);
             });
             
             // Scroll to bottom
             this._scrollToBottom();
+            
+            // Setup scroll listener for lazy loading
+            this._setupScrollListener();
+        } else {
+            console.log(`No messages found for ${channel}, requesting from server`);
+            
+            // Request messages from server
+            this._requestChannelMessages(channel);
+        }
+    }
+    
+    // Setup scroll listener for lazy loading
+    _setupScrollListener() {
+        if (this.messagesContainer) {
+            // Remove any existing scroll listener
+            this.messagesContainer.removeEventListener('scroll', this._handleScroll);
+            
+            // Add scroll listener
+            this._boundHandleScroll = this._handleScroll.bind(this);
+            this.messagesContainer.addEventListener('scroll', this._boundHandleScroll);
+        }
+    }
+    
+    // Handle scroll event for lazy loading
+    _handleScroll() {
+        if (!this.messagesContainer || this.isLoadingMoreMessages || !this.hasMoreMessagesToLoad) {
+            return;
+        }
+        
+        // Check if user has scrolled near the top
+        const scrollTop = this.messagesContainer.scrollTop;
+        const scrollThreshold = 100; // px from top
+        
+        if (scrollTop < scrollThreshold) {
+            this._loadMoreMessages();
+        }
+    }
+    
+    // Load more messages (lazy loading)
+    _loadMoreMessages() {
+        if (this.isLoadingMoreMessages || !this.hasMoreMessagesToLoad || !this.oldestMessageTimestamp) {
+            return;
+        }
+        
+        console.log('Loading more messages...');
+        this.isLoadingMoreMessages = true;
+        
+        // Show loading indicator
+        this._showLoadingIndicator();
+        
+        // Remember scroll position
+        const scrollHeight = this.messagesContainer.scrollHeight;
+        
+        // Request more messages from server
+        this.socket.emit('get-more-messages', {
+            channel: this.currentChannel,
+            before: this.oldestMessageTimestamp
+        }, (response) => {
+            // Hide loading indicator
+            this._hideLoadingIndicator();
+            
+            if (response && response.success && response.messages && response.messages.length > 0) {
+                console.log(`Received ${response.messages.length} more messages`);
+                
+                // Add messages to cache
+                if (!this.channelMessages[this.currentChannel]) {
+                    this.channelMessages[this.currentChannel] = [];
+                }
+                
+                // Add new messages to the beginning of the array
+                this.channelMessages[this.currentChannel] = [
+                    ...response.messages,
+                    ...this.channelMessages[this.currentChannel]
+                ];
+                
+                // Sort messages by timestamp
+                const sortedMessages = [...response.messages].sort((a, b) => {
+                    return new Date(a.timestamp) - new Date(b.timestamp);
+                });
+                
+                // Update oldest message timestamp
+                if (sortedMessages.length > 0) {
+                    this.oldestMessageTimestamp = sortedMessages[0].timestamp;
+                }
+                
+                // Prepend messages to the container
+                this._prependMessages(sortedMessages);
+                
+                // Maintain scroll position
+                const newScrollHeight = this.messagesContainer.scrollHeight;
+                this.messagesContainer.scrollTop = newScrollHeight - scrollHeight;
+            } else {
+                console.log('No more messages to load');
+                this.hasMoreMessagesToLoad = false;
+            }
+            
+            this.isLoadingMoreMessages = false;
+        });
+    }
+    
+    // Show loading indicator
+    _showLoadingIndicator() {
+        // Check if loading indicator already exists
+        if (document.querySelector('.loading-indicator')) {
+            return;
+        }
+        
+        // Create loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-indicator';
+        
+        const spinner = document.createElement('div');
+        spinner.className = 'loading-spinner';
+        
+        loadingIndicator.appendChild(spinner);
+        
+        // Add to messages container at the top
+        if (this.messagesContainer.firstChild) {
+            this.messagesContainer.insertBefore(loadingIndicator, this.messagesContainer.firstChild);
+        } else {
+            this.messagesContainer.appendChild(loadingIndicator);
+        }
+    }
+    
+    // Hide loading indicator
+    _hideLoadingIndicator() {
+        const loadingIndicator = document.querySelector('.loading-indicator');
+        if (loadingIndicator) {
+            loadingIndicator.remove();
+        }
+    }
+    
+    // Prepend messages to the container
+    _prependMessages(messages) {
+        if (!messages || !messages.length || !this.messagesContainer) return;
+        
+        // Create a document fragment to minimize DOM operations
+        const fragment = document.createDocumentFragment();
+        
+        // Display each message
+        messages.forEach(message => {
+            const messageEl = this._createMessageElement(message);
+            if (messageEl) {
+                fragment.appendChild(messageEl);
+            }
+        });
+        
+        // Prepend to messages container
+        if (this.messagesContainer.firstChild) {
+            this.messagesContainer.insertBefore(fragment, this.messagesContainer.firstChild);
+        } else {
+            this.messagesContainer.appendChild(fragment);
         }
     }
     
@@ -659,8 +821,7 @@ class ChatManager {
         }
         
         // Format timestamp
-        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
-        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timestamp = message.timestamp ? this._formatTimestamp(message.timestamp) : '';
         
         // Determine message content
         let messageContent = isDeleted 
@@ -673,7 +834,7 @@ class ChatManager {
             <div class="message-content">
                 <div class="message-header">
                     <span class="message-author">${sender}</span>
-                    <span class="message-timestamp">${timeString}</span>
+                    <span class="message-timestamp">${timestamp}</span>
                 </div>
                 <div class="message-text">${messageContent}</div>
             </div>
@@ -744,6 +905,49 @@ class ChatManager {
         
         // Return formatted content
         return content;
+    }
+    
+    // Format timestamp for display
+    _formatTimestamp(timestamp) {
+        if (!timestamp) return '';
+        
+        try {
+            const date = new Date(timestamp);
+            
+            // Check if date is valid
+            if (isNaN(date.getTime())) return '';
+            
+            // Format time as HH:MM AM/PM
+            const hours = date.getHours();
+            const minutes = date.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const formattedHours = hours % 12 || 12; // Convert 0 to 12 for 12 AM
+            const formattedMinutes = minutes < 10 ? '0' + minutes : minutes;
+            
+            // Get today and yesterday dates for comparison
+            const today = new Date();
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            // Format date part based on how recent it is
+            let dateStr = '';
+            if (date.toDateString() === today.toDateString()) {
+                dateStr = 'Today';
+            } else if (date.toDateString() === yesterday.toDateString()) {
+                dateStr = 'Yesterday';
+            } else {
+                // Format as MM/DD/YYYY for older dates
+                const month = date.getMonth() + 1;
+                const day = date.getDate();
+                const year = date.getFullYear();
+                dateStr = `${month}/${day}/${year}`;
+            }
+            
+            return `${dateStr} at ${formattedHours}:${formattedMinutes} ${ampm}`;
+        } catch (err) {
+            console.error('Error formatting timestamp:', err);
+            return '';
+        }
     }
     
     // Scroll messages container to bottom

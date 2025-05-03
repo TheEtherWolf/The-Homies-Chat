@@ -236,6 +236,10 @@ body {
   background-color: var(--danger-color);
 }
 
+.user-status.invisible {
+  background-color: var(--text-muted);
+}
+
 .user-details {
   flex: 1;
   overflow: hidden;
@@ -1445,4 +1449,26 @@ body {
   background-color: rgba(52, 152, 219, 0.2);
   color: var(--primary-color);
   border-color: var(--primary-color);
+}
+
+/* Loading indicator */
+.loading-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.loading-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #7289da;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

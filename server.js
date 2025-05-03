@@ -2588,6 +2588,94 @@ io.on("connection", (socket) => {
         
         console.log(`Received keep-alive signal from ${username} (${socket.id})`);
     });
+
+    // Handle get-more-messages request for lazy loading
+    socket.on('get-more-messages', async (data, callback) => {
+        try {
+            const { channel, before } = data;
+            console.log(`Fetching more messages for channel ${channel} before timestamp ${before}`);
+            
+            if (!channel || !before) {
+                return callback({ success: false, message: 'Missing required parameters' });
+            }
+            
+            let messages = [];
+            
+            // Check if this is a DM channel request 
+            if (channel.startsWith('dm_')) {
+                try {
+                    // For DMs, load from local storage first
+                    const allDMMessages = loadDMMessages(channel);
+                    
+                    // Filter messages before the specified timestamp
+                    messages = allDMMessages.filter(msg => {
+                        const msgTimestamp = msg.timestamp || msg.created_at;
+                        return new Date(msgTimestamp) < new Date(before);
+                    }).slice(0, 20); // Limit to 20 messages
+                    
+                    console.log(`Loaded ${messages.length} older DM messages from local storage for channel ${channel}`);
+                } catch (err) {
+                    console.error('Error loading older DM messages:', err);
+                    return callback({ success: false, message: err.message });
+                }
+            } else {
+                // For regular channels, load from Supabase
+                try {
+                    console.log(`Querying Supabase for older messages in channel: ${channel} before ${before}`);
+                    const result = await getSupabaseClient(true)
+                        .from('messages')
+                        .select('*')
+                        .eq('channel', channel)
+                        .lt('created_at', before) // Get messages before the specified timestamp
+                        .order('created_at', { ascending: false }) // Newest first
+                        .limit(20); // Limit to 20 messages
+                    
+                    if (result.error) {
+                        console.error('Error loading older channel messages:', result.error);
+                        return callback({ success: false, message: result.error.message });
+                    }
+                    
+                    // Try to filter by is_deleted if column exists
+                    messages = result.data.filter(msg => {
+                        return (msg.is_deleted === undefined || msg.is_deleted === null || msg.is_deleted === false) &&
+                              (msg.deleted === undefined || msg.deleted === null || msg.deleted === false);
+                    });
+                    
+                    console.log(`Found ${messages.length} older messages for channel ${channel}`);
+                } catch (err) {
+                    console.error('Exception in older message loading:', err);
+                    return callback({ success: false, message: err.message });
+                }
+            }
+            
+            // Transform the messages for client consumption
+            const clientMessages = await Promise.all(messages.map(async (msg) => {
+                let senderUsername = 'Unknown User';
+                if (msg.sender_id) {
+                    senderUsername = await resolveUsernameById(msg.sender_id);
+                }
+                return {
+                    id: msg.id,
+                    content: msg.content,
+                    sender: senderUsername,
+                    username: senderUsername, // Add username field for client compatibility
+                    senderId: msg.sender_id,
+                    timestamp: msg.created_at || msg.timestamp,
+                    channel: msg.channel || channel,
+                    is_deleted: msg.is_deleted || false
+                };
+            }));
+            
+            // Return the messages to the client
+            callback({
+                success: true,
+                messages: clientMessages
+            });
+        } catch (error) {
+            console.error('Error fetching more messages:', error);
+            callback({ success: false, message: 'Error fetching messages' });
+        }
+    });
 });
 
 server.listen(process.env.PORT || 3000, () => {
