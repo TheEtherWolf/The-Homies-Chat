@@ -472,10 +472,9 @@ class ChatManager {
         // Handle message history
         this.socket.on('message-history', (data) => {
             console.log(`[CHAT_DEBUG] Received message history for ${data.channel}:`, data.messages.length);
-            console.log('[CHAT_DEBUG] First message sample:', data.messages.length > 0 ? data.messages[0] : 'No messages');
             
             // Store messages in cache
-            this.channelMessages[data.channel] = data.messages || [];
+            this.channelMessages[data.channel] = data.messages;
             
             // If this is the current channel, display messages
             if (data.channel === this.currentChannel) {
@@ -640,20 +639,11 @@ class ChatManager {
             
             // Get messages for this channel
             const messages = this.channelMessages[dataChannel] || [];
-            console.log(`[CHAT_DEBUG] Found ${messages.length} messages for channel ${dataChannel}`, messages);
             
             // Display messages
-            if (messages.length > 0) {
-                messages.forEach(message => {
-                    try {
-                        this._displayMessage(message, false); // Don't scroll for bulk loading
-                    } catch (error) {
-                        console.error(`[CHAT_DEBUG] Error displaying message:`, error, message);
-                    }
-                });
-            } else {
-                console.log(`[CHAT_DEBUG] No messages to display for channel ${dataChannel}`);
-            }
+            messages.forEach(message => {
+                this._displayMessage(message, false); // Don't scroll for bulk loading
+            });
             
             // Scroll to bottom
             this._scrollToBottom();
@@ -746,24 +736,7 @@ class ChatManager {
             '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
         );
         
-        // Convert emoji shortcodes to actual emojis
-        // This is a simple implementation - you might want to use a library for this
-        const emojiMap = {
-            ':)': '😊',
-            ':D': '😃',
-            ':(': '😞',
-            ':P': '😛',
-            ';)': '😉',
-            '<3': '❤️'
-        };
-        
-        // Use a safer approach to replace emoji codes
-        for (const [code, emoji] of Object.entries(emojiMap)) {
-            // Escape special regex characters in the code
-            const escapedCode = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            content = content.replace(new RegExp(escapedCode, 'g'), emoji);
-        }
-        
+        // Return formatted content
         return content;
     }
     
@@ -1198,22 +1171,11 @@ class ChatManager {
                 // Add messages to the beginning of the array
                 this.channelMessages[channel] = [...messages, ...this.channelMessages[channel]];
                 
-                // Create a document fragment to hold all new messages
+                // Display messages at the top of the container
                 const fragment = document.createDocumentFragment();
-                
-                // Create message elements
                 messages.forEach(message => {
-                    try {
-                        // Check if message is deleted
-                        const isDeleted = message.is_deleted === true;
-                        
-                        // Create message element
-                        const messageEl = this._createMessageElement(message);
-                        
-                        fragment.appendChild(messageEl);
-                    } catch (error) {
-                        console.error('[CHAT_DEBUG] Error creating message element:', error, message);
-                    }
+                    const messageElement = this._createMessageElement(message);
+                    fragment.appendChild(messageElement);
                 });
                 
                 // Insert messages at the beginning (after the loading indicator)
