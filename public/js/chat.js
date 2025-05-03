@@ -726,17 +726,32 @@ class ChatManager {
         }
     }
     
-    // Format message content (handle links, emojis, etc.)
+    // Format message content (convert URLs to links, etc.)
     _formatMessageContent(content) {
         if (!content) return '';
         
         // Convert URLs to links
-        content = content.replace(
-            /(https?:\/\/[^\s]+)/g, 
-            '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-        );
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        content = content.replace(urlRegex, url => `<a href="${url}" target="_blank">${url}</a>`);
         
-        // Return formatted content
+        // Convert newlines to <br>
+        content = content.replace(/\n/g, '<br>');
+        
+        // Convert emoji shortcodes to actual emojis
+        // This is a simple implementation - you might want to use a library for this
+        const emojiMap = {
+            ':)': '😊',
+            ':D': '😃',
+            ':(': '😞',
+            ':P': '😛',
+            ';)': '😉',
+            '<3': '❤️'
+        };
+        
+        Object.keys(emojiMap).forEach(code => {
+            content = content.replace(new RegExp(code, 'g'), emojiMap[code]);
+        });
+        
         return content;
     }
     
