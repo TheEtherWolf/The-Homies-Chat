@@ -840,9 +840,9 @@ class ChatManager {
         }
     }
     
-    // Display a single message
-    _displayMessage(message, scrollToBottom = true) {
-        if (!this.messagesContainer) return;
+    // Create a message element for display
+    _createMessageElement(message) {
+        if (!message) return null;
         
         // Check if message is deleted
         const isDeleted = message.is_deleted === true;
@@ -881,7 +881,7 @@ class ChatManager {
             ? '<em class="deleted-message">[This message has been deleted]</em>' 
             : this._formatMessageContent(message.content);
         
-        // Build message HTML
+        // Create message HTML
         messageEl.innerHTML = `
             <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
             <div class="message-content">
@@ -891,39 +891,63 @@ class ChatManager {
                 </div>
                 <div class="message-text">${messageContent}</div>
             </div>
-            ${isCurrentUser && !isDeleted ? '<div class="message-actions"><button class="message-actions-btn" title="Message Options"><i class="bi bi-three-dots-vertical"></i></button><div class="message-actions-menu"><div class="message-action-item danger" data-action="delete"><i class="bi bi-trash"></i>Delete Message</div></div></div>' : ''}
+            <div class="message-actions">
+                <button class="message-action-button">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <div class="message-action-dropdown">
+                    ${isCurrentUser ? '<button class="message-action-item delete-message">Delete</button>' : ''}
+                    <button class="message-action-item copy-message">Copy</button>
+                </div>
+            </div>
         `;
         
-        // Add delete button event listener if it's the current user's message
-        if (isCurrentUser && !isDeleted) {
-            const actionBtn = messageEl.querySelector('.message-actions-btn');
-            const actionMenu = messageEl.querySelector('.message-actions-menu');
-            const deleteAction = messageEl.querySelector('.message-action-item[data-action="delete"]');
+        // Add event listeners for message actions
+        const actionButton = messageEl.querySelector('.message-action-button');
+        const actionDropdown = messageEl.querySelector('.message-action-dropdown');
+        
+        if (actionButton && actionDropdown) {
+            actionButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                actionDropdown.classList.toggle('show');
+            });
             
-            if (actionBtn && actionMenu) {
-                actionBtn.addEventListener('click', (e) => {
+            // Add delete button listener
+            const deleteButton = messageEl.querySelector('.delete-message');
+            if (deleteButton && isCurrentUser) {
+                deleteButton.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    actionMenu.classList.toggle('show');
-                });
-                
-                // Close menu when clicking outside
-                document.addEventListener('click', () => {
-                    actionMenu.classList.remove('show');
+                    this._deleteMessage(message.id);
+                    actionDropdown.classList.remove('show');
                 });
             }
             
-            if (deleteAction) {
-                deleteAction.addEventListener('click', () => {
-                    this._deleteMessage(message.id);
-                    actionMenu.classList.remove('show');
+            // Add copy button listener
+            const copyButton = messageEl.querySelector('.copy-message');
+            if (copyButton) {
+                copyButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._copyMessageContent(message.content);
+                    actionDropdown.classList.remove('show');
                 });
             }
         }
         
+        return messageEl;
+    }
+    
+    // Display a single message
+    _displayMessage(message, scrollToBottom = true) {
+        if (!this.messagesContainer) return;
+        
+        // Create message element
+        const messageEl = this._createMessageElement(message);
+        if (!messageEl) return;
+        
         // Add to messages container
         this.messagesContainer.appendChild(messageEl);
         
-        // Scroll to bottom if requested
+        // Scroll to bottom if needed
         if (scrollToBottom) {
             this._scrollToBottom();
         }
@@ -1307,6 +1331,47 @@ class ChatManager {
                 button.style.display = 'none';
             }
         });
+    }
+    
+    // Copy message content to clipboard
+    _copyMessageContent(content) {
+        if (!content) return;
+        
+        // Remove HTML tags if present
+        const plainText = content.replace(/<[^>]*>/g, '');
+        
+        // Copy to clipboard
+        navigator.clipboard.writeText(plainText)
+            .then(() => {
+                console.log('[CHAT_DEBUG] Message copied to clipboard');
+                // Show a brief notification
+                this._showNotification('Message copied to clipboard');
+            })
+            .catch(err => {
+                console.error('[CHAT_DEBUG] Failed to copy message:', err);
+            });
+    }
+    
+    // Show a brief notification
+    _showNotification(message) {
+        // Check if notification element already exists
+        let notification = document.querySelector('.chat-notification');
+        
+        if (!notification) {
+            // Create notification element
+            notification = document.createElement('div');
+            notification.className = 'chat-notification';
+            document.body.appendChild(notification);
+        }
+        
+        // Set message and show
+        notification.textContent = message;
+        notification.classList.add('show');
+        
+        // Hide after 2 seconds
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, 2000);
     }
     
     // ... rest of the code remains the same ...

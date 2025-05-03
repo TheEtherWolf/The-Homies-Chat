@@ -1472,3 +1472,24 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Chat notification */
+.chat-notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background-color: var(--primary-color);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.chat-notification.show {
+  opacity: 1;
+  transform: translateY(0);
+}
