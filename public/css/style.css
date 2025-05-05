@@ -385,6 +385,17 @@ body {
   align-items: flex-end;
 }
 
+.message-content {
+  position: relative;
+  max-width: 95%;
+  display: flex;
+  flex-direction: column;
+}
+
+.own-message .message-content {
+  position: relative;
+}
+
 .message-text {
   font-size: 15px;
   line-height: 1.4;
@@ -392,7 +403,7 @@ body {
   padding: 8px 12px;
   border-radius: var(--border-radius-md);
   background-color: var(--message-bg);
-  max-width: 95%;
+  max-width: 100%;
   min-width: 80px;
   word-break: normal;
   overflow-wrap: break-word;
@@ -463,15 +474,13 @@ body {
 }
 
 .own-message .message-actions {
-  left: -10px;
-  right: auto;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
 }
 
 .message:not(.own-message) .message-actions {
-  right: -10px;
-  left: auto;
+  left: -30px;
   top: 50%;
   transform: translateY(-50%);
 }
