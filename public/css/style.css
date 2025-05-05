@@ -392,8 +392,111 @@ body {
   flex-direction: column;
 }
 
-.own-message .message-content {
-  position: relative;
+/* Message actions styling */
+.message-actions {
+  position: absolute;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 10;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
+  visibility: visible;
+}
+
+.own-message .message-actions {
+  left: -30px;
+  top: 10px; /* Align to top of message */
+  transform: translateY(0);
+}
+
+.message:not(.own-message) .message-actions {
+  right: -30px;
+  top: 10px; /* Align to top of message */
+  transform: translateY(0);
+  left: auto;
+}
+
+.message-action-button {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.message-action-button:hover {
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.message-action-button i {
+  font-size: 18px;
+}
+
+.message-action-dropdown {
+  position: absolute;
+  top: 0;
+  background-color: var(--background-floating);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  padding: 8px 0;
+  min-width: 150px;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.95);
+  transition: transform 0.15s ease, opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.own-message .message-action-dropdown {
+  left: 30px; /* Open toward the center */
+  transform-origin: top left;
+}
+
+.message:not(.own-message) .message-action-dropdown {
+  right: 30px; /* Open toward the center */
+  transform-origin: top right;
+}
+
+.message-action-dropdown.show {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1);
+}
+
+.message-action-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-normal);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.message-action-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.message-action-item.delete-message {
+  color: var(--danger-color);
+}
+
+.message-action-item.delete-message:hover {
+  background-color: rgba(var(--danger-color-rgb), 0.1);
 }
 
 .message-text {
@@ -457,115 +560,6 @@ body {
 .message.grouped .message-avatar,
 .message.grouped .message-header {
   display: none;
-}
-
-/* Message actions styling */
-.message-actions {
-  position: absolute;
-  opacity: 0;
-  visibility: hidden;
-  z-index: 10;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
-}
-
-.message:hover .message-actions {
-  opacity: 1;
-  visibility: visible;
-}
-
-.own-message .message-actions {
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.message:not(.own-message) .message-actions {
-  left: -30px;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.message-action-button {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
-  font-size: 16px;
-  cursor: pointer;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-.message-action-button:hover {
-  background-color: var(--background-secondary);
-  color: var(--text-normal);
-}
-
-.message-action-button i {
-  font-size: 18px;
-}
-
-.message-action-dropdown {
-  position: absolute;
-  top: 0;
-  background-color: var(--background-floating);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  padding: 8px 0;
-  min-width: 150px;
-  z-index: 100;
-  opacity: 0;
-  visibility: hidden;
-  transform: scale(0.95);
-  transform-origin: top left;
-  transition: transform 0.15s ease, opacity 0.15s ease, visibility 0.15s ease;
-}
-
-.own-message .message-action-dropdown {
-  left: 30px;
-  right: auto;
-  transform-origin: top left;
-}
-
-.message:not(.own-message) .message-action-dropdown {
-  right: 30px;
-  left: auto;
-  transform-origin: top right;
-}
-
-.message-action-dropdown.show {
-  opacity: 1;
-  visibility: visible;
-  transform: scale(1);
-}
-
-.message-action-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 12px;
-  background: none;
-  border: none;
-  color: var(--text-normal);
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.message-action-item:hover {
-  background-color: var(--background-modifier-hover);
-}
-
-.message-action-item.delete-message {
-  color: var(--danger-color);
-}
-
-.message-action-item.delete-message:hover {
-  background-color: rgba(var(--danger-color-rgb), 0.1);
 }
 
 /* Toast notification */
