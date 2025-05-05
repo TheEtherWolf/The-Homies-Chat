@@ -893,71 +893,96 @@ class ChatManager {
             ? '<em class="deleted-message">[This message has been deleted]</em>' 
             : this._formatMessageContent(message.content);
         
-        // Create message HTML
+        // Create message HTML with flex layout
         messageEl.innerHTML = `
-            <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
-            <div class="message-content">
-                <div class="message-header">
-                    <span class="message-author">${sender}</span>
-                    <span class="message-timestamp">${timestamp}</span>
+            <div class="message-row">
+                ${isCurrentUser ? `
+                    <div class="message-actions">
+                        <button class="message-action-button">
+                            <i class="bi bi-three-dots-vertical"></i>
+                        </button>
+                        <div class="message-action-dropdown">
+                            <button class="message-action-item delete-message">Delete</button>
+                            <button class="message-action-item copy-message">Copy</button>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                <div class="message-container">
+                    <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
+                    <div class="message-content">
+                        <div class="message-header">
+                            <span class="message-author">${sender}</span>
+                            <span class="message-timestamp">${timestamp}</span>
+                        </div>
+                        <div class="message-text">${messageContent}</div>
+                    </div>
                 </div>
-                <div class="message-text">${messageContent}</div>
-            </div>
-            <div class="message-actions">
-                <button class="message-action-button">
-                    <i class="bi bi-three-dots-vertical"></i>
-                </button>
-                <div class="message-action-dropdown">
-                    ${isCurrentUser ? '<button class="message-action-item delete-message">Delete</button>' : ''}
-                    <button class="message-action-item copy-message">Copy</button>
-                </div>
+                
+                ${!isCurrentUser ? `
+                    <div class="message-actions">
+                        <button class="message-action-button">
+                            <i class="bi bi-three-dots-vertical"></i>
+                        </button>
+                        <div class="message-action-dropdown">
+                            <button class="message-action-item copy-message">Copy</button>
+                        </div>
+                    </div>
+                ` : ''}
             </div>
         `;
         
         // Add event listeners for message actions
-        const actionButton = messageEl.querySelector('.message-action-button');
-        const actionDropdown = messageEl.querySelector('.message-action-dropdown');
-        
-        if (actionButton && actionDropdown) {
-            actionButton.addEventListener('click', (e) => {
-                e.stopPropagation();
-                
-                // Close any other open dropdowns
-                document.querySelectorAll('.message-action-dropdown.show').forEach(dropdown => {
-                    if (dropdown !== actionDropdown) {
-                        dropdown.classList.remove('show');
-                    }
-                });
-                
-                // Toggle this dropdown
-                actionDropdown.classList.toggle('show');
-            });
+        const actionButtons = messageEl.querySelectorAll('.message-action-button');
+        actionButtons.forEach(actionButton => {
+            const actionDropdown = actionButton.nextElementSibling;
             
-            // Add delete button listener
+            if (actionButton && actionDropdown) {
+                actionButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    
+                    // Close any other open dropdowns
+                    document.querySelectorAll('.message-action-dropdown.show').forEach(dropdown => {
+                        if (dropdown !== actionDropdown) {
+                            dropdown.classList.remove('show');
+                        }
+                    });
+                    
+                    // Toggle this dropdown
+                    actionDropdown.classList.toggle('show');
+                });
+            }
+        });
+        
+        // Add delete button listener
+        if (isCurrentUser) {
             const deleteButton = messageEl.querySelector('.delete-message');
-            if (deleteButton && isCurrentUser) {
+            if (deleteButton) {
                 deleteButton.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this._deleteMessage(message.id, messageEl);
-                    actionDropdown.classList.remove('show');
-                });
-            }
-            
-            // Add copy button listener
-            const copyButton = messageEl.querySelector('.copy-message');
-            if (copyButton) {
-                copyButton.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this._copyMessageContent(message.content);
-                    actionDropdown.classList.remove('show');
+                    messageEl.querySelector('.message-action-dropdown').classList.remove('show');
                 });
             }
         }
         
+        // Add copy button listener
+        const copyButtons = messageEl.querySelectorAll('.copy-message');
+        copyButtons.forEach(copyButton => {
+            copyButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._copyMessageContent(message.content);
+                e.target.closest('.message-action-dropdown').classList.remove('show');
+            });
+        });
+        
         // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
-            if (!actionButton.contains(e.target) && !actionDropdown.contains(e.target)) {
-                actionDropdown.classList.remove('show');
+            if (!messageEl.contains(e.target)) {
+                const dropdown = messageEl.querySelector('.message-action-dropdown.show');
+                if (dropdown) {
+                    dropdown.classList.remove('show');
+                }
             }
         });
         
