@@ -407,13 +407,13 @@ body {
 }
 
 .own-message .message-actions {
-  left: -30px;
+  left: -10px;
   top: 10px; /* Align to top of message */
   transform: translateY(0);
 }
 
 .message:not(.own-message) .message-actions {
-  right: -30px;
+  right: -10px;
   top: 10px; /* Align to top of message */
   transform: translateY(0);
   left: auto;
