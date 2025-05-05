@@ -43,7 +43,7 @@ class ChatManager {
         this.needsInitialDataFetch = false; // Flag to fetch users/status on connect
         this.isSocketConnected = this.socket ? this.socket.connected : false; // Track connection state
         this.inGeneralChat = false; // Flag to track if we're in the general chat
-        this.currentChannel = 'general'; // Default channel
+        this.currentChannel = { id: 'general', name: 'general' }; // Default channel as object
         this.isDMMode = false; // Track if we're in DM mode or channels mode
         
         // Lazy loading state
@@ -51,6 +51,14 @@ class ChatManager {
         this.hasMoreMessagesToLoad = true;
         this.oldestMessageTimestamp = null;
         this.messagesPerPage = 20;
+
+        // Create loading indicator element
+        this.loadingIndicator = document.createElement('div');
+        this.loadingIndicator.className = 'loading-indicator d-none';
+        this.loadingIndicator.innerHTML = '<div class="spinner"></div><span>Loading messages...</span>';
+        if (this.messagesContainer) {
+            this.messagesContainer.appendChild(this.loadingIndicator);
+        }
 
         // Set up keep-alive mechanism to prevent Glitch from sleeping
         this.setupKeepAlive();
@@ -499,7 +507,7 @@ class ChatManager {
             }
             
             // If this is the current channel, display messages
-            if (data.channel === this.currentChannel) {
+            if (data.channel === this.currentChannel.id) {
                 this._displayChannelMessages(data.channel);
             }
         });
@@ -516,8 +524,8 @@ class ChatManager {
             this.channelMessages[channel].push(message);
             
             // If this is the current channel, display the message
-            if (channel === this.currentChannel || 
-                (this.currentChannel.startsWith('#') && channel === this.currentChannel.substring(1))) {
+            if (channel === this.currentChannel.id || 
+                (this.currentChannel.id.startsWith('#') && channel === this.currentChannel.id.substring(1))) {
                 this._displayMessage(message);
             }
             
@@ -618,7 +626,7 @@ class ChatManager {
         const messageContent = this.messageInput.value.trim();
         
         // Ensure channel name is properly formatted for the server (without hashtag)
-        const dataChannel = this.currentChannel.startsWith('#') ? this.currentChannel.substring(1) : this.currentChannel;
+        const dataChannel = this.currentChannel.id.startsWith('#') ? this.currentChannel.id.substring(1) : this.currentChannel.id;
         
         console.log(`[CHAT_DEBUG] Sending message to ${dataChannel}: ${messageContent}`);
         
@@ -667,6 +675,9 @@ class ChatManager {
         if (this.messagesContainer) {
             this.messagesContainer.innerHTML = '';
             
+            // Re-add loading indicator
+            this.messagesContainer.appendChild(this.loadingIndicator);
+            
             // Add welcome message
             const welcomeDiv = document.createElement('div');
             welcomeDiv.className = 'welcome-message';
@@ -698,8 +709,10 @@ class ChatManager {
             this._scrollToBottom();
             
             // Reset loading state
-            this.isLoadingMessages = false;
-            this.loadingIndicator.classList.add('d-none');
+            this.isLoadingMoreMessages = false;
+            if (this.loadingIndicator) {
+                this.loadingIndicator.classList.add('d-none');
+            }
         }
     }
     
@@ -748,15 +761,17 @@ class ChatManager {
         this.isLoadingMoreMessages = true;
         
         // Show loading indicator
-        this._showLoadingIndicator();
+        if (this.loadingIndicator) {
+            this.loadingIndicator.classList.remove('d-none');
+        }
         
         // Remember scroll position and height
         const scrollHeight = this.messagesContainer.scrollHeight;
         const scrollPosition = this.messagesContainer.scrollTop;
         
         // Get the channel name without hashtag for data operations
-        const dataChannel = this.currentChannel.startsWith('#') ? 
-            this.currentChannel.substring(1) : this.currentChannel;
+        const dataChannel = this.currentChannel.id.startsWith('#') ? 
+            this.currentChannel.id.substring(1) : this.currentChannel.id;
         
         // Request more messages from server
         this.socket.emit('get-more-messages', {
@@ -764,7 +779,9 @@ class ChatManager {
             before: this.oldestMessageTimestamp
         }, (response) => {
             // Hide loading indicator
-            this._hideLoadingIndicator();
+            if (this.loadingIndicator) {
+                this.loadingIndicator.classList.add('d-none');
+            }
             
             console.log('[CHAT_DEBUG] Got response for older messages:', response);
             
@@ -810,38 +827,6 @@ class ChatManager {
             
             this.isLoadingMoreMessages = false;
         });
-    }
-    
-    // Show loading indicator
-    _showLoadingIndicator() {
-        // Check if loading indicator already exists
-        if (document.querySelector('.loading-indicator')) {
-            return;
-        }
-        
-        // Create loading indicator
-        const loadingIndicator = document.createElement('div');
-        loadingIndicator.className = 'loading-indicator';
-        
-        const spinner = document.createElement('div');
-        spinner.className = 'loading-spinner';
-        
-        loadingIndicator.appendChild(spinner);
-        
-        // Add to messages container at the top
-        if (this.messagesContainer.firstChild) {
-            this.messagesContainer.insertBefore(loadingIndicator, this.messagesContainer.firstChild);
-        } else {
-            this.messagesContainer.appendChild(loadingIndicator);
-        }
-    }
-    
-    // Hide loading indicator
-    _hideLoadingIndicator() {
-        const loadingIndicator = document.querySelector('.loading-indicator');
-        if (loadingIndicator) {
-            loadingIndicator.remove();
-        }
     }
     
     // Prepend messages to the container
@@ -1229,7 +1214,7 @@ class ChatManager {
         this.socket.emit('get-active-users');
         
         // Fetch message history for current channel
-        this.socket.emit('get-channel-messages', { channel: this.currentChannel });
+        this.socket.emit('get-channel-messages', { channel: this.currentChannel.id });
         
         // Fetch friend list
         this.socket.emit('get-friends-list');
@@ -1462,5 +1447,76 @@ class ChatManager {
         });
     }
     
-    // ... rest of the code remains the same ...
+    // Switch to a channel
+    switchToChannel(channel) {
+        console.log(`[CHAT_DEBUG] Switching to channel: ${channel}`);
+        
+        // Reset DM mode
+        this.isDMMode = false;
+        this.currentDmRecipientId = null;
+        
+        // Ensure channel name has hashtag prefix for UI consistency
+        const displayChannel = channel.startsWith('#') ? channel : `#${channel}`;
+        const dataChannel = channel.startsWith('#') ? channel.substring(1) : channel;
+        
+        // Update current channel
+        this.currentChannel = { 
+            id: dataChannel,
+            name: dataChannel
+        };
+        
+        // Update chat header
+        if (this.chatTitle) {
+            this.chatTitle.textContent = displayChannel;
+        }
+        
+        // Update message input placeholder
+        if (this.messageInput) {
+            this.messageInput.placeholder = `Message ${displayChannel}`;
+        }
+        
+        // Clear messages container
+        if (this.messagesContainer) {
+            this.messagesContainer.innerHTML = '';
+            
+            // Re-add loading indicator
+            this.messagesContainer.appendChild(this.loadingIndicator);
+            
+            // Add welcome message
+            const welcomeDiv = document.createElement('div');
+            welcomeDiv.className = 'welcome-message';
+            welcomeDiv.innerHTML = `
+                <h3>Welcome to #${this.currentChannel.name}</h3>
+                <p>This is the start of the #${this.currentChannel.name} channel</p>
+            `;
+            this.messagesContainer.appendChild(welcomeDiv);
+            
+            // If no messages, return
+            if (!this.channelMessages[dataChannel] || this.channelMessages[dataChannel].length === 0) {
+                console.log('[CHAT_DEBUG] No messages to display');
+                return;
+            }
+            
+            // Sort messages by timestamp
+            const sortedMessages = [...this.channelMessages[dataChannel]].sort((a, b) => {
+                const timestampA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+                const timestampB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+                return timestampA - timestampB;
+            });
+            
+            // Display messages
+            sortedMessages.forEach(message => {
+                this._displayMessage(message);
+            });
+            
+            // Scroll to bottom
+            this._scrollToBottom();
+            
+            // Reset loading state
+            this.isLoadingMoreMessages = false;
+            if (this.loadingIndicator) {
+                this.loadingIndicator.classList.add('d-none');
+            }
+        }
+    }
 }

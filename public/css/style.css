@@ -469,13 +469,13 @@ body {
 }
 
 .message-action-button {
-  background: rgba(0, 0, 0, 0.2);
-  border: none;
-  color: var(--text-normal);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
   font-size: 16px;
   cursor: pointer;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -486,6 +486,10 @@ body {
 .message-action-button:hover {
   background-color: var(--background-secondary);
   color: var(--text-normal);
+}
+
+.message-action-button i {
+  font-size: 18px;
 }
 
 .message-action-dropdown {
