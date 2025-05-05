@@ -551,7 +551,7 @@ class ChatManager {
                     // Show toast notification if it wasn't deleted by current user
                     const senderId = messageElement.getAttribute('data-sender-id');
                     if (senderId !== this.currentUser.id) {
-                        this._showToast('A message was deleted', 'info', 'fas fa-trash-alt');
+                        this._showToast('A message was deleted', 'info', 'bi bi-trash');
                     }
                 }
             }
@@ -667,42 +667,39 @@ class ChatManager {
         if (this.messagesContainer) {
             this.messagesContainer.innerHTML = '';
             
-            // Add channel header
-            const dateHeader = document.createElement('div');
-            dateHeader.className = 'date-separator';
-            dateHeader.innerHTML = '<span>Today</span>';
-            this.messagesContainer.appendChild(dateHeader);
+            // Add welcome message
+            const welcomeDiv = document.createElement('div');
+            welcomeDiv.className = 'welcome-message';
+            welcomeDiv.innerHTML = `
+                <h3>Welcome to #${this.currentChannel.name}</h3>
+                <p>This is the start of the #${this.currentChannel.name} channel</p>
+            `;
+            this.messagesContainer.appendChild(welcomeDiv);
             
-            const welcomeMessage = document.createElement('div');
-            welcomeMessage.className = 'system-message';
-            welcomeMessage.textContent = `Welcome to the beginning of ${displayChannel}`;
-            this.messagesContainer.appendChild(welcomeMessage);
-            
-            // Get messages for this channel
-            const messages = this.channelMessages[dataChannel] || [];
-            
-            // Sort messages by timestamp for display
-            const sortedMessages = [...messages].sort((a, b) => {
-                return new Date(a.timestamp) - new Date(b.timestamp);
-            });
-            
-            // Update oldest message timestamp for lazy loading
-            if (sortedMessages.length > 0) {
-                this.oldestMessageTimestamp = sortedMessages[0].timestamp;
-                this.hasMoreMessagesToLoad = true;
-                console.log(`[CHAT_DEBUG] Set oldest message timestamp to ${this.oldestMessageTimestamp}`);
+            // If no messages, return
+            if (!this.channelMessages[dataChannel] || this.channelMessages[dataChannel].length === 0) {
+                console.log('[CHAT_DEBUG] No messages to display');
+                return;
             }
+            
+            // Sort messages by timestamp
+            const sortedMessages = [...this.channelMessages[dataChannel]].sort((a, b) => {
+                const timestampA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+                const timestampB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+                return timestampA - timestampB;
+            });
             
             // Display messages
             sortedMessages.forEach(message => {
-                this._displayMessage(message, false); // Don't scroll for bulk loading
+                this._displayMessage(message);
             });
             
             // Scroll to bottom
             this._scrollToBottom();
             
-            // Setup scroll listener for lazy loading
-            this._setupScrollListener();
+            // Reset loading state
+            this.isLoadingMessages = false;
+            this.loadingIndicator.classList.add('d-none');
         }
     }
     
@@ -923,7 +920,7 @@ class ChatManager {
             </div>
             <div class="message-actions">
                 <button class="message-action-button">
-                    <i class="fas fa-ellipsis-v bi bi-three-dots-vertical"></i>
+                    <i class="bi bi-three-dots-vertical"></i>
                 </button>
                 <div class="message-action-dropdown">
                     ${isCurrentUser ? '<button class="message-action-item delete-message">Delete</button>' : ''}
@@ -1020,7 +1017,7 @@ class ChatManager {
                 console.log('[CHAT_DEBUG] Message deleted successfully');
                 
                 // Show toast notification
-                this._showToast('Message deleted', 'success', 'fas fa-check-circle');
+                this._showToast('Message deleted', 'success', 'bi bi-check-circle');
                 
                 // Remove message from DOM after animation completes
                 setTimeout(() => {
@@ -1037,7 +1034,7 @@ class ChatManager {
                 }
                 
                 // Show error toast
-                this._showToast('Failed to delete message', 'error', 'fas fa-exclamation-circle');
+                this._showToast('Failed to delete message', 'error', 'bi bi-exclamation-circle');
             }
         });
     }
@@ -1054,11 +1051,11 @@ class ChatManager {
             .then(() => {
                 console.log('[CHAT_DEBUG] Message copied to clipboard');
                 // Show a toast notification
-                this._showToast('Copied to clipboard', 'info', 'fas fa-copy');
+                this._showToast('Copied to clipboard', 'info', 'bi bi-clipboard');
             })
             .catch(err => {
                 console.error('[CHAT_DEBUG] Failed to copy message:', err);
-                this._showToast('Failed to copy message', 'error', 'fas fa-exclamation-circle');
+                this._showToast('Failed to copy message', 'error', 'bi bi-exclamation-circle');
             });
     }
     
