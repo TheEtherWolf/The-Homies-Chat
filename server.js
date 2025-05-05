@@ -1105,63 +1105,79 @@ io.on("connection", (socket) => {
     // Handle message deletion
     socket.on('delete-message', async (data, callback) => {
         try {
-            const { messageId, userId } = data;
+            const { messageId, userId, channelId } = data;
             
-            // Validate input
             if (!messageId || !userId) {
-                console.error('Missing required fields for message deletion');
-                return callback({ 
-                    success: false, 
-                    error: 'Missing required fields' 
-                });
+                return callback({ success: false, error: 'Missing required fields' });
             }
             
-            console.log(`Attempting to delete message ${messageId} by user ${userId}`);
+            console.log(`[SERVER] Delete message request: ${messageId} from user ${userId}`);
             
-            // Verify the user is authenticated
-            if (!users[socket.id] || !users[socket.id].authenticated) {
-                console.error('Unauthenticated user tried to delete a message');
-                return callback({ 
-                    success: false, 
-                    error: 'Authentication required' 
-                });
-            }
+            // Find the message in local storage first
+            let messageFound = false;
+            let isAuthorized = false;
             
-            // Verify the user ID matches the socket's user ID
-            if (users[socket.id].id !== userId) {
-                console.error(`User ID mismatch: socket has ${users[socket.id].id} but request has ${userId}`);
-                return callback({ 
-                    success: false, 
-                    error: 'User ID mismatch' 
-                });
-            }
-            
-            // Call the Supabase function to mark the message as deleted
-            const success = await markMessageAsDeleted(messageId, userId);
-            
-            if (success) {
-                console.log(`Message ${messageId} successfully marked as deleted`);
+            // Check channel messages
+            if (channelId && channelMessages[channelId]) {
+                const messageIndex = channelMessages[channelId].findIndex(msg => msg.id === messageId);
                 
-                // Broadcast to all clients that the message has been deleted
-                io.emit('message-deleted', {
-                    messageId,
-                    deletedBy: userId
-                });
-                
-                return callback({ success: true });
-            } else {
-                console.error(`Failed to delete message ${messageId}`);
-                return callback({ 
-                    success: false, 
-                    error: 'Failed to delete message' 
-                });
+                if (messageIndex !== -1) {
+                    messageFound = true;
+                    // Check if user is authorized to delete this message
+                    isAuthorized = channelMessages[channelId][messageIndex].senderId === userId;
+                    
+                    if (isAuthorized) {
+                        // Soft delete by marking as deleted
+                        channelMessages[channelId][messageIndex].is_deleted = true;
+                        channelMessages[channelId][messageIndex].deleted_at = new Date().toISOString();
+                        
+                        // Save to local storage
+                        saveMessages();
+                        
+                        // Try to update in Supabase if available
+                        if (supabase) {
+                            try {
+                                const { error } = await supabase
+                                    .from('messages')
+                                    .update({ 
+                                        is_deleted: true,
+                                        deleted_at: new Date().toISOString()
+                                    })
+                                    .eq('id', messageId);
+                                
+                                if (error) {
+                                    console.error('[SERVER] Supabase error updating message:', error);
+                                    // Continue anyway since we've updated local storage
+                                }
+                            } catch (supabaseError) {
+                                console.error('[SERVER] Supabase error:', supabaseError);
+                                // Continue anyway since we've updated local storage
+                            }
+                        }
+                        
+                        // Notify all clients in the channel about the deletion
+                        io.to(channelId).emit('message-deleted', {
+                            messageId,
+                            channelId
+                        });
+                        
+                        return callback({ success: true });
+                    }
+                }
             }
+            
+            // If we didn't find the message or user is not authorized
+            if (!messageFound) {
+                return callback({ success: false, error: 'Message not found' });
+            }
+            
+            if (!isAuthorized) {
+                return callback({ success: false, error: 'Not authorized to delete this message' });
+            }
+            
         } catch (error) {
-            console.error('Error handling message deletion:', error);
-            return callback({ 
-                success: false, 
-                error: 'Server error processing deletion request' 
-            });
+            console.error('[SERVER] Error deleting message:', error);
+            return callback({ success: false, error: 'Server error' });
         }
     });
     

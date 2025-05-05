@@ -527,6 +527,36 @@ class ChatManager {
             }
         });
         
+        // Handle message deletion
+        this.socket.on('message-deleted', (data) => {
+            console.log('[CHAT_DEBUG] Message deleted:', data);
+            
+            const { messageId, channelId } = data;
+            
+            // Only handle if it's for the current channel
+            if (this.currentChannel && channelId === this.currentChannel.id) {
+                const messageElement = document.querySelector(`.message[data-message-id="${messageId}"]`);
+                
+                if (messageElement) {
+                    // Add deleting animation
+                    messageElement.classList.add('deleting');
+                    
+                    // Remove from DOM after animation completes
+                    setTimeout(() => {
+                        if (messageElement.parentNode) {
+                            messageElement.parentNode.removeChild(messageElement);
+                        }
+                    }, 500); // Match the animation duration
+                    
+                    // Show toast notification if it wasn't deleted by current user
+                    const senderId = messageElement.getAttribute('data-sender-id');
+                    if (senderId !== this.currentUser.id) {
+                        this._showToast('A message was deleted', 'info', 'fas fa-trash-alt');
+                    }
+                }
+            }
+        });
+        
         // Handle friend requests
         this.socket.on('friend-request-received', (data) => {
             console.log('[CHAT_DEBUG] Received friend request:', data);
@@ -909,6 +939,15 @@ class ChatManager {
         if (actionButton && actionDropdown) {
             actionButton.addEventListener('click', (e) => {
                 e.stopPropagation();
+                
+                // Close any other open dropdowns
+                document.querySelectorAll('.message-action-dropdown.show').forEach(dropdown => {
+                    if (dropdown !== actionDropdown) {
+                        dropdown.classList.remove('show');
+                    }
+                });
+                
+                // Toggle this dropdown
                 actionDropdown.classList.toggle('show');
             });
             
@@ -917,7 +956,7 @@ class ChatManager {
             if (deleteButton && isCurrentUser) {
                 deleteButton.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    this._deleteMessage(message.id);
+                    this._deleteMessage(message.id, messageEl);
                     actionDropdown.classList.remove('show');
                 });
             }
@@ -932,6 +971,13 @@ class ChatManager {
                 });
             }
         }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!actionButton.contains(e.target) && !actionDropdown.contains(e.target)) {
+                actionDropdown.classList.remove('show');
+            }
+        });
         
         return messageEl;
     }
@@ -954,20 +1000,106 @@ class ChatManager {
     }
     
     // Delete a message
-    _deleteMessage(messageId) {
+    _deleteMessage(messageId, messageElement) {
         if (!messageId) return;
         
-        console.log(`[CHAT_DEBUG] Deleting message: ${messageId}`);
+        console.log('[CHAT_DEBUG] Deleting message:', messageId);
+        
+        // Add deleting animation class
+        if (messageElement) {
+            messageElement.classList.add('deleting');
+        }
         
         // Send delete request to server
-        this.socket.emit('delete-message', { messageId }, (response) => {
-            console.log('[CHAT_DEBUG] Delete message response:', response);
-            
-            if (!response.success) {
-                console.error('[CHAT_DEBUG] Error deleting message:', response.message);
-                alert('Failed to delete message: ' + response.message);
+        this.socket.emit('delete-message', {
+            messageId: messageId,
+            userId: this.currentUser.id,
+            channelId: this.currentChannel.id
+        }, (response) => {
+            if (response.success) {
+                console.log('[CHAT_DEBUG] Message deleted successfully');
+                
+                // Show toast notification
+                this._showToast('Message deleted', 'success', 'fas fa-check-circle');
+                
+                // Remove message from DOM after animation completes
+                setTimeout(() => {
+                    if (messageElement && messageElement.parentNode) {
+                        messageElement.parentNode.removeChild(messageElement);
+                    }
+                }, 500); // Match the animation duration
+            } else {
+                console.error('[CHAT_DEBUG] Failed to delete message:', response.error);
+                
+                // Remove animation class if deletion failed
+                if (messageElement) {
+                    messageElement.classList.remove('deleting');
+                }
+                
+                // Show error toast
+                this._showToast('Failed to delete message', 'error', 'fas fa-exclamation-circle');
             }
         });
+    }
+    
+    // Copy message content to clipboard
+    _copyMessageContent(content) {
+        if (!content) return;
+        
+        // Remove HTML tags if present
+        const plainText = content.replace(/<[^>]*>/g, '');
+        
+        // Copy to clipboard
+        navigator.clipboard.writeText(plainText)
+            .then(() => {
+                console.log('[CHAT_DEBUG] Message copied to clipboard');
+                // Show a toast notification
+                this._showToast('Copied to clipboard', 'info', 'fas fa-copy');
+            })
+            .catch(err => {
+                console.error('[CHAT_DEBUG] Failed to copy message:', err);
+                this._showToast('Failed to copy message', 'error', 'fas fa-exclamation-circle');
+            });
+    }
+    
+    // Show a toast notification
+    _showToast(message, type = 'info', icon = null) {
+        // Remove any existing toast
+        const existingToast = document.querySelector('.toast-notification');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `toast-notification ${type}`;
+        
+        // Create toast content
+        let toastHTML = '';
+        if (icon) {
+            toastHTML += `<div class="toast-notification-icon"><i class="${icon}"></i></div>`;
+        }
+        toastHTML += `<div class="toast-notification-content">${message}</div>`;
+        
+        toast.innerHTML = toastHTML;
+        
+        // Add to document
+        document.body.appendChild(toast);
+        
+        // Trigger animation
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 10);
+        
+        // Remove after delay
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300); // Wait for fade out animation
+        }, 3000);
     }
     
     // Format message content (handle links, emojis, etc.)
@@ -1331,47 +1463,6 @@ class ChatManager {
                 button.style.display = 'none';
             }
         });
-    }
-    
-    // Copy message content to clipboard
-    _copyMessageContent(content) {
-        if (!content) return;
-        
-        // Remove HTML tags if present
-        const plainText = content.replace(/<[^>]*>/g, '');
-        
-        // Copy to clipboard
-        navigator.clipboard.writeText(plainText)
-            .then(() => {
-                console.log('[CHAT_DEBUG] Message copied to clipboard');
-                // Show a brief notification
-                this._showNotification('Message copied to clipboard');
-            })
-            .catch(err => {
-                console.error('[CHAT_DEBUG] Failed to copy message:', err);
-            });
-    }
-    
-    // Show a brief notification
-    _showNotification(message) {
-        // Check if notification element already exists
-        let notification = document.querySelector('.chat-notification');
-        
-        if (!notification) {
-            // Create notification element
-            notification = document.createElement('div');
-            notification.className = 'chat-notification';
-            document.body.appendChild(notification);
-        }
-        
-        // Set message and show
-        notification.textContent = message;
-        notification.classList.add('show');
-        
-        // Hide after 2 seconds
-        setTimeout(() => {
-            notification.classList.remove('show');
-        }, 2000);
     }
     
     // ... rest of the code remains the same ...

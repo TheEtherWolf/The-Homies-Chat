@@ -451,164 +451,183 @@ body {
 /* Message actions styling */
 .message-actions {
   position: absolute;
-  right: auto;
-  left: -30px;
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0.2;
-  transition: opacity 0.2s ease;
-  z-index: 10;
-}
-
-.message.own-message .message-actions {
-  left: auto;
-  right: -30px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
 .message:hover .message-actions {
   opacity: 1;
+  visibility: visible;
 }
 
-.message-actions-btn {
-  background-color: var(--dark-secondary);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+.own-message .message-actions {
+  left: -30px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.message:not(.own-message) .message-actions {
+  right: -30px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.message-action-button {
+  background: none;
+  border: none;
   color: var(--text-muted);
   font-size: 16px;
   cursor: pointer;
-  padding: 4px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  width: 24px;
-  height: 24px;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.message-actions-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: var(--text-light);
+.message-action-button:hover {
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
 }
 
-.message-actions-btn i.bi-three-dots-vertical {
-  transform: rotate(90deg);
-}
-
-.message.own-message .message-actions-btn i.bi-three-dots-vertical {
-  transform: rotate(-90deg);
-}
-
-.message-actions-menu {
+.message-action-dropdown {
   position: absolute;
-  bottom: 100%;
-  left: 0;
-  background-color: var(--dark-secondary);
-  border-radius: var(--border-radius-md);
-  box-shadow: var(--box-shadow);
-  min-width: 180px;
+  top: 0;
+  background-color: var(--background-floating);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  padding: 8px 0;
+  min-width: 150px;
   z-index: 100;
-  display: none;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.95);
+  transform-origin: top left;
+  transition: transform 0.15s ease, opacity 0.15s ease, visibility 0.15s ease;
 }
 
-.message.own-message .message-actions-menu {
+.own-message .message-action-dropdown {
+  left: 30px;
+  transform-origin: top left;
+}
+
+.message:not(.own-message) .message-action-dropdown {
+  right: 30px;
   left: auto;
-  right: 0;
+  transform-origin: top right;
 }
 
-.message-actions-btn.active + .message-actions-menu {
-  display: block;
-}
-
-.message-actions-menu.show {
-  display: block;
+.message-action-dropdown.show {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1);
 }
 
 .message-action-item {
+  display: block;
+  width: 100%;
+  text-align: left;
   padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-normal);
   font-size: 14px;
-  color: var(--text-light);
   cursor: pointer;
-  transition: var(--transition);
-  display: flex;
-  align-items: center;
-}
-
-.message-action-item i {
-  margin-right: 8px;
-  font-size: 14px;
+  transition: background-color 0.15s ease;
 }
 
 .message-action-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--background-modifier-hover);
 }
 
-.message-action-item.danger {
+.message-action-item.delete-message {
   color: var(--danger-color);
 }
 
-.message-action-item.danger:hover {
-  background-color: rgba(244, 67, 54, 0.1);
+.message-action-item.delete-message:hover {
+  background-color: rgba(var(--danger-color-rgb), 0.1);
 }
 
-/* Hide copy/delete buttons by default */
-.message-options {
-  display: none;
-}
-
-.message-option-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 14px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: var(--border-radius-sm);
+/* Toast notification */
+.toast-notification {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background-color: var(--background-floating);
+  color: var(--text-normal);
+  padding: 12px 16px;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
   display: flex;
   align-items: center;
-  margin-right: 4px;
+  font-size: 14px;
+  max-width: 300px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-.message-option-btn:last-child {
-  margin-right: 0;
+.toast-notification.show {
+  opacity: 1;
+  transform: translateY(0);
+  animation: toast-bounce 0.5s ease;
 }
 
-.message-option-btn i {
-  margin-right: 4px;
+.toast-notification.success {
+  border-left: 4px solid var(--success-color);
 }
 
-.message-option-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: var(--text-light);
+.toast-notification.error {
+  border-left: 4px solid var(--danger-color);
 }
 
-.message-option-btn.danger:hover {
-  background-color: rgba(244, 67, 54, 0.1);
-  color: var(--danger-color);
+.toast-notification.info {
+  border-left: 4px solid var(--primary-color);
 }
 
-/* Deleted message styling */
-.deleted-message {
-  font-style: italic;
-  color: var(--text-muted);
-  opacity: 0.7;
+.toast-notification-icon {
+  margin-right: 12px;
+  font-size: 18px;
 }
 
-.message-text.deleted {
-  background-color: rgba(255, 255, 255, 0.05);
+.toast-notification-content {
+  flex: 1;
 }
 
-/* System Message */
-.system-message {
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-  margin: 16px 0;
-  padding: 8px 16px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border-radius: var(--border-radius-md);
-  align-self: center;
+@keyframes toast-bounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Message deletion animation */
+.message.deleting {
+  animation: message-fade-out 0.5s ease forwards;
+}
+
+@keyframes message-fade-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(10px);
+    height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
 }
 
 /* Message Input Area */
@@ -1486,7 +1505,7 @@ body {
   z-index: 1000;
   opacity: 0;
   transform: translateY(20px);
-  transition: opacity 0.3s, transform 0.3s;
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .chat-notification.show {
