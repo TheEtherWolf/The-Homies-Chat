@@ -451,19 +451,25 @@ body {
 /* Message actions styling */
 .message-actions {
   position: absolute;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 10;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.message:hover .message-actions {
   opacity: 1;
   visibility: visible;
-  z-index: 10;
 }
 
 .own-message .message-actions {
-  left: -30px;
+  left: -10px;
   top: 50%;
   transform: translateY(-50%);
 }
 
 .message:not(.own-message) .message-actions {
-  right: -30px;
+  right: -10px;
   top: 50%;
   transform: translateY(-50%);
 }
