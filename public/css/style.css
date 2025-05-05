@@ -517,15 +517,15 @@ body {
 }
 
 .own-message .message-action-dropdown {
-  right: 30px;
-  left: auto;
-  transform-origin: top right;
-}
-
-.message:not(.own-message) .message-action-dropdown {
   left: 30px;
   right: auto;
   transform-origin: top left;
+}
+
+.message:not(.own-message) .message-action-dropdown {
+  right: 30px;
+  left: auto;
+  transform-origin: top right;
 }
 
 .message-action-dropdown.show {
