@@ -464,12 +464,14 @@ body {
 
 .own-message .message-actions {
   left: -10px;
+  right: auto;
   top: 50%;
   transform: translateY(-50%);
 }
 
 .message:not(.own-message) .message-actions {
   right: -10px;
+  left: auto;
   top: 50%;
   transform: translateY(-50%);
 }
@@ -515,14 +517,15 @@ body {
 }
 
 .own-message .message-action-dropdown {
-  left: 30px;
-  transform-origin: top left;
-}
-
-.message:not(.own-message) .message-action-dropdown {
   right: 30px;
   left: auto;
   transform-origin: top right;
+}
+
+.message:not(.own-message) .message-action-dropdown {
+  left: 30px;
+  right: auto;
+  transform-origin: top left;
 }
 
 .message-action-dropdown.show {
