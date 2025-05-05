@@ -923,7 +923,7 @@ class ChatManager {
             </div>
             <div class="message-actions">
                 <button class="message-action-button">
-                    <i class="fas fa-ellipsis-v"></i>
+                    <i class="fas fa-ellipsis-v bi bi-three-dots-vertical"></i>
                 </button>
                 <div class="message-action-dropdown">
                     ${isCurrentUser ? '<button class="message-action-item delete-message">Delete</button>' : ''}
