@@ -618,6 +618,17 @@ class ChatManager {
             
             console.log(`[CHAT_DEBUG] Updated avatar in ${updatedCount} messages from user ${data.userId}`);
         });
+        
+        // Add new avatar update event listener
+        this.socket.on('avatar:updated', ({ userId, newAvatarUrl }) => {
+            console.log(`[CHAT_DEBUG] Received avatar update for user ${userId}: ${newAvatarUrl}`);
+            if (this.allUsers[userId]) {
+                this.allUsers[userId].avatarUrl = newAvatarUrl;
+                
+                // Update all visible messages from this user
+                this._updateAvatarInExistingMessages(userId, newAvatarUrl);
+            }
+        });
     }
     
     // Send a message
@@ -705,7 +716,7 @@ class ChatManager {
             
             // Display messages
             sortedMessages.forEach(message => {
-                this._displayMessage(message, false);
+                this._displayMessage(message);
             });
             
             // Scroll to bottom
@@ -865,16 +876,21 @@ class ChatManager {
         // Create message element
         const messageEl = document.createElement('div');
         messageEl.className = 'message';
-        if (message.senderId === this.currentUser.id) {
+        
+        // Fix for message alignment: Use senderId to determine message ownership
+        const senderId = message.senderId || '';
+        const isCurrentUser = senderId === this.currentUser.id;
+        
+        // Add own-message class for user's own messages
+        if (isCurrentUser) {
             messageEl.classList.add('own-message');
         }
+        
         messageEl.setAttribute('data-message-id', message.id || '');
-        messageEl.setAttribute('data-sender-id', message.senderId || '');
+        messageEl.setAttribute('data-sender-id', senderId);
         
         // Get sender info
         const sender = message.sender || 'Unknown User';
-        const senderId = message.senderId || '';
-        const isCurrentUser = senderId === this.currentUser.id;
         
         // Get avatar URL
         let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
@@ -918,7 +934,7 @@ class ChatManager {
                         </div>
                         <div class="message-text">${messageContent}</div>
                     </div>
-                    <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
+                    <img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">
                 </div>
             </div>
         `;
@@ -1029,10 +1045,10 @@ class ChatManager {
                             messageElement.parentNode.removeChild(messageElement);
                         }
                     }, 500); // Match the animation duration
+                    
+                    // Show success toast
+                    this._showToast('Message deleted', 'success', 'bi bi-trash');
                 }
-                
-                // Show success toast
-                this._showToast('Message deleted', 'success', 'bi bi-trash');
             } else {
                 console.error('[CHAT_DEBUG] Failed to delete message:', response ? response.message : 'Unknown error');
                 
@@ -1536,4 +1552,90 @@ class ChatManager {
             }
         }
     }
+    
+    // New method to update avatar URLs in existing visible messages
+    _updateAvatarInExistingMessages(userId, newAvatarUrl) {
+        if (!userId || !newAvatarUrl) return;
+        
+        // Find all message avatars with this userId
+        const avatars = document.querySelectorAll(`.message-avatar[data-user-id="${userId}"]`);
+        
+        // Update each avatar's src
+        avatars.forEach(avatar => {
+            avatar.src = newAvatarUrl;
+        });
+        
+        console.log(`[CHAT_DEBUG] Updated ${avatars.length} message avatars for user ${userId}`);
+    }
+}
+
+// Find a friend by their ID
+ChatManager.prototype.findFriendById = function(friendId) {
+    if (this.friendships && friendId in this.friendships) {
+        return this.friendships[friendId];
+    }
+    return null; 
+}
+
+// Update profile picture when user selects a new image
+ChatManager.prototype._handleProfilePictureChange = function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            // Display a loading indicator
+            this._showToast('Uploading profile picture...', 'bi-cloud-upload');
+            
+            // Compress the image before uploading
+            const compressedImage = await this._compressImage(e.target.result);
+            
+            // Get current username from user object or input
+            const username = this.currentUser ? this.currentUser.username : document.getElementById('username-display').innerText;
+            
+            // Upload the image
+            this.socket.emit('profile:upload', {
+                image: compressedImage,
+                username: username
+            }, (response) => {
+                if (response.success) {
+                    console.log('[PROFILE] Profile picture updated successfully');
+                    
+                    // Update local avatar
+                    const avatarUrl = response.avatarUrl;
+                    const userId = this.currentUser.id;
+                    
+                    // Update the current user's avatar URL
+                    if (this.currentUser) {
+                        this.currentUser.avatarUrl = avatarUrl;
+                    }
+                    
+                    // Update any UI elements showing the current user's avatar
+                    const userImage = document.getElementById('user-image');
+                    if (userImage) {
+                        userImage.src = avatarUrl;
+                    }
+                    
+                    // Update all messages from this user
+                    this._updateAvatarInExistingMessages(userId, avatarUrl);
+                    
+                    // Emit avatar:update to notify other clients
+                    this.socket.emit('avatar:update', {
+                        userId: userId,
+                        newAvatarUrl: avatarUrl
+                    });
+                    
+                    this._showToast('Profile picture updated successfully!', 'bi-check-circle-fill');
+                } else {
+                    console.error('[PROFILE] Failed to update profile picture:', response.error);
+                    this._showToast('Failed to update profile picture. Please try again.', 'bi-exclamation-triangle-fill');
+                }
+            });
+        } catch (error) {
+            console.error('[PROFILE] Error processing profile picture:', error);
+            this._showToast('Error processing image. Please try again.', 'bi-exclamation-triangle-fill');
+        }
+    };
+    reader.readAsDataURL(file);
 }

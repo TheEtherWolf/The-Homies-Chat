@@ -206,16 +206,20 @@
 .toast-notification.show {
   opacity: 1;
   transform: translateY(0);
-  animation: toast-bounce 0.5s ease;
 }
 
-/* Message appear animation */
+.toast-notification i {
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+/* Message animations */
 @keyframes messageAppear {
-  from {
+  0% {
     opacity: 0;
     transform: translateY(10px);
   }
-  to {
+  100% {
     opacity: 1;
     transform: translateY(0);
   }
@@ -223,6 +227,6 @@
 
 /* Deleted message styling */
 .deleted-message {
-  font-style: italic;
   color: var(--text-muted);
+  font-style: italic;
 }

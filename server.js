@@ -2418,23 +2418,23 @@ io.on("connection", (socket) => {
     });
     
     // Handle avatar updates
-    socket.on('avatar-updated', (data) => {
-        console.log(`User ${data.userId} updated their avatar to ${data.avatarUrl}`);
+    socket.on('avatar:update', (data) => {
+        const { userId, newAvatarUrl } = data;
         
-        // Update the user's avatar URL in memory
-        for (const socketId in users) {
-            if (users[socketId] && users[socketId].id === data.userId) {
-                users[socketId].avatarUrl = data.avatarUrl;
-            }
+        if (!userId || !newAvatarUrl) {
+            console.error('[AVATAR] Invalid avatar update data:', data);
+            return;
         }
         
-        // Broadcast the avatar update to all other clients
-        socket.broadcast.emit('user-avatar-updated', {
-            userId: data.userId,
-            avatarUrl: data.avatarUrl
+        console.log(`[AVATAR] Broadcasting avatar update for user ${userId}`);
+        
+        // Broadcast to all other clients
+        socket.broadcast.emit('avatar:updated', {
+            userId,
+            newAvatarUrl
         });
     });
-    
+
     // Handle profile picture upload
     socket.on('upload-profile-picture', async (data, callback) => {
         try {
