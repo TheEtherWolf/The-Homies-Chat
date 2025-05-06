@@ -1,0 +1,83 @@
+/* Message alignment fix for The Homies App
+ * This CSS fixes the message alignment issue:
+ * - Your messages will be on the right side facing inward
+ * - Other people's messages will be on the left side facing inward
+ */
+
+/* Message row layout */
+.message-row {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  margin-bottom: 8px;
+}
+
+/* Own message alignment (your messages) */
+.own-message .message-row {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+/* Message container positioning */
+.message-container {
+  display: flex;
+  align-items: flex-start;
+  max-width: 80%;
+}
+
+/* Own message container */
+.own-message .message-container {
+  flex-direction: row-reverse;
+}
+
+/* Message content alignment */
+.message-content {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Own message content alignment */
+.own-message .message-content {
+  align-items: flex-end;
+}
+
+/* Message text alignment */
+.message-text {
+  border-radius: var(--border-radius-md);
+  background-color: var(--message-bg);
+  padding: 8px 12px;
+  margin-bottom: 2px;
+}
+
+/* Own message text styling */
+.own-message .message-text {
+  background-color: var(--own-message-bg);
+}
+
+/* Message header alignment */
+.own-message .message-header {
+  flex-direction: row-reverse;
+}
+
+/* Message timestamp positioning */
+.own-message .message-timestamp {
+  margin-right: 6px;
+  margin-left: 0;
+}
+
+/* Message author positioning */
+.own-message .message-author {
+  margin-left: 6px;
+  margin-right: 0;
+}
+
+/* Avatar positioning */
+.message-avatar {
+  margin: 0 10px;
+}
+
+/* Message actions positioning */
+.message-actions {
+  display: flex;
+  align-items: center;
+}
