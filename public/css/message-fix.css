@@ -1,7 +1,7 @@
 /* Message alignment fix for The Homies App
  * This CSS implements the refined chat UI layout with specific alignment rules:
- * - Your messages: Right-aligned with left-aligned text inside bubbles, avatar on right
- * - Others' messages: Left-aligned with left-aligned text inside bubbles, avatar on right
+ * - Your messages: Right-aligned with avatar on right edge
+ * - Others' messages: Left-aligned with avatar on left edge
  */
 
 /* Message row layout - using flexbox for responsive alignment */
@@ -25,12 +25,12 @@
   display: flex;
   align-items: flex-start;
   max-width: 70%;
-  flex-direction: row-reverse; /* Avatar on right for all messages */
+  flex-direction: row; /* Avatar on left for other people's messages */
 }
 
 /* Own message container */
 .own-message .message-container {
-  flex-direction: row-reverse; /* Keep avatar on right for own messages */
+  flex-direction: row-reverse; /* Avatar on right for own messages */
 }
 
 /* Message content alignment */
@@ -40,7 +40,7 @@
   max-width: 100%;
 }
 
-/* Message text alignment - left-aligned for own messages */
+/* Message text alignment - left-aligned for all messages */
 .message-text {
   border-radius: var(--border-radius-md);
   background-color: var(--message-bg);
@@ -111,6 +111,10 @@
 }
 
 /* Position the 3-dot menu icon */
+.message:not(.own-message) .message-actions {
+  margin-left: 8px;
+}
+
 .own-message .message-actions {
   margin-right: 8px;
 }
@@ -229,4 +233,29 @@
 .deleted-message {
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* Loading indicator for lazy loading */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  margin: 10px auto;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.loading-indicator .spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  border-top-color: var(--accent-color);
+  margin-right: 8px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

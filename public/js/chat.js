@@ -753,7 +753,7 @@ class ChatManager {
         
         // Check if user has scrolled near the top
         const scrollTop = this.messagesContainer.scrollTop;
-        const scrollThreshold = 100; // px from top
+        const scrollThreshold = 50; // px from top - lower threshold for more responsive loading
         
         if (scrollTop < scrollThreshold) {
             console.log(`[CHAT_DEBUG] Scroll threshold reached (${scrollTop}px), loading more messages...`);
@@ -763,7 +763,7 @@ class ChatManager {
     
     // Load more messages (lazy loading)
     _loadMoreMessages() {
-        if (this.isLoadingMoreMessages || !this.hasMoreMessagesToLoad || !this.oldestMessageTimestamp) {
+        if (this.isLoadingMoreMessages || !this.hasMoreMessagesToLoad) {
             console.log('[CHAT_DEBUG] Cannot load more messages:', 
                 this.isLoadingMoreMessages ? 'Already loading' : 
                 !this.hasMoreMessagesToLoad ? 'No more messages' : 
@@ -771,26 +771,47 @@ class ChatManager {
             return;
         }
         
+        // Get the channel name without hashtag for data operations
+        const dataChannel = this.currentChannel.id.startsWith('#') ? 
+            this.currentChannel.id.substring(1) : this.currentChannel.id;
+            
+        // If we don't have an oldest timestamp yet, get it from the first message
+        if (!this.oldestMessageTimestamp && this.channelMessages[dataChannel] && this.channelMessages[dataChannel].length > 0) {
+            const sortedMessages = [...this.channelMessages[dataChannel]].sort((a, b) => {
+                return new Date(a.timestamp) - new Date(b.timestamp);
+            });
+            this.oldestMessageTimestamp = sortedMessages[0].timestamp;
+        }
+        
+        // If we still don't have an oldest timestamp, we can't load more
+        if (!this.oldestMessageTimestamp) {
+            console.log('[CHAT_DEBUG] No oldest timestamp available, cannot load more messages');
+            return;
+        }
+        
         console.log('[CHAT_DEBUG] Loading more messages before', this.oldestMessageTimestamp);
         this.isLoadingMoreMessages = true;
         
-        // Show loading indicator
+        // Show loading indicator at the top of the messages container
         if (this.loadingIndicator) {
             this.loadingIndicator.classList.remove('d-none');
+            // Move loading indicator to the top of the container
+            if (this.messagesContainer.firstChild) {
+                this.messagesContainer.insertBefore(this.loadingIndicator, this.messagesContainer.firstChild);
+            } else {
+                this.messagesContainer.appendChild(this.loadingIndicator);
+            }
         }
         
         // Remember scroll position and height
         const scrollHeight = this.messagesContainer.scrollHeight;
         const scrollPosition = this.messagesContainer.scrollTop;
         
-        // Get the channel name without hashtag for data operations
-        const dataChannel = this.currentChannel.id.startsWith('#') ? 
-            this.currentChannel.id.substring(1) : this.currentChannel.id;
-        
         // Request more messages from server
         this.socket.emit('get-more-messages', {
             channel: dataChannel,
-            before: this.oldestMessageTimestamp
+            before: this.oldestMessageTimestamp,
+            limit: 20 // Request 20 messages at a time
         }, (response) => {
             // Hide loading indicator
             if (this.loadingIndicator) {
@@ -834,6 +855,12 @@ class ChatManager {
                     this.messagesContainer.scrollTop = scrollPosition + heightDifference;
                     console.log('[CHAT_DEBUG] Adjusted scroll position after loading more messages');
                 }, 50);
+                
+                // If we got fewer messages than requested, there are no more to load
+                if (response.messages.length < 20) {
+                    console.log('[CHAT_DEBUG] Received fewer messages than requested, no more to load');
+                    this.hasMoreMessagesToLoad = false;
+                }
             } else {
                 console.log('[CHAT_DEBUG] No more messages to load or error in response');
                 this.hasMoreMessagesToLoad = false;
@@ -927,6 +954,7 @@ class ChatManager {
                     </div>
                 </div>
                 <div class="message-container">
+                    ${!isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
                     <div class="message-content">
                         <div class="message-header">
                             <span class="message-author">${sender}</span>
@@ -934,7 +962,7 @@ class ChatManager {
                         </div>
                         <div class="message-text">${messageContent}</div>
                     </div>
-                    <img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">
+                    ${isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
                 </div>
             </div>
         `;
