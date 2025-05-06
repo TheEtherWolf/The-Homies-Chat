@@ -1,7 +1,7 @@
 /* Message alignment fix for The Homies App
  * This CSS implements the refined chat UI layout with specific alignment rules:
  * - Your messages: Right-aligned with left-aligned text inside bubbles, avatar on right
- * - Others' messages: Left-aligned with right-aligned text inside bubbles, avatar on left
+ * - Others' messages: Left-aligned with left-aligned text inside bubbles, avatar on right
  */
 
 /* Message row layout - using flexbox for responsive alignment */
@@ -25,11 +25,12 @@
   display: flex;
   align-items: flex-start;
   max-width: 70%;
+  flex-direction: row-reverse; /* Avatar on right for all messages */
 }
 
 /* Own message container */
 .own-message .message-container {
-  flex-direction: row-reverse;
+  flex-direction: row-reverse; /* Keep avatar on right for own messages */
 }
 
 /* Message content alignment */
@@ -62,6 +63,7 @@
   display: flex;
   align-items: center;
   margin-bottom: 4px;
+  justify-content: flex-start;
 }
 
 .own-message .message-header {
@@ -148,9 +150,15 @@
   transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
+/* Position dropdowns toward the middle */
 .own-message .message-action-dropdown {
   right: auto;
-  left: 30px;
+  left: 30px; /* Open toward the middle for your messages */
+}
+
+.message:not(.own-message) .message-action-dropdown {
+  left: auto;
+  right: 30px; /* Open toward the middle for other people's messages */
 }
 
 .message-action-dropdown.show {

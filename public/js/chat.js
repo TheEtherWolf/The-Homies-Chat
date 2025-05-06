@@ -899,46 +899,27 @@ class ChatManager {
         // Create message HTML with refined layout
         messageEl.innerHTML = `
             <div class="message-row">
-                ${!isCurrentUser ? `
-                    <div class="message-container">
-                        <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
-                        <div class="message-content">
-                            <div class="message-header">
-                                <span class="message-author">${sender}</span>
-                                <span class="message-timestamp">${timestamp}</span>
-                            </div>
-                            <div class="message-text">${messageContent}</div>
-                        </div>
-                    </div>
-                    <div class="message-actions">
-                        <button class="message-action-button">
-                            <i class="bi bi-three-dots-vertical"></i>
-                        </button>
-                        <div class="message-action-dropdown">
-                            <button class="message-action-item copy-message">Copy</button>
-                        </div>
-                    </div>
-                ` : `
-                    <div class="message-actions">
-                        <button class="message-action-button">
-                            <i class="bi bi-three-dots-vertical"></i>
-                        </button>
-                        <div class="message-action-dropdown">
+                <div class="message-actions">
+                    <button class="message-action-button">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <div class="message-action-dropdown">
+                        ${isCurrentUser ? `
                             <button class="message-action-item delete-message">Delete</button>
-                            <button class="message-action-item copy-message">Copy</button>
-                        </div>
+                        ` : ''}
+                        <button class="message-action-item copy-message">Copy</button>
                     </div>
-                    <div class="message-container">
-                        <div class="message-content">
-                            <div class="message-header">
-                                <span class="message-author">${sender}</span>
-                                <span class="message-timestamp">${timestamp}</span>
-                            </div>
-                            <div class="message-text">${messageContent}</div>
+                </div>
+                <div class="message-container">
+                    <div class="message-content">
+                        <div class="message-header">
+                            <span class="message-author">${sender}</span>
+                            <span class="message-timestamp">${timestamp}</span>
                         </div>
-                        <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
+                        <div class="message-text">${messageContent}</div>
                     </div>
-                `}
+                    <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
+                </div>
             </div>
         `;
         
