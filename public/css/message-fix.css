@@ -1,28 +1,30 @@
 /* Message alignment fix for The Homies App
- * This CSS fixes the message alignment issue:
- * - Your messages will be on the right side facing inward
- * - Other people's messages will be on the left side facing inward
+ * This CSS implements the refined chat UI layout with specific alignment rules:
+ * - Your messages: Right-aligned with left-aligned text inside bubbles, avatar on right
+ * - Others' messages: Left-aligned with right-aligned text inside bubbles, avatar on left
  */
 
-/* Message row layout */
+/* Message row layout - using flexbox for responsive alignment */
 .message-row {
   display: flex;
   width: 100%;
   justify-content: flex-start;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
+  align-items: flex-start;
+  position: relative;
 }
 
 /* Own message alignment (your messages) */
 .own-message .message-row {
   flex-direction: row-reverse;
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
 /* Message container positioning */
 .message-container {
   display: flex;
   align-items: flex-start;
-  max-width: 80%;
+  max-width: 70%;
 }
 
 /* Own message container */
@@ -34,50 +36,185 @@
 .message-content {
   display: flex;
   flex-direction: column;
+  max-width: 100%;
 }
 
-/* Own message content alignment */
-.own-message .message-content {
-  align-items: flex-end;
-}
-
-/* Message text alignment */
+/* Message text alignment - left-aligned for own messages */
 .message-text {
   border-radius: var(--border-radius-md);
   background-color: var(--message-bg);
   padding: 8px 12px;
   margin-bottom: 2px;
+  text-align: left;
+  position: relative;
+  word-break: break-word;
+  animation: messageAppear 0.25s ease-out forwards;
 }
 
-/* Own message text styling */
+/* Own message text styling - still left-aligned text */
 .own-message .message-text {
   background-color: var(--own-message-bg);
+  text-align: left;
 }
 
 /* Message header alignment */
+.message-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
 .own-message .message-header {
-  flex-direction: row-reverse;
+  justify-content: flex-end;
 }
 
 /* Message timestamp positioning */
+.message-timestamp {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
 .own-message .message-timestamp {
-  margin-right: 6px;
-  margin-left: 0;
+  margin-right: 0;
+  margin-left: 6px;
 }
 
 /* Message author positioning */
+.message-author {
+  font-weight: 600;
+  color: var(--text-light);
+  margin-right: 6px;
+}
+
 .own-message .message-author {
-  margin-left: 6px;
-  margin-right: 0;
+  margin-left: 0;
+  margin-right: 6px;
 }
 
 /* Avatar positioning */
 .message-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
   margin: 0 10px;
 }
 
 /* Message actions positioning */
 .message-actions {
   display: flex;
+  align-items: flex-start;
+  margin-top: 2px;
+}
+
+/* Position the 3-dot menu icon */
+.own-message .message-actions {
+  margin-right: 8px;
+}
+
+.message-action-button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.message-action-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-light);
+  opacity: 1;
+}
+
+/* Message action dropdown styling */
+.message-action-dropdown {
+  position: absolute;
+  background-color: var(--dark-secondary);
+  border-radius: var(--border-radius-sm);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  display: none;
+  z-index: 100;
+  transform-origin: top center;
+  transform: scale(0.95);
+  opacity: 0;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.own-message .message-action-dropdown {
+  right: auto;
+  left: 30px;
+}
+
+.message-action-dropdown.show {
+  display: block;
+  transform: scale(1);
+  opacity: 1;
+}
+
+.message-action-item {
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  padding: 8px 16px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-size: 14px;
+}
+
+.message-action-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Toast notification styling */
+.toast-notification {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background-color: var(--dark-secondary);
+  color: var(--text-light);
+  padding: 12px 16px;
+  border-radius: var(--border-radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  max-width: 300px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast-notification.show {
+  opacity: 1;
+  transform: translateY(0);
+  animation: toast-bounce 0.5s ease;
+}
+
+/* Message appear animation */
+@keyframes messageAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Deleted message styling */
+.deleted-message {
+  font-style: italic;
+  color: var(--text-muted);
 }

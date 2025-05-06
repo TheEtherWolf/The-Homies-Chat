@@ -60,6 +60,9 @@ class ChatManager {
             this.messagesContainer.appendChild(this.loadingIndicator);
         }
 
+        // Notification sound for new messages
+        this.messageSound = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/Click%20sound.mp3?v=1746541636627');
+        
         // Set up keep-alive mechanism to prevent Glitch from sleeping
         this.setupKeepAlive();
     }
@@ -702,7 +705,7 @@ class ChatManager {
             
             // Display messages
             sortedMessages.forEach(message => {
-                this._displayMessage(message);
+                this._displayMessage(message, false);
             });
             
             // Scroll to bottom
@@ -893,10 +896,29 @@ class ChatManager {
             ? '<em class="deleted-message">[This message has been deleted]</em>' 
             : this._formatMessageContent(message.content);
         
-        // Create message HTML with flex layout
+        // Create message HTML with refined layout
         messageEl.innerHTML = `
             <div class="message-row">
-                ${isCurrentUser ? `
+                ${!isCurrentUser ? `
+                    <div class="message-container">
+                        <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
+                        <div class="message-content">
+                            <div class="message-header">
+                                <span class="message-author">${sender}</span>
+                                <span class="message-timestamp">${timestamp}</span>
+                            </div>
+                            <div class="message-text">${messageContent}</div>
+                        </div>
+                    </div>
+                    <div class="message-actions">
+                        <button class="message-action-button">
+                            <i class="bi bi-three-dots-vertical"></i>
+                        </button>
+                        <div class="message-action-dropdown">
+                            <button class="message-action-item copy-message">Copy</button>
+                        </div>
+                    </div>
+                ` : `
                     <div class="message-actions">
                         <button class="message-action-button">
                             <i class="bi bi-three-dots-vertical"></i>
@@ -906,29 +928,17 @@ class ChatManager {
                             <button class="message-action-item copy-message">Copy</button>
                         </div>
                     </div>
-                ` : ''}
-                
-                <div class="message-container">
-                    <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
-                    <div class="message-content">
-                        <div class="message-header">
-                            <span class="message-author">${sender}</span>
-                            <span class="message-timestamp">${timestamp}</span>
+                    <div class="message-container">
+                        <div class="message-content">
+                            <div class="message-header">
+                                <span class="message-author">${sender}</span>
+                                <span class="message-timestamp">${timestamp}</span>
+                            </div>
+                            <div class="message-text">${messageContent}</div>
                         </div>
-                        <div class="message-text">${messageContent}</div>
+                        <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
                     </div>
-                </div>
-                
-                ${!isCurrentUser ? `
-                    <div class="message-actions">
-                        <button class="message-action-button">
-                            <i class="bi bi-three-dots-vertical"></i>
-                        </button>
-                        <div class="message-action-dropdown">
-                            <button class="message-action-item copy-message">Copy</button>
-                        </div>
-                    </div>
-                ` : ''}
+                `}
             </div>
         `;
         
@@ -973,6 +983,9 @@ class ChatManager {
                 e.stopPropagation();
                 this._copyMessageContent(message.content);
                 e.target.closest('.message-action-dropdown').classList.remove('show');
+                
+                // Show toast notification
+                this._showToast('Message copied to clipboard', 'success', 'bi bi-clipboard-check');
             });
         });
         
@@ -1000,6 +1013,11 @@ class ChatManager {
         // Add to messages container
         this.messagesContainer.appendChild(messageEl);
         
+        // Play sound if the message is from someone else and not during initial load
+        if (message.senderId !== this.currentUser.id && scrollToBottom) {
+            this._playNotificationSound();
+        }
+        
         // Scroll to bottom if needed
         if (scrollToBottom) {
             this._scrollToBottom();
@@ -1012,36 +1030,30 @@ class ChatManager {
         
         console.log('[CHAT_DEBUG] Deleting message:', messageId);
         
-        // Add deleting animation class
-        if (messageElement) {
-            messageElement.classList.add('deleting');
-        }
-        
         // Send delete request to server
         this.socket.emit('delete-message', {
             messageId: messageId,
-            userId: this.currentUser.id,
-            channelId: this.currentChannel.id
+            channel: this.currentChannel.id
         }, (response) => {
-            if (response.success) {
+            if (response && response.success) {
                 console.log('[CHAT_DEBUG] Message deleted successfully');
                 
-                // Show toast notification
-                this._showToast('Message deleted', 'success', 'bi bi-check-circle');
-                
-                // Remove message from DOM after animation completes
-                setTimeout(() => {
-                    if (messageElement && messageElement.parentNode) {
-                        messageElement.parentNode.removeChild(messageElement);
-                    }
-                }, 500); // Match the animation duration
-            } else {
-                console.error('[CHAT_DEBUG] Failed to delete message:', response.error);
-                
-                // Remove animation class if deletion failed
+                // Add deleting animation to the message element
                 if (messageElement) {
-                    messageElement.classList.remove('deleting');
+                    messageElement.classList.add('deleting');
+                    
+                    // Remove from DOM after animation completes
+                    setTimeout(() => {
+                        if (messageElement.parentNode) {
+                            messageElement.parentNode.removeChild(messageElement);
+                        }
+                    }, 500); // Match the animation duration
                 }
+                
+                // Show success toast
+                this._showToast('Message deleted', 'success', 'bi bi-trash');
+            } else {
+                console.error('[CHAT_DEBUG] Failed to delete message:', response ? response.message : 'Unknown error');
                 
                 // Show error toast
                 this._showToast('Failed to delete message', 'error', 'bi bi-exclamation-circle');
@@ -1053,24 +1065,32 @@ class ChatManager {
     _copyMessageContent(content) {
         if (!content) return;
         
-        // Remove HTML tags if present
-        const plainText = content.replace(/<[^>]*>/g, '');
-        
-        // Copy to clipboard
-        navigator.clipboard.writeText(plainText)
-            .then(() => {
-                console.log('[CHAT_DEBUG] Message copied to clipboard');
-                // Show a toast notification
-                this._showToast('Copied to clipboard', 'info', 'bi bi-clipboard');
-            })
-            .catch(err => {
-                console.error('[CHAT_DEBUG] Failed to copy message:', err);
-                this._showToast('Failed to copy message', 'error', 'bi bi-exclamation-circle');
+        try {
+            navigator.clipboard.writeText(content).then(() => {
+                // Show toast notification
+                this._showToast('Message copied to clipboard', 'success', 'bi bi-clipboard-check');
+            }).catch(err => {
+                console.error('[CHAT_DEBUG] Error copying to clipboard:', err);
+                // Fallback method
+                const textarea = document.createElement('textarea');
+                textarea.value = content;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = 0;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                
+                // Show toast notification for fallback method
+                this._showToast('Message copied to clipboard', 'success', 'bi bi-clipboard-check');
             });
+        } catch (err) {
+            console.error('[CHAT_DEBUG] Exception copying to clipboard:', err);
+        }
     }
     
-    // Show a toast notification
-    _showToast(message, type = 'info', icon = null) {
+    // Show toast notification
+    _showToast(message, type = 'info', icon = 'bi bi-info-circle') {
         // Remove any existing toast
         const existingToast = document.querySelector('.toast-notification');
         if (existingToast) {
@@ -1080,32 +1100,25 @@ class ChatManager {
         // Create toast element
         const toast = document.createElement('div');
         toast.className = `toast-notification ${type}`;
+        toast.innerHTML = `
+            <i class="${icon} toast-notification-icon"></i>
+            <div class="toast-notification-content">${message}</div>
+        `;
         
-        // Create toast content
-        let toastHTML = '';
-        if (icon) {
-            toastHTML += `<div class="toast-notification-icon"><i class="${icon}"></i></div>`;
-        }
-        toastHTML += `<div class="toast-notification-content">${message}</div>`;
-        
-        toast.innerHTML = toastHTML;
-        
-        // Add to document
+        // Add to body
         document.body.appendChild(toast);
         
-        // Trigger animation
+        // Show with animation
         setTimeout(() => {
             toast.classList.add('show');
         }, 10);
         
-        // Remove after delay
+        // Auto hide after 3 seconds
         setTimeout(() => {
             toast.classList.remove('show');
             setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.parentNode.removeChild(toast);
-                }
-            }, 300); // Wait for fade out animation
+                toast.remove();
+            }, 300); // Wait for fade out animation to complete
         }, 3000);
     }
     
@@ -1180,9 +1193,7 @@ class ChatManager {
         
         if (notificationSoundsEnabled) {
             // Create and play notification sound
-            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/notification.mp3?v=1746110048911');
-            audio.volume = 0.5;
-            audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing notification sound:', err));
+            this.messageSound.play().catch(err => console.error('[CHAT_DEBUG] Error playing notification sound:', err));
         }
     }
     
