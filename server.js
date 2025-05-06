@@ -33,7 +33,8 @@ const {
     sendFriendRequest,
     acceptFriendRequest,
     rejectOrRemoveFriend,
-    getFriendships
+    getFriendships,
+    uploadFileToSupabase
 } = require("./supabase-client");
 
 // Environment settings - DO NOT force development mode
@@ -375,20 +376,20 @@ app.post('/api/upload-profile-picture', async (req, res) => {
         const fileName = `profile-pictures/${userId}_${Date.now()}.png`;
         console.log(`Uploading profile picture to Supabase storage as ${fileName}`);
         
-        const uploadResult = await uploadFileToSupabase(fileName, imageBuffer, 'image/png');
+        const uploadResult = await uploadFileToSupabase(imageBuffer, fileName, 'profile-pictures');
         
-        if (!uploadResult || !uploadResult.publicUrl) {
+        if (!uploadResult || !uploadResult.success === false || !uploadResult.url) {
             console.error('Failed to upload profile picture to Supabase storage');
             return res.status(500).json({ success: false, message: 'Failed to upload profile picture' });
         }
         
-        console.log(`Profile picture uploaded successfully to ${uploadResult.publicUrl}`);
+        console.log(`Profile picture uploaded successfully to ${uploadResult.url}`);
         
         // Update the user's avatar URL in the database
         const { error: updateError } = await getSupabaseClient(true)
             .from('users')
             .update({ 
-                avatar_url: uploadResult.publicUrl,
+                avatar_url: uploadResult.url,
                 updated_at: new Date().toISOString()
             })
             .eq('id', userId);
@@ -403,8 +404,8 @@ app.post('/api/upload-profile-picture', async (req, res) => {
         // Return success with the new avatar URL
         return res.json({ 
             success: true, 
-            avatarUrl: uploadResult.publicUrl,
-            avatar_url: uploadResult.publicUrl // Include both formats for compatibility
+            avatarUrl: uploadResult.url,
+            avatar_url: uploadResult.url // Include both formats for compatibility
         });
     } catch (error) {
         console.error('Error processing profile picture upload:', error);
@@ -2069,7 +2070,7 @@ io.on("connection", (socket) => {
             return callback({ success: false, message: 'Not authenticated' });
         }
         // Validate input data
-        if (!data || !data.recipientId || !isValidUUID(data.recipientId)) {
+         if (!data || !data.recipientId || !isValidUUID(data.recipientId)) {
              return callback({ success: false, message: 'Invalid recipient ID provided' });
         }
 
