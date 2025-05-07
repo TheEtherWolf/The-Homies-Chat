@@ -950,8 +950,8 @@ class ChatManager {
             : this._formatMessageContent(message.content);
         
         // Create message HTML with refined layout
-        // For current user: avatar, username, timestamp on left side
-        // For other users: avatar, username, timestamp on right side
+        // For current user: avatar, username, timestamp on right side
+        // For other users: avatar, username, timestamp on left side
         messageEl.innerHTML = `
             <div class="message-row">
                 <div class="message-actions">
@@ -966,7 +966,7 @@ class ChatManager {
                     </div>
                 </div>
                 <div class="message-container">
-                    ${isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
+                    ${!isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
                     <div class="message-meta">
                         <div class="message-header">
                             <span class="message-author">${sender}</span>
@@ -976,7 +976,7 @@ class ChatManager {
                     <div class="message-content">
                         <div class="message-text">${messageContent}</div>
                     </div>
-                    ${!isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
+                    ${isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
                 </div>
             </div>
         `;

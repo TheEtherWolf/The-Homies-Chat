@@ -1,14 +1,14 @@
 /* Message alignment fix for The Homies App
  * This CSS implements the refined chat UI layout with specific alignment rules:
- * - Your messages: Left-aligned with avatar, username, and timestamp on left edge
- * - Others' messages: Right-aligned with avatar, username, and timestamp on right edge
+ * - Your messages: Right-aligned with avatar, username, and timestamp on right edge
+ * - Others' messages: Left-aligned with avatar, username, and timestamp on left edge
  */
 
 /* Message row layout - using flexbox for responsive alignment */
 .message-row {
   display: flex;
   width: 100%;
-  justify-content: flex-end; /* Others' messages aligned to right */
+  justify-content: flex-start; /* Others' messages aligned to left */
   margin-bottom: 16px;
   align-items: flex-start;
   position: relative;
@@ -16,8 +16,8 @@
 
 /* Own message alignment (your messages) */
 .own-message .message-row {
-  flex-direction: row;
-  justify-content: flex-start; /* Your messages aligned to left */
+  flex-direction: row-reverse;
+  justify-content: flex-start; /* Your messages aligned to right */
 }
 
 /* Message container positioning */
@@ -25,12 +25,12 @@
   display: flex;
   align-items: flex-start;
   max-width: 70%;
-  flex-direction: row-reverse; /* Avatar on right for other people's messages */
+  flex-direction: row; /* Avatar on left for other people's messages */
 }
 
 /* Own message container */
 .own-message .message-container {
-  flex-direction: row; /* Avatar on left for own messages */
+  flex-direction: row-reverse; /* Avatar on right for own messages */
 }
 
 /* Message meta information (username and timestamp) */
@@ -80,12 +80,12 @@
   display: flex;
   align-items: center;
   margin-bottom: 4px;
-  justify-content: flex-end; /* Right-aligned for other users */
+  justify-content: flex-start; /* Left-aligned for other users */
   white-space: nowrap; /* Prevent wrapping */
 }
 
 .own-message .message-header {
-  justify-content: flex-start; /* Left-aligned for current user */
+  justify-content: flex-end; /* Right-aligned for current user */
 }
 
 /* Message timestamp positioning */
@@ -133,11 +133,11 @@
 
 /* Position the 3-dot menu icon */
 .message:not(.own-message) .message-actions {
-  margin-right: 8px;
+  margin-left: 8px;
 }
 
 .own-message .message-actions {
-  margin-left: 8px;
+  margin-right: 8px;
 }
 
 .message-action-button {
