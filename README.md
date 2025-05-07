@@ -4,27 +4,34 @@ A secure real-time chat application with video calling features, built specifica
 
 ## Features
 
-### Phase 1: Core Account & Security
+### Core Features
 - Secure login using email/username/password
-- End-to-end encryption for messages and calls
-- File storage and transfer via MEGA
-- User data and auth management with Supabase
+- Real-time messaging with persistent history
+- Video and audio calling with optimized connection handling
+- File sharing and storage
+- Modern, responsive UI with Discord-inspired dark theme
 
-### Phase 2: Basic Communication
-- One-on-one direct messaging
-- Group chat support
-- Typing indicators
-- Message reactions and emoji support
-- Online/offline/idle status
-- Custom status updates
+### Recent Updates (May 2025)
+- **Redesigned Sign-in Screen**: Modern card design with animations and improved UX
+- **Message Auto-Deletion**: Messages are automatically removed from the database 1 day after deletion
+- **Keep-Alive System**: Prevents Glitch from putting the application to sleep
+- **Emoji Picker**: Fully functional with categories and search functionality
+- **Improved Audio/Video**: Fixed connection issues and audio quality in calls
+- **Message Storage Reliability**: Dual-storage approach with local fallback when Supabase is unavailable
+- **Friends System**: Updated friends table schema with proper relationship management
+
+### Coming Soon
+- NextAuth integration
+- Cross-platform mobile application
+- Premium features including higher bitrate audio, voice-to-text, and more
 
 ## Tech Stack
-- Frontend: HTML, CSS, JavaScript
-- Backend: Node.js, Express
-- Real-time: Socket.io
-- Authentication: Supabase
-- Storage: MEGA
-- Deployment: Glitch
+- **Frontend**: HTML, CSS, JavaScript
+- **Backend**: Node.js, Express
+- **Real-time Communication**: Socket.io
+- **Database & Authentication**: Supabase
+- **Storage**: MEGA (for secure file storage and backup)
+- **Deployment**: Glitch
 
 ## Setup Instructions
 
@@ -37,12 +44,21 @@ A secure real-time chat application with video calling features, built specifica
 
 ### Deployment on Glitch
 1. Create a new project on Glitch
-2. Import from GitHub using: `https://github.com/TheEtherWolf/New-Homies.git`
+2. Import from GitHub using: `https://github.com/TheEtherWolf/The-Homies-Chat.git`
 3. Set up environment variables in the Glitch project settings
 4. The app will automatically start running
 
 ## Environment Variables
 Required environment variables are listed in `.env.example`. Make sure to set these up before running the application.
+
+## Current Limitations
+The following buttons are currently non-functional in the latest version:
+- DMs
+- New Group
+- Announcements
+- Memes
+
+These features are planned for future development.
 
 ## License
 MIT
