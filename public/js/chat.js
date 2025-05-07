@@ -61,7 +61,7 @@ class ChatManager {
         }
 
         // Notification sound for new messages
-        this.messageSound = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/Click%20sound.mp3?v=1746541636627');
+        this.messageSound = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/Send%20message.mp3?v=1746554175125');
         
         // Set up keep-alive mechanism to prevent Glitch from sleeping
         this.setupKeepAlive();
@@ -473,9 +473,12 @@ class ChatManager {
             this.isSocketConnected = true;
             
             // Perform initial data fetch immediately on connection
-            if (this.currentUser) {
-                this.performInitialDataFetch();
-            }
+            // Wait a brief moment to ensure authentication is complete
+            setTimeout(() => {
+                if (this.currentUser) {
+                    this.performInitialDataFetch();
+                }
+            }, 500); // Short delay to ensure auth is complete
         });
         
         this.socket.on('disconnect', () => {
@@ -510,7 +513,14 @@ class ChatManager {
             }
             
             // If this is the current channel, display messages
-            if (data.channel === this.currentChannel.id) {
+            // Check for both exact match and with/without hashtag prefix
+            const currentChannelId = this.currentChannel.id;
+            const dataChannelId = data.channel;
+            
+            if (dataChannelId === currentChannelId || 
+                (currentChannelId.startsWith('#') && dataChannelId === currentChannelId.substring(1)) ||
+                (!currentChannelId.startsWith('#') && `#${dataChannelId}` === currentChannelId)) {
+                console.log(`[CHAT_DEBUG] Displaying messages for channel ${data.channel}`);
                 this._displayChannelMessages(data.channel);
             }
         });
@@ -530,11 +540,6 @@ class ChatManager {
             if (channel === this.currentChannel.id || 
                 (this.currentChannel.id.startsWith('#') && channel === this.currentChannel.id.substring(1))) {
                 this._displayMessage(message);
-            }
-            
-            // Play notification sound if message is not from current user
-            if (message.senderId !== this.currentUser.id) {
-                this._playNotificationSound();
             }
         });
         
@@ -655,6 +660,9 @@ class ChatManager {
         this.messageInput.value = '';
         this.messageInput.focus();
         
+        // Play sound effect when sending a message
+        this._playNotificationSound();
+        
         // Send message via socket with callback
         this.socket.emit('send-message', messageData, (response) => {
             if (response && !response.success) {
@@ -714,12 +722,14 @@ class ChatManager {
                 return timestampA - timestampB;
             });
             
+            console.log(`[CHAT_DEBUG] Displaying ${sortedMessages.length} messages for channel ${dataChannel}`);
+            
             // Display messages
             sortedMessages.forEach(message => {
-                this._displayMessage(message);
+                this._displayMessage(message, false); // Don't scroll for each message
             });
             
-            // Scroll to bottom
+            // Scroll to bottom after all messages are displayed
             this._scrollToBottom();
             
             // Reset loading state
@@ -940,6 +950,8 @@ class ChatManager {
             : this._formatMessageContent(message.content);
         
         // Create message HTML with refined layout
+        // For current user: avatar, username, timestamp on left side
+        // For other users: avatar, username, timestamp on right side
         messageEl.innerHTML = `
             <div class="message-row">
                 <div class="message-actions">
@@ -954,15 +966,17 @@ class ChatManager {
                     </div>
                 </div>
                 <div class="message-container">
-                    ${!isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
-                    <div class="message-content">
+                    ${isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
+                    <div class="message-meta">
                         <div class="message-header">
                             <span class="message-author">${sender}</span>
                             <span class="message-timestamp">${timestamp}</span>
                         </div>
+                    </div>
+                    <div class="message-content">
                         <div class="message-text">${messageContent}</div>
                     </div>
-                    ${isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
+                    ${!isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
                 </div>
             </div>
         `;
@@ -1037,11 +1051,6 @@ class ChatManager {
         
         // Add to messages container
         this.messagesContainer.appendChild(messageEl);
-        
-        // Play sound if the message is from someone else and not during initial load
-        if (message.senderId !== this.currentUser.id && scrollToBottom) {
-            this._playNotificationSound();
-        }
         
         // Scroll to bottom if needed
         if (scrollToBottom) {
@@ -1268,6 +1277,8 @@ class ChatManager {
         
         if (!this.currentUser || !this.currentUser.id) {
             console.error('[CHAT_DEBUG] Cannot fetch data: User not authenticated');
+            // Retry after a short delay if user isn't authenticated yet
+            setTimeout(() => this.performInitialDataFetch(), 1000);
             return;
         }
         
@@ -1275,7 +1286,12 @@ class ChatManager {
         this.socket.emit('get-active-users');
         
         // Fetch message history for current channel
-        this.socket.emit('get-channel-messages', { channel: this.currentChannel.id });
+        // Make sure channel name is properly formatted for the server (without hashtag)
+        const dataChannel = this.currentChannel.id.startsWith('#') ? 
+            this.currentChannel.id.substring(1) : this.currentChannel.id;
+            
+        console.log(`[CHAT_DEBUG] Requesting message history for channel: ${dataChannel}`);
+        this.socket.emit('get-channel-messages', { channel: dataChannel });
         
         // Fetch friend list
         this.socket.emit('get-friends-list');
