@@ -532,6 +532,16 @@ body {
   margin: 0 10px;
 }
 
+/* Own message content alignment */
+.own-content {
+  align-items: flex-end;
+}
+
+/* Other message content alignment */
+.message-content-wrapper:not(.own-content) {
+  align-items: flex-start;
+}
+
 /* Message container styles */
 .message-container {
   display: flex;
@@ -540,14 +550,14 @@ body {
   margin-bottom: 16px;
 }
 
-/* Own container (your messages) - on the left */
+/* Own container (your messages) - on the right */
 .own-container {
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
-/* Other container (other people's messages) - on the right */
+/* Other container (other people's messages) - on the left */
 .other-container {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 /* Avatar and timestamp wrapper */
@@ -567,12 +577,12 @@ body {
 
 /* Own container avatar-timestamp wrapper */
 .own-container .avatar-timestamp-wrapper {
-  flex-direction: row;
+  flex-direction: row-reverse;
 }
 
 /* Other container avatar-timestamp wrapper */
 .other-container .avatar-timestamp-wrapper {
-  flex-direction: row-reverse;
+  flex-direction: row;
 }
 
 /* Message text styles with inward facing bubbles */
@@ -592,38 +602,16 @@ body {
   position: relative;
 }
 
-/* Your messages - on left, facing right (inward) */
+/* Your messages - on left */
 .own-text {
   background-color: var(--own-message-bg);
-  border-top-left-radius: 2px;
-  border-bottom-left-radius: 2px;
+  max-width: 70%; /* Make bubbles more compact */
 }
 
-.own-text:before {
-  content: '';
-  position: absolute;
-  left: -8px;
-  top: 10px;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-right: 8px solid var(--own-message-bg);
-}
-
-/* Other people's messages - on right, facing left (inward) */
+/* Other people's messages - on right */
 .other-text {
   background-color: var(--message-bg);
-  border-top-right-radius: 2px;
-  border-bottom-right-radius: 2px;
-}
-
-.other-text:before {
-  content: '';
-  position: absolute;
-  right: -8px;
-  top: 10px;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-left: 8px solid var(--message-bg);
+  max-width: 70%; /* Make bubbles more compact */
 }
 
 .message-header {

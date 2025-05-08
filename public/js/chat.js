@@ -980,7 +980,7 @@ class ChatManager {
                     </div>
                 </div>
                 <div class="message-container ${isCurrentUser ? 'own-container' : 'other-container'}">
-                    ${isCurrentUser ? 
+                    ${!isCurrentUser ? 
                       `<div class="avatar-timestamp-wrapper">
                         <img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">
                         <div class="user-info">
@@ -993,7 +993,7 @@ class ChatManager {
                             <div class="message-text ${isCurrentUser ? 'own-text' : 'other-text'}">${messageContent}</div>
                         </div>
                     </div>
-                    ${!isCurrentUser ? 
+                    ${isCurrentUser ? 
                       `<div class="avatar-timestamp-wrapper">
                         <div class="user-info">
                           <span class="message-author">${sender}</span>
