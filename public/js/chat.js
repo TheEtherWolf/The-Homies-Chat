@@ -967,14 +967,16 @@ class ChatManager {
                 </div>
                 <div class="message-container">
                     ${!isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
-                    <div class="message-meta">
-                        <div class="message-header">
-                            <span class="message-author">${sender}</span>
-                            <span class="message-timestamp">${timestamp}</span>
+                    <div class="message-content-wrapper ${isCurrentUser ? 'own-content' : ''}">
+                        <div class="message-meta">
+                            <div class="message-header">
+                                <span class="message-author">${sender}</span>
+                                <span class="message-timestamp">${timestamp}</span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="message-content">
-                        <div class="message-text">${messageContent}</div>
+                        <div class="message-content">
+                            <div class="message-text">${messageContent}</div>
+                        </div>
                     </div>
                     ${isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
                 </div>

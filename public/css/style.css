@@ -386,11 +386,11 @@ body {
 }
 
 .own-message .message-row {
-  flex-direction: row;
+  flex-direction: row-reverse;
 }
 
 .message:not(.own-message) .message-row {
-  flex-direction: row-reverse;
+  flex-direction: row;
 }
 
 .message-container {
@@ -523,6 +523,24 @@ body {
 
 .message.own-message .message-text {
   background-color: var(--own-message-bg);
+}
+
+/* Message content wrapper */
+.message-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* Own message content wrapper */
+.message-content-wrapper.own-content {
+  align-items: flex-end;
+  text-align: right;
+}
+
+/* Adjust message container for own messages */
+.message.own-message .message-container {
+  flex-direction: row-reverse;
 }
 
 .message-header {
