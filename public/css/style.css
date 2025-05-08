@@ -534,12 +534,12 @@ body {
 
 /* Own message content alignment */
 .own-content {
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
 /* Other message content alignment */
 .message-content-wrapper:not(.own-content) {
-  align-items: flex-start;
+  align-items: flex-end;
 }
 
 /* Message container styles */
@@ -550,14 +550,14 @@ body {
   margin-bottom: 16px;
 }
 
-/* Own container (your messages) - on the right */
+/* Own container (your messages) - on the left */
 .own-container {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
-/* Other container (other people's messages) - on the left */
+/* Other container (other people's messages) - on the right */
 .other-container {
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
 /* Avatar and timestamp wrapper */
@@ -577,12 +577,12 @@ body {
 
 /* Own container avatar-timestamp wrapper */
 .own-container .avatar-timestamp-wrapper {
-  flex-direction: row-reverse;
+  flex-direction: row;
 }
 
 /* Other container avatar-timestamp wrapper */
 .other-container .avatar-timestamp-wrapper {
-  flex-direction: row;
+  flex-direction: row-reverse;
 }
 
 /* Message text styles with inward facing bubbles */
