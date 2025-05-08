@@ -385,12 +385,11 @@ body {
   width: 100%;
 }
 
-.own-message .message-row {
-  flex-direction: row;
-}
-
-.message:not(.own-message) .message-row {
-  flex-direction: row-reverse;
+/* Message row direction */
+.message-row {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
 }
 
 .message-container {
@@ -530,21 +529,84 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1;
+  margin: 0 10px;
 }
 
-/* Own message content wrapper */
-.message-content-wrapper.own-content {
-  align-items: flex-end;
-  text-align: right;
+/* Message container styles */
+.message-container {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  margin-bottom: 8px;
 }
 
-/* Adjust message container for own messages */
-.message.own-message .message-container {
-  flex-direction: row;
+/* Own container (your messages) - on the left */
+.own-container {
+  justify-content: flex-start;
 }
 
-.message:not(.own-message) .message-container {
-  flex-direction: row-reverse;
+/* Other container (other people's messages) - on the right */
+.other-container {
+  justify-content: flex-end;
+}
+
+/* Avatar and timestamp group */
+.avatar-timestamp-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 5px;
+}
+
+/* Message text styles with inward facing bubbles */
+.message-text {
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text-light);
+  padding: 8px 12px;
+  border-radius: var(--border-radius-md);
+  background-color: var(--message-bg);
+  max-width: 100%;
+  min-width: 80px;
+  word-break: normal;
+  overflow-wrap: break-word;
+  margin-bottom: 2px;
+  white-space: normal;
+  position: relative;
+}
+
+/* Your messages - on left, facing right (inward) */
+.own-text {
+  background-color: var(--own-message-bg);
+  border-top-left-radius: 2px;
+  border-bottom-left-radius: 2px;
+}
+
+.own-text:before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 10px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 8px solid var(--own-message-bg);
+}
+
+/* Other people's messages - on right, facing left (inward) */
+.other-text {
+  background-color: var(--message-bg);
+  border-top-right-radius: 2px;
+  border-bottom-right-radius: 2px;
+}
+
+.other-text:before {
+  content: '';
+  position: absolute;
+  right: -8px;
+  top: 10px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 8px solid var(--message-bg);
 }
 
 .message-header {
@@ -563,6 +625,8 @@ body {
 .message-timestamp {
   font-size: 11px;
   color: var(--text-muted);
+  margin-top: 4px;
+  text-align: center;
 }
 
 /* Message avatar styling */
@@ -571,11 +635,7 @@ body {
   height: 36px;
   border-radius: 50%;
   object-fit: cover;
-  margin: 0 10px;
-}
-
-.own-message .message-avatar {
-  order: 2;
+  margin: 0;
 }
 
 /* Grouped message styling */

@@ -950,8 +950,8 @@ class ChatManager {
             : this._formatMessageContent(message.content);
         
         // Create message HTML with refined layout
-        // For current user: avatar, username, timestamp on right side
-        // For other users: avatar, username, timestamp on left side
+        // For current user: avatar on left of message, message on left facing inward
+        // For other users: avatar on right of message, message on right facing inward
         messageEl.innerHTML = `
             <div class="message-row">
                 <div class="message-actions">
@@ -965,20 +965,27 @@ class ChatManager {
                         <button class="message-action-item copy-message">Copy</button>
                     </div>
                 </div>
-                <div class="message-container">
-                    ${isCurrentUser ? '' : `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">`}
+                <div class="message-container ${isCurrentUser ? 'own-container' : 'other-container'}">
+                    ${isCurrentUser ? 
+                      `<div class="avatar-timestamp-group">
+                        <img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">
+                        <span class="message-timestamp">${timestamp}</span>
+                      </div>` : ''}
                     <div class="message-content-wrapper ${isCurrentUser ? 'own-content' : ''}">
                         <div class="message-meta">
                             <div class="message-header">
                                 <span class="message-author">${sender}</span>
-                                <span class="message-timestamp">${timestamp}</span>
                             </div>
                         </div>
                         <div class="message-content">
-                            <div class="message-text">${messageContent}</div>
+                            <div class="message-text ${isCurrentUser ? 'own-text' : 'other-text'}">${messageContent}</div>
                         </div>
                     </div>
-                    ${isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
+                    ${!isCurrentUser ? 
+                      `<div class="avatar-timestamp-group">
+                        <span class="message-timestamp">${timestamp}</span>
+                        <img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">
+                      </div>` : ''}
                 </div>
             </div>
         `;
