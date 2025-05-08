@@ -473,12 +473,26 @@ class ChatManager {
             this.isSocketConnected = true;
             
             // Perform initial data fetch immediately on connection
-            // Wait a brief moment to ensure authentication is complete
-            setTimeout(() => {
-                if (this.currentUser) {
+            // Use a retry mechanism to ensure user authentication is complete
+            let retryCount = 0;
+            const maxRetries = 5;
+            const retryInterval = 500; // ms
+            
+            const attemptDataFetch = () => {
+                if (this.currentUser && this.currentUser.id) {
+                    console.log('[CHAT_DEBUG] User authenticated, fetching initial data');
                     this.performInitialDataFetch();
+                } else if (retryCount < maxRetries) {
+                    console.log(`[CHAT_DEBUG] User not authenticated yet, retry ${retryCount + 1}/${maxRetries}`);
+                    retryCount++;
+                    setTimeout(attemptDataFetch, retryInterval);
+                } else {
+                    console.error('[CHAT_DEBUG] Failed to authenticate user after multiple attempts');
                 }
-            }, 500); // Short delay to ensure auth is complete
+            };
+            
+            // Start the retry process
+            attemptDataFetch();
         });
         
         this.socket.on('disconnect', () => {
@@ -950,8 +964,8 @@ class ChatManager {
             : this._formatMessageContent(message.content);
         
         // Create message HTML with refined layout
-        // For current user: avatar on left of message, message on left facing inward
-        // For other users: avatar on right of message, message on right facing inward
+        // For current user: messages on the left with right-facing bubbles, avatar and timestamp on the left
+        // For other users: messages on the right with left-facing bubbles, avatar and timestamp on the right
         messageEl.innerHTML = `
             <div class="message-row">
                 <div class="message-actions">
@@ -967,23 +981,24 @@ class ChatManager {
                 </div>
                 <div class="message-container ${isCurrentUser ? 'own-container' : 'other-container'}">
                     ${isCurrentUser ? 
-                      `<div class="avatar-timestamp-group">
+                      `<div class="avatar-timestamp-wrapper">
                         <img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">
-                        <span class="message-timestamp">${timestamp}</span>
+                        <div class="user-info">
+                          <span class="message-author">${sender}</span>
+                          <span class="message-timestamp">${timestamp}</span>
+                        </div>
                       </div>` : ''}
                     <div class="message-content-wrapper ${isCurrentUser ? 'own-content' : ''}">
-                        <div class="message-meta">
-                            <div class="message-header">
-                                <span class="message-author">${sender}</span>
-                            </div>
-                        </div>
                         <div class="message-content">
                             <div class="message-text ${isCurrentUser ? 'own-text' : 'other-text'}">${messageContent}</div>
                         </div>
                     </div>
                     ${!isCurrentUser ? 
-                      `<div class="avatar-timestamp-group">
-                        <span class="message-timestamp">${timestamp}</span>
+                      `<div class="avatar-timestamp-wrapper">
+                        <div class="user-info">
+                          <span class="message-author">${sender}</span>
+                          <span class="message-timestamp">${timestamp}</span>
+                        </div>
                         <img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">
                       </div>` : ''}
                 </div>
@@ -1286,9 +1301,12 @@ class ChatManager {
         
         if (!this.currentUser || !this.currentUser.id) {
             console.error('[CHAT_DEBUG] Cannot fetch data: User not authenticated');
-            // Retry after a short delay if user isn't authenticated yet
-            setTimeout(() => this.performInitialDataFetch(), 1000);
             return;
+        }
+        
+        // Show loading indicator
+        if (this.loadingIndicator) {
+            this.loadingIndicator.classList.remove('d-none');
         }
         
         // Fetch active users
@@ -1300,7 +1318,31 @@ class ChatManager {
             this.currentChannel.id.substring(1) : this.currentChannel.id;
             
         console.log(`[CHAT_DEBUG] Requesting message history for channel: ${dataChannel}`);
-        this.socket.emit('get-channel-messages', { channel: dataChannel });
+        
+        // Request message history with a callback to ensure we get a response
+        this.socket.emit('get-channel-messages', { channel: dataChannel }, (response) => {
+            console.log(`[CHAT_DEBUG] Received message history response:`, response);
+            
+            // If we didn't get a response or messages, try to fetch from Supabase directly
+            if (!response || !response.success || !response.messages || response.messages.length === 0) {
+                console.log('[CHAT_DEBUG] No messages received from socket, trying Supabase directly');
+                
+                // Emit a special event to force Supabase fetch
+                this.socket.emit('force-fetch-messages', { channel: dataChannel }, (supabaseResponse) => {
+                    console.log('[CHAT_DEBUG] Forced Supabase fetch response:', supabaseResponse);
+                    
+                    // Hide loading indicator
+                    if (this.loadingIndicator) {
+                        this.loadingIndicator.classList.add('d-none');
+                    }
+                });
+            } else {
+                // Hide loading indicator
+                if (this.loadingIndicator) {
+                    this.loadingIndicator.classList.add('d-none');
+                }
+            }
+        });
         
         // Fetch friend list
         this.socket.emit('get-friends-list');
@@ -1311,7 +1353,7 @@ class ChatManager {
         // Mark as fetched
         this.needsInitialDataFetch = false;
         
-        console.log('[CHAT_DEBUG] Initial data fetch complete');
+        console.log('[CHAT_DEBUG] Initial data fetch requests sent');
     }
     
     // Set up keep-alive mechanism to prevent Glitch from sleeping

@@ -537,7 +537,7 @@ body {
   display: flex;
   align-items: flex-start;
   width: 100%;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
 /* Own container (your messages) - on the left */
@@ -550,12 +550,29 @@ body {
   justify-content: flex-end;
 }
 
-/* Avatar and timestamp group */
-.avatar-timestamp-group {
+/* Avatar and timestamp wrapper */
+.avatar-timestamp-wrapper {
+  display: flex;
+  align-items: flex-start;
+  margin: 0 5px;
+  min-width: 180px; /* Ensure consistent spacing */
+}
+
+/* User info container for username and timestamp */
+.user-info {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  margin: 0 5px;
+  margin: 0 8px;
+}
+
+/* Own container avatar-timestamp wrapper */
+.own-container .avatar-timestamp-wrapper {
+  flex-direction: row;
+}
+
+/* Other container avatar-timestamp wrapper */
+.other-container .avatar-timestamp-wrapper {
+  flex-direction: row-reverse;
 }
 
 /* Message text styles with inward facing bubbles */
@@ -619,14 +636,18 @@ body {
 .message-author {
   font-weight: 600;
   color: var(--text-light);
-  margin-right: 6px;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
 }
 
 .message-timestamp {
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: 4px;
-  text-align: center;
+  display: block;
+  white-space: nowrap;
 }
 
 /* Message avatar styling */
@@ -636,6 +657,7 @@ body {
   border-radius: 50%;
   object-fit: cover;
   margin: 0;
+  flex-shrink: 0; /* Prevent avatar from shrinking */
 }
 
 /* Grouped message styling */
