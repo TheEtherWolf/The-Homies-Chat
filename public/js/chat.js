@@ -966,7 +966,7 @@ class ChatManager {
                     </div>
                 </div>
                 <div class="message-container">
-                    ${!isCurrentUser ? `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">` : ''}
+                    ${isCurrentUser ? '' : `<img src="${avatarUrl}" alt="${sender}" class="message-avatar" data-user-id="${senderId}">`}
                     <div class="message-content-wrapper ${isCurrentUser ? 'own-content' : ''}">
                         <div class="message-meta">
                             <div class="message-header">

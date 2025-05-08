@@ -386,11 +386,11 @@ body {
 }
 
 .own-message .message-row {
-  flex-direction: row-reverse;
+  flex-direction: row;
 }
 
 .message:not(.own-message) .message-row {
-  flex-direction: row;
+  flex-direction: row-reverse;
 }
 
 .message-container {
@@ -399,7 +399,7 @@ body {
 }
 
 .own-message .message-container {
-  flex-direction: row-reverse;
+  flex-direction: row;
 }
 
 .message-content {
@@ -540,6 +540,10 @@ body {
 
 /* Adjust message container for own messages */
 .message.own-message .message-container {
+  flex-direction: row;
+}
+
+.message:not(.own-message) .message-container {
   flex-direction: row-reverse;
 }
 
