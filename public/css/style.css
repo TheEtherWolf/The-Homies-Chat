@@ -517,28 +517,32 @@ body {
   margin-top: 0;
 }
 
-/* Message actions styling */
+/* Message actions styling with improved positioning and transitions */
 .message-actions {
   position: absolute;
-  right: 8px;
+  right: -8px; /* Start slightly outside the message for smooth slide-in */
   top: 4px;
   opacity: 0;
-  transition: opacity 0.2s ease-in-out;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Elastic ease for more satisfying motion */
   z-index: 10;
+  transform: translateX(5px); /* Start slightly offset for slide-in effect */
 }
 
-/* All messages have actions on the right */
+/* All messages have actions on the right, closer to the message content */
 .message .message-actions {
-  right: 8px;
+  right: -8px;
   left: auto;
 }
 
+/* When hovering over a message, show the actions with a smooth slide-in */
 .message:hover .message-actions {
   opacity: 1;
+  right: 4px; /* Move closer to the message when visible */
+  transform: translateX(0); /* Reset the offset for a clean slide-in */
 }
 
 .message-actions-btn {
-  background-color: transparent;
+  background-color: var(--dark-secondary);
   border: none;
   color: var(--text-muted);
   font-size: 16px;
@@ -548,14 +552,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease-in-out;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   width: 28px;
   height: 28px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .message-actions-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--sidebar-color);
   color: var(--text-light);
+  transform: scale(1.05);
 }
 
 /* No rotation for three dots icon */
@@ -573,14 +579,15 @@ body {
   right: 0;
   background-color: var(--dark-secondary);
   border-radius: var(--border-radius-md);
-  box-shadow: var(--box-shadow);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   min-width: 180px;
   z-index: 100;
   display: none;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
   margin-top: 4px;
-  animation: menu-slide-in 0.15s ease-in-out;
+  transform-origin: top right;
+  pointer-events: none; /* Initially disable interactions during animation */
 }
 
 /* All message action menus on the right */
@@ -593,38 +600,69 @@ body {
   display: block;
 }
 
+/* Enhanced menu show animation */
 .message-actions-menu.show {
   display: block;
+  animation: menu-pop-in 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  pointer-events: auto; /* Re-enable interactions after animation */
 }
 
-@keyframes menu-slide-in {
-  from {
+@keyframes menu-pop-in {
+  0% {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: scale(0.9) translateY(-4px);
   }
-  to {
+  100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: scale(1) translateY(0);
   }
 }
 
 .message-action-item {
-  padding: 8px 12px;
+  padding: 10px 14px;
   font-size: 14px;
   color: var(--text-light);
   cursor: pointer;
-  transition: var(--transition);
+  transition: all 0.15s ease-in-out;
   display: flex;
   align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.message-action-item::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0;
+  background-color: rgba(255, 255, 255, 0.05);
+  transition: width 0.2s ease-in-out;
+  z-index: -1;
 }
 
 .message-action-item i {
-  margin-right: 8px;
-  font-size: 14px;
+  margin-right: 10px;
+  font-size: 15px;
+  transition: transform 0.15s ease-in-out;
 }
 
 .message-action-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.05);
+  padding-left: 18px; /* Slight indent on hover */
+}
+
+.message-action-item:hover::after {
+  width: 100%;
+}
+
+.message-action-item:hover i {
+  transform: scale(1.1);
+}
+
+.message-action-item:active {
+  transform: scale(0.98);
 }
 
 .message-action-item.danger {
@@ -632,7 +670,11 @@ body {
 }
 
 .message-action-item.danger:hover {
-  background-color: rgba(244, 67, 54, 0.1);
+  background-color: rgba(244, 67, 54, 0.08);
+}
+
+.message-action-item.danger:hover::after {
+  background-color: rgba(244, 67, 54, 0.05);
 }
 
 /* Hide copy/delete buttons by default */
@@ -659,6 +701,19 @@ body {
   10% { opacity: 1; transform: translateY(0); }
   90% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* Floating emoji animation */
+.floating-emoji {
+  position: fixed;
+  font-size: 28px;
+  z-index: 1500;
+  pointer-events: none;
+  transition: all 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform: scale(1.2);
+  opacity: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  will-change: transform, opacity, left, top;
 }
 
 .message-option-btn {
@@ -701,6 +756,70 @@ body {
 
 .message-text.deleted {
   background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Loading indicator with improved styling */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 12px 0;
+  padding: 8px;
+  animation: fade-in 0.3s ease-in-out;
+}
+
+/* Loading spinner */
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  margin-right: 8px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Fade-out animation for loading indicator */
+.loading-indicator.fade-out {
+  animation: fade-out 0.3s ease-in-out forwards;
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Fade-in animation for new messages */
+.message.fade-in {
+  animation: message-fade-in 0.3s ease-in-out;
+}
+
+@keyframes message-fade-in {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Beginning of conversation indicator */
+.beginning-indicator {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 16px 0;
+  padding: 8px 16px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: var(--border-radius-md);
+  animation: fade-in 0.5s ease-in-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* System Message */
@@ -793,23 +912,44 @@ body {
   background-color: #0045D8;
 }
 
-/* Emoji Picker Styles */
+/* Enhanced Emoji Picker Styles */
 .emoji-picker {
   position: absolute;
   width: 320px;
   height: 400px;
   background-color: #36393f;
   border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 1000;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid #202225;
+  transform-origin: bottom left;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-in-out;
 }
 
+/* Smooth show/hide animations for emoji picker */
 .emoji-picker.d-none {
-  display: none;
+  display: flex; /* Keep display flex but make it invisible */
+  opacity: 0;
+  transform: scale(0.95);
+  pointer-events: none; /* Prevent interaction while hidden */
+}
+
+.emoji-picker:not(.d-none) {
+  animation: emoji-picker-show 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes emoji-picker-show {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .emoji-picker-header {
@@ -853,8 +993,8 @@ body {
 }
 
 .emoji-category {
-  min-width: 32px;
-  height: 32px;
+  min-width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -866,11 +1006,42 @@ body {
   border: none;
   font-size: 18px;
   padding: 0;
+  position: relative;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  overflow: hidden;
 }
 
-.emoji-category:hover, .emoji-category.active {
-  background-color: #4f545c;
+.emoji-category::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 3px;
+  background-color: var(--primary-color);
+  transition: all 0.2s ease-in-out;
+  transform: translateX(-50%);
+  border-radius: 3px 3px 0 0;
+}
+
+.emoji-category:hover {
+  background-color: rgba(255, 255, 255, 0.1);
   color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.emoji-category.active {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.emoji-category.active::after {
+  width: 100%;
+  opacity: 1;
+}
+
+.emoji-category:active {
+  transform: scale(0.95);
 }
 
 .emoji-content {
@@ -900,8 +1071,8 @@ body {
 }
 
 .emoji-btn {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -909,18 +1080,34 @@ body {
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 20px;
+  font-size: 22px;
   padding: 0;
-  transition: background-color 0.2s;
+  transition: all 0.15s ease-in-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.emoji-btn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: transparent;
+  border-radius: 4px;
+  transform: scale(0);
+  transition: transform 0.2s ease-in-out, background-color 0.2s ease-in-out;
 }
 
 .emoji-btn:hover {
   background-color: #4f545c;
+  transform: scale(1.05);
+  z-index: 1;
 }
 
-/* Make the first category active by default */
-.emoji-category:first-child {
-  background-color: #4f545c;
+.emoji-btn:active {
+  transform: scale(0.95);
   color: #ffffff;
 }
 

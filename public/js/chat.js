@@ -885,16 +885,16 @@ class ChatManager {
         console.log('[CHAT_DEBUG] Initial data fetch complete');
     }
     
-    // Set up lazy loading observer for message scrolling
+    // Set up lazy loading observer for message scrolling with improved performance
     _setupLazyLoadingObserver() {
-        console.log('[CHAT_DEBUG] Setting up lazy loading observer');
+        console.log('[CHAT_DEBUG] Setting up enhanced lazy loading observer');
         
         // Create a sentinel element at the top of the messages container
         if (!document.getElementById('lazy-load-sentinel')) {
             const sentinel = document.createElement('div');
             sentinel.id = 'lazy-load-sentinel';
             sentinel.className = 'lazy-load-sentinel';
-            sentinel.style.height = '1px';
+            sentinel.style.height = '5px'; // Slightly larger for better detection
             sentinel.style.width = '100%';
             
             // Add sentinel to the top of the messages container
@@ -910,30 +910,75 @@ class ChatManager {
             this.scrollObserver.disconnect();
         }
         
-        // Create a new intersection observer
+        // Save scroll position for smooth scrolling
+        let lastScrollHeight = 0;
+        let lastScrollTop = 0;
+        
+        // Create a new intersection observer with improved settings
         this.scrollObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting && this.hasMoreMessagesToLoad && !this.isLoadingMoreMessages) {
                     console.log('[CHAT_DEBUG] Lazy load sentinel visible, loading more messages');
-                    this._loadOlderMessages();
+                    
+                    // Save current scroll position before loading
+                    if (this.messagesContainer) {
+                        lastScrollHeight = this.messagesContainer.scrollHeight;
+                        lastScrollTop = this.messagesContainer.scrollTop;
+                    }
+                    
+                    // Load older messages with the saved position info
+                    this._loadOlderMessages(lastScrollHeight, lastScrollTop);
                 }
             });
         }, {
             root: this.messagesContainer,
-            rootMargin: '100px 0px 0px 0px', // Load when sentinel is 100px from the top
-            threshold: 0.1 // Trigger when 10% of the sentinel is visible
+            rootMargin: '200px 0px 0px 0px', // Increased margin to load earlier
+            threshold: 0.05 // Lower threshold for earlier triggering
         });
         
         // Start observing the sentinel element
         const sentinel = document.getElementById('lazy-load-sentinel');
         if (sentinel) {
             this.scrollObserver.observe(sentinel);
-            console.log('[CHAT_DEBUG] Lazy loading observer started');
+            console.log('[CHAT_DEBUG] Enhanced lazy loading observer started');
+        }
+        
+        // Add scroll event listener for smoother experience
+        if (this.messagesContainer && !this._hasScrollListener) {
+            this.messagesContainer.addEventListener('scroll', this._debounce(() => {
+                // Check if we're near the top of the container
+                if (this.messagesContainer.scrollTop < 150 && 
+                    this.hasMoreMessagesToLoad && 
+                    !this.isLoadingMoreMessages) {
+                    
+                    // Save scroll position
+                    lastScrollHeight = this.messagesContainer.scrollHeight;
+                    lastScrollTop = this.messagesContainer.scrollTop;
+                    
+                    // Preemptively load more messages
+                    this._loadOlderMessages(lastScrollHeight, lastScrollTop);
+                }
+            }, 100)); // Debounce to prevent too many calls
+            
+            this._hasScrollListener = true;
         }
     }
     
-    // Load older messages when scrolling up
-    _loadOlderMessages() {
+    // Debounce function to limit how often a function can be called
+    _debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+    
+    // Load older messages when scrolling up with improved scroll position maintenance
+    _loadOlderMessages(previousScrollHeight = 0, previousScrollTop = 0) {
         if (this.isLoadingMoreMessages || !this.hasMoreMessagesToLoad) {
             return;
         }
@@ -941,10 +986,27 @@ class ChatManager {
         console.log('[CHAT_DEBUG] Loading older messages');
         this.isLoadingMoreMessages = true;
         
-        // Add loading indicator
+        // Store scroll position data for later use
+        this._previousScrollData = {
+            height: previousScrollHeight || (this.messagesContainer ? this.messagesContainer.scrollHeight : 0),
+            top: previousScrollTop || (this.messagesContainer ? this.messagesContainer.scrollTop : 0)
+        };
+        
+        // Add loading indicator with smooth animation
         const loadingIndicator = document.createElement('div');
         loadingIndicator.className = 'loading-indicator';
-        loadingIndicator.textContent = 'Loading older messages...';
+        
+        // Create spinner element for better visual feedback
+        const spinner = document.createElement('div');
+        spinner.className = 'loading-spinner';
+        loadingIndicator.appendChild(spinner);
+        
+        // Add loading text
+        const loadingText = document.createElement('span');
+        loadingText.textContent = 'Loading older messages...';
+        loadingIndicator.appendChild(loadingText);
+        
+        // Insert at the top of the container
         if (this.messagesContainer && this.messagesContainer.firstChild) {
             this.messagesContainer.insertBefore(loadingIndicator, this.messagesContainer.firstChild);
         }
@@ -953,16 +1015,16 @@ class ChatManager {
         const channel = this.currentChannel.startsWith('#') ? this.currentChannel.substring(1) : this.currentChannel;
         const offset = this.channelMessages[channel] ? this.channelMessages[channel].length : 0;
         
-        // Request older messages from the server
+        // Request older messages from the server with increased limit for smoother experience
         this.socket.emit('get-channel-messages', {
             channel: channel,
-            limit: this.messagesPerPage,
+            limit: 30, // Increased from default messagesPerPage for smoother scrolling
             offset: offset,
             isOlderMessages: true
         });
     }
     
-    // Prepend older messages to the messages container
+    // Prepend older messages to the messages container with improved scroll position maintenance
     _prependOlderMessages(channel, messages) {
         console.log(`[CHAT_DEBUG] Prepending ${messages.length} older messages for channel ${channel}`);
         
@@ -971,15 +1033,46 @@ class ChatManager {
             return;
         }
         
-        // Remove loading indicator if it exists
+        // Get the current scroll position before making changes
+        const previousScrollData = this._previousScrollData || {
+            height: this.messagesContainer.scrollHeight,
+            top: this.messagesContainer.scrollTop
+        };
+        
+        // Remove loading indicator with fade-out animation
         const loadingIndicator = this.messagesContainer.querySelector('.loading-indicator');
         if (loadingIndicator) {
-            loadingIndicator.remove();
+            // Add fade-out class
+            loadingIndicator.classList.add('fade-out');
+            
+            // Remove after animation completes
+            setTimeout(() => {
+                if (loadingIndicator.parentNode) {
+                    loadingIndicator.remove();
+                }
+            }, 300); // Match the CSS animation duration
         }
         
-        // If no messages to prepend, just return
+        // If no messages to prepend, reset loading state and return
         if (!messages || messages.length === 0) {
             console.log('[CHAT_DEBUG] No older messages to prepend');
+            this.isLoadingMoreMessages = false;
+            
+            // If we've reached the end, mark that there are no more messages
+            if (messages && messages.length === 0) {
+                this.hasMoreMessagesToLoad = false;
+                
+                // Show a "beginning of conversation" indicator
+                const beginningIndicator = document.createElement('div');
+                beginningIndicator.className = 'beginning-indicator';
+                beginningIndicator.textContent = 'Beginning of conversation';
+                
+                if (this.messagesContainer.firstChild) {
+                    this.messagesContainer.insertBefore(beginningIndicator, this.messagesContainer.firstChild);
+                } else {
+                    this.messagesContainer.appendChild(beginningIndicator);
+                }
+            }
             return;
         }
         
@@ -1018,8 +1111,9 @@ class ChatManager {
                 shouldGroup = sameSender && closeInTime;
             }
             
-            // Create message element with grouping info
+            // Create message element with grouping info and add fade-in animation
             const messageEl = this._createMessageElement(message, false, shouldGroup);
+            messageEl.classList.add('fade-in');
             
             // Add to fragment
             fragment.appendChild(messageEl);
@@ -1067,6 +1161,27 @@ class ChatManager {
                 }
             }
         }
+        
+        // Maintain scroll position after adding new content
+        if (this.messagesContainer) {
+            // Calculate how much the scroll height has changed
+            const newScrollHeight = this.messagesContainer.scrollHeight;
+            const scrollHeightDiff = newScrollHeight - previousScrollData.height;
+            
+            // Set the scroll position to maintain the same relative position
+            this.messagesContainer.scrollTop = previousScrollData.top + scrollHeightDiff;
+            
+            // Use requestAnimationFrame for smoother scrolling
+            requestAnimationFrame(() => {
+                this.messagesContainer.scrollTop = previousScrollData.top + scrollHeightDiff;
+            });
+        }
+        
+        // Reset loading state
+        this.isLoadingMoreMessages = false;
+        
+        // Update the offset for the next batch
+        this.currentMessageOffset += messages.length;
         
         console.log('[CHAT_DEBUG] Older messages prepended successfully');
     }
@@ -1301,34 +1416,91 @@ class ChatManager {
         }
     }
     
-    // Show emoji picker
+    // Show emoji picker with enhanced positioning and animation
     showEmojiPicker() {
         if (this.emojiPicker) {
             // Load recent emojis only when opening the picker
             this.recentEmojis = JSON.parse(localStorage.getItem('recentEmojis') || '[]');
             
-            // Position the picker
+            // Calculate optimal position for the picker
             const inputRect = this.messageInput.getBoundingClientRect();
-            this.emojiPicker.style.bottom = `${window.innerHeight - inputRect.top + 10}px`;
-            this.emojiPicker.style.left = `${inputRect.left}px`;
+            const pickerWidth = 320; // Width of the emoji picker
+            const pickerHeight = 400; // Height of the emoji picker
             
-            // Show the picker
+            // Calculate best position to ensure it's visible in the viewport
+            let left = inputRect.left;
+            if (left + pickerWidth > window.innerWidth) {
+                left = window.innerWidth - pickerWidth - 10;
+            }
+            
+            // Position above the input if there's enough space, otherwise below
+            const spaceAbove = inputRect.top;
+            const spaceBelow = window.innerHeight - inputRect.bottom;
+            const positionAbove = spaceAbove > pickerHeight || spaceAbove > spaceBelow;
+            
+            if (positionAbove) {
+                this.emojiPicker.style.bottom = `${window.innerHeight - inputRect.top + 10}px`;
+                this.emojiPicker.style.top = 'auto';
+                this.emojiPicker.style.transformOrigin = 'bottom left';
+            } else {
+                this.emojiPicker.style.top = `${inputRect.bottom + 10}px`;
+                this.emojiPicker.style.bottom = 'auto';
+                this.emojiPicker.style.transformOrigin = 'top left';
+            }
+            
+            this.emojiPicker.style.left = `${left}px`;
+            
+            // Show the picker with smooth animation
             this.emojiPicker.classList.remove('d-none');
             this.emojiPickerVisible = true;
+            
+            // Focus the search input for better UX
+            setTimeout(() => {
+                const searchInput = document.getElementById('emoji-search-input');
+                if (searchInput) {
+                    searchInput.focus();
+                }
+            }, 100);
             
             // Update recent emojis only if the recent category is active
             const activeCategory = document.querySelector('.emoji-category.active');
             if (activeCategory && activeCategory.getAttribute('data-category') === 'recent') {
                 this.updateRecentEmojis();
             }
+            
+            // Add global click handler to close picker when clicking outside
+            if (!this._hasEmojiPickerClickOutside) {
+                this._emojiPickerClickOutsideHandler = (e) => {
+                    if (this.emojiPickerVisible && 
+                        !this.emojiPicker.contains(e.target) && 
+                        e.target !== this.emojiButton) {
+                        this.hideEmojiPicker();
+                    }
+                };
+                
+                document.addEventListener('click', this._emojiPickerClickOutsideHandler);
+                this._hasEmojiPickerClickOutside = true;
+            }
         }
     }
     
-    // Hide emoji picker
+    // Hide emoji picker with smooth transition
     hideEmojiPicker() {
-        if (this.emojiPicker) {
+        if (this.emojiPicker && this.emojiPickerVisible) {
+            // Add class for smooth transition
             this.emojiPicker.classList.add('d-none');
             this.emojiPickerVisible = false;
+            
+            // Clear search input when hiding
+            const searchInput = document.getElementById('emoji-search-input');
+            if (searchInput) {
+                searchInput.value = '';
+                
+                // Reset emoji visibility
+                document.querySelectorAll('.emoji-btn').forEach(btn => {
+                    btn.style.display = '';
+                });
+            }
         }
     }
     
@@ -1356,17 +1528,67 @@ class ChatManager {
         }
     }
     
-    // Insert emoji into message input
+    // Insert emoji into message input with animation
     insertEmoji(emoji) {
         if (this.messageInput) {
+            // Create a floating emoji for animation
+            this._animateEmojiInsertion(emoji);
+            
+            // Get cursor position and text
             const cursorPos = this.messageInput.selectionStart;
             const text = this.messageInput.value;
             const newText = text.substring(0, cursorPos) + emoji + text.substring(cursorPos);
+            
+            // Update input value
             this.messageInput.value = newText;
             this.messageInput.focus();
             this.messageInput.selectionStart = cursorPos + emoji.length;
             this.messageInput.selectionEnd = cursorPos + emoji.length;
+            
+            // Trigger input event to activate any listeners
+            const inputEvent = new Event('input', { bubbles: true });
+            this.messageInput.dispatchEvent(inputEvent);
+            
+            // Add to recent emojis
+            this.addToRecentEmojis(emoji);
+            
+            // Hide emoji picker after selection (optional, Discord-like behavior)
+            setTimeout(() => {
+                this.hideEmojiPicker();
+            }, 100);
         }
+    }
+    
+    // Animate emoji insertion with a floating effect
+    _animateEmojiInsertion(emoji) {
+        // Create floating emoji element
+        const floatingEmoji = document.createElement('div');
+        floatingEmoji.className = 'floating-emoji';
+        floatingEmoji.textContent = emoji;
+        document.body.appendChild(floatingEmoji);
+        
+        // Get positions for animation
+        const emojiPickerRect = this.emojiPicker.getBoundingClientRect();
+        const inputRect = this.messageInput.getBoundingClientRect();
+        
+        // Set initial position (center of emoji picker)
+        floatingEmoji.style.left = `${emojiPickerRect.left + emojiPickerRect.width / 2}px`;
+        floatingEmoji.style.top = `${emojiPickerRect.top + emojiPickerRect.height / 2}px`;
+        
+        // Animate to input position
+        setTimeout(() => {
+            floatingEmoji.style.left = `${inputRect.left + inputRect.width / 2}px`;
+            floatingEmoji.style.top = `${inputRect.top + inputRect.height / 2}px`;
+            floatingEmoji.style.opacity = '0';
+            floatingEmoji.style.transform = 'scale(0.5)';
+        }, 10);
+        
+        // Remove after animation completes
+        setTimeout(() => {
+            if (floatingEmoji.parentNode) {
+                floatingEmoji.remove();
+            }
+        }, 500);
     }
     
     // Add emoji to recent emojis
