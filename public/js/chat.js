@@ -45,6 +45,13 @@ class ChatManager {
         this.inGeneralChat = false; // Flag to track if we're in the general chat
         this.currentChannel = 'general'; // Default channel
         this.isDMMode = false; // Track if we're in DM mode or channels mode
+        
+        // --- Lazy Loading Variables ---
+        this.messagesPerPage = 25; // Number of messages to load at once
+        this.hasMoreMessagesToLoad = true; // Whether there are more messages to load
+        this.isLoadingMoreMessages = false; // Whether we're currently loading more messages
+        this.currentMessageOffset = 0; // Current offset for pagination
+        this.scrollObserver = null; // Intersection observer for lazy loading
 
         // Set up keep-alive mechanism to prevent Glitch from sleeping
         this.setupKeepAlive();
@@ -438,8 +445,12 @@ class ChatManager {
             this.isSocketConnected = true;
             
             // Perform initial data fetch if needed
-            if (this.needsInitialDataFetch && this.currentUser) {
+            if (this.currentUser && this.currentUser.id) {
+                console.log('[CHAT_DEBUG] User authenticated, performing initial data fetch');
                 this.performInitialDataFetch();
+            } else {
+                console.log('[CHAT_DEBUG] Waiting for user authentication before fetching data');
+                // We'll fetch data when user is fully authenticated
             }
         });
         
@@ -459,12 +470,67 @@ class ChatManager {
         this.socket.on('message-history', (data) => {
             console.log(`[CHAT_DEBUG] Received message history for ${data.channel}:`, data.messages.length);
             
-            // Store messages in cache
-            this.channelMessages[data.channel] = data.messages;
+            // Determine if this is an initial load or a lazy load of older messages
+            const isLazyLoad = data.isOlderMessages === true;
             
-            // If this is the current channel, display messages
-            if (data.channel === this.currentChannel) {
-                this._displayChannelMessages(data.channel);
+            if (isLazyLoad) {
+                // For lazy loading, prepend messages to existing ones
+                const currentScrollHeight = this.messagesContainer.scrollHeight;
+                const currentScrollPosition = this.messagesContainer.scrollTop;
+                
+                // Get current first message element for reference
+                const firstMessage = this.messagesContainer.querySelector('.message');
+                
+                // Store the current height of the first message if it exists
+                const firstMessageHeight = firstMessage ? firstMessage.offsetHeight : 0;
+                
+                // Prepend older messages to the existing channel messages
+                if (!this.channelMessages[data.channel]) {
+                    this.channelMessages[data.channel] = [];
+                }
+                
+                // Add older messages at the beginning of the array
+                this.channelMessages[data.channel] = [...data.messages, ...this.channelMessages[data.channel]];
+                
+                // Display only the new messages at the top
+                this._prependOlderMessages(data.channel, data.messages);
+                
+                // Maintain scroll position after adding messages
+                if (firstMessage) {
+                    // Calculate new scroll position to keep the same message in view
+                    const newScrollHeight = this.messagesContainer.scrollHeight;
+                    const heightDifference = newScrollHeight - currentScrollHeight;
+                    this.messagesContainer.scrollTop = currentScrollPosition + heightDifference;
+                }
+                
+                // Update lazy loading state
+                this.isLoadingMoreMessages = false;
+                
+                // If we received fewer messages than requested, we've reached the beginning
+                if (data.messages.length < this.messagesPerPage) {
+                    this.hasMoreMessagesToLoad = false;
+                    
+                    // Add a "beginning of conversation" indicator
+                    if (data.messages.length > 0 && !this.messagesContainer.querySelector('.beginning-message')) {
+                        const beginningMessage = document.createElement('div');
+                        beginningMessage.className = 'beginning-message';
+                        beginningMessage.textContent = 'Beginning of conversation';
+                        this.messagesContainer.insertBefore(beginningMessage, this.messagesContainer.firstChild);
+                    }
+                }
+            } else {
+                // For initial load, replace existing messages
+                this.channelMessages[data.channel] = data.messages;
+                
+                // If this is the current channel, display messages
+                if (data.channel === this.currentChannel) {
+                    this._displayChannelMessages(data.channel);
+                }
+                
+                // Reset lazy loading state for new channel
+                this.hasMoreMessagesToLoad = data.messages.length >= this.messagesPerPage;
+                this.isLoadingMoreMessages = false;
+                this.currentMessageOffset = data.messages.length;
             }
         });
         
@@ -601,6 +667,14 @@ class ChatManager {
         if (this.messagesContainer) {
             this.messagesContainer.innerHTML = '';
             
+            // Add lazy load sentinel at the top for infinite scrolling
+            const sentinel = document.createElement('div');
+            sentinel.id = 'lazy-load-sentinel';
+            sentinel.className = 'lazy-load-sentinel';
+            sentinel.style.height = '1px';
+            sentinel.style.width = '100%';
+            this.messagesContainer.appendChild(sentinel);
+            
             // Add channel header
             const dateHeader = document.createElement('div');
             dateHeader.className = 'date-separator';
@@ -622,6 +696,14 @@ class ChatManager {
             
             // Scroll to bottom
             this._scrollToBottom();
+            
+            // Set up lazy loading observer after messages are displayed
+            this._setupLazyLoadingObserver();
+            
+            // Reset lazy loading state for new channel
+            this.hasMoreMessagesToLoad = messages.length >= this.messagesPerPage;
+            this.isLoadingMoreMessages = false;
+            this.currentMessageOffset = messages.length;
         }
     }
     
@@ -629,82 +711,13 @@ class ChatManager {
     _displayMessage(message, scrollToBottom = true) {
         if (!this.messagesContainer) return;
         
-        // Check if message is deleted
-        const isDeleted = message.is_deleted === true;
-        
-        // Create message element
-        const messageEl = document.createElement('div');
-        messageEl.className = 'message';
-        if (message.senderId === this.currentUser.id) {
-            messageEl.classList.add('own-message');
-        }
-        messageEl.setAttribute('data-message-id', message.id || '');
-        messageEl.setAttribute('data-sender-id', message.senderId || '');
-        
-        // Get sender info
-        const sender = message.sender || 'Unknown User';
-        const senderId = message.senderId || '';
-        const isCurrentUser = senderId === this.currentUser.id;
-        
-        // Get avatar URL
-        let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
-        
-        // If it's the current user, use their avatar
-        if (isCurrentUser && this.currentUser.avatarUrl) {
-            avatarUrl = this.currentUser.avatarUrl;
-        } 
-        // Otherwise check if we have this user's info in allUsers
-        else if (senderId && this.allUsers[senderId] && this.allUsers[senderId].avatarUrl) {
-            avatarUrl = this.allUsers[senderId].avatarUrl;
+        // Skip if message already exists in the DOM
+        if (message.id && document.querySelector(`.message[data-message-id="${message.id}"]`)) {
+            return;
         }
         
-        // Format timestamp
-        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
-        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
-        // Determine message content
-        let messageContent = isDeleted 
-            ? '<em class="deleted-message">[This message has been deleted]</em>' 
-            : this._formatMessageContent(message.content);
-        
-        // Build message HTML
-        messageEl.innerHTML = `
-            <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
-            <div class="message-content">
-                <div class="message-header">
-                    <span class="message-author">${sender}</span>
-                    <span class="message-timestamp">${timeString}</span>
-                </div>
-                <div class="message-text">${messageContent}</div>
-            </div>
-            ${isCurrentUser && !isDeleted ? '<div class="message-actions"><button class="message-actions-btn" title="Message Options"><i class="bi bi-three-dots-vertical"></i></button><div class="message-actions-menu"><div class="message-action-item danger" data-action="delete"><i class="bi bi-trash"></i>Delete Message</div></div></div>' : ''}
-        `;
-        
-        // Add delete button event listener if it's the current user's message
-        if (isCurrentUser && !isDeleted) {
-            const actionBtn = messageEl.querySelector('.message-actions-btn');
-            const actionMenu = messageEl.querySelector('.message-actions-menu');
-            const deleteAction = messageEl.querySelector('.message-action-item[data-action="delete"]');
-            
-            if (actionBtn && actionMenu) {
-                actionBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    actionMenu.classList.toggle('show');
-                });
-                
-                // Close menu when clicking outside
-                document.addEventListener('click', () => {
-                    actionMenu.classList.remove('show');
-                });
-            }
-            
-            if (deleteAction) {
-                deleteAction.addEventListener('click', () => {
-                    this._deleteMessage(message.id);
-                    actionMenu.classList.remove('show');
-                });
-            }
-        }
+        // Create message element using the helper method
+        const messageEl = this._createMessageElement(message, scrollToBottom);
         
         // Add to messages container
         this.messagesContainer.appendChild(messageEl);
@@ -818,8 +831,13 @@ class ChatManager {
         // Fetch active users
         this.socket.emit('get-active-users');
         
-        // Fetch message history for current channel
-        this.socket.emit('get-channel-messages', { channel: this.currentChannel });
+        // Fetch message history for current channel with pagination
+        this.socket.emit('get-channel-messages', { 
+            channel: this.currentChannel,
+            limit: this.messagesPerPage,
+            offset: 0,
+            isInitialLoad: true
+        });
         
         // Fetch friend list
         this.socket.emit('get-friends-list');
@@ -830,7 +848,232 @@ class ChatManager {
         // Mark as fetched
         this.needsInitialDataFetch = false;
         
+        // Set up lazy loading observer after initial fetch
+        this._setupLazyLoadingObserver();
+        
         console.log('[CHAT_DEBUG] Initial data fetch complete');
+    }
+    
+    // Set up lazy loading observer for message scrolling
+    _setupLazyLoadingObserver() {
+        console.log('[CHAT_DEBUG] Setting up lazy loading observer');
+        
+        // Create a sentinel element at the top of the messages container
+        if (!document.getElementById('lazy-load-sentinel')) {
+            const sentinel = document.createElement('div');
+            sentinel.id = 'lazy-load-sentinel';
+            sentinel.className = 'lazy-load-sentinel';
+            sentinel.style.height = '1px';
+            sentinel.style.width = '100%';
+            
+            // Add sentinel to the top of the messages container
+            if (this.messagesContainer && this.messagesContainer.firstChild) {
+                this.messagesContainer.insertBefore(sentinel, this.messagesContainer.firstChild);
+            } else if (this.messagesContainer) {
+                this.messagesContainer.appendChild(sentinel);
+            }
+        }
+        
+        // Disconnect any existing observer
+        if (this.scrollObserver) {
+            this.scrollObserver.disconnect();
+        }
+        
+        // Create a new intersection observer
+        this.scrollObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && this.hasMoreMessagesToLoad && !this.isLoadingMoreMessages) {
+                    console.log('[CHAT_DEBUG] Lazy load sentinel visible, loading more messages');
+                    this._loadOlderMessages();
+                }
+            });
+        }, {
+            root: this.messagesContainer,
+            rootMargin: '100px 0px 0px 0px', // Load when sentinel is 100px from the top
+            threshold: 0.1 // Trigger when 10% of the sentinel is visible
+        });
+        
+        // Start observing the sentinel element
+        const sentinel = document.getElementById('lazy-load-sentinel');
+        if (sentinel) {
+            this.scrollObserver.observe(sentinel);
+            console.log('[CHAT_DEBUG] Lazy loading observer started');
+        }
+    }
+    
+    // Load older messages when scrolling up
+    _loadOlderMessages() {
+        if (this.isLoadingMoreMessages || !this.hasMoreMessagesToLoad) {
+            return;
+        }
+        
+        console.log('[CHAT_DEBUG] Loading older messages');
+        this.isLoadingMoreMessages = true;
+        
+        // Add loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.textContent = 'Loading older messages...';
+        if (this.messagesContainer && this.messagesContainer.firstChild) {
+            this.messagesContainer.insertBefore(loadingIndicator, this.messagesContainer.firstChild);
+        }
+        
+        // Calculate the offset for pagination
+        const channel = this.currentChannel.startsWith('#') ? this.currentChannel.substring(1) : this.currentChannel;
+        const offset = this.channelMessages[channel] ? this.channelMessages[channel].length : 0;
+        
+        // Request older messages from the server
+        this.socket.emit('get-channel-messages', {
+            channel: channel,
+            limit: this.messagesPerPage,
+            offset: offset,
+            isOlderMessages: true
+        });
+    }
+    
+    // Prepend older messages to the messages container
+    _prependOlderMessages(channel, messages) {
+        console.log(`[CHAT_DEBUG] Prepending ${messages.length} older messages for channel ${channel}`);
+        
+        if (!this.messagesContainer) {
+            console.error('[CHAT_DEBUG] Messages container not found');
+            return;
+        }
+        
+        // Remove loading indicator if it exists
+        const loadingIndicator = this.messagesContainer.querySelector('.loading-indicator');
+        if (loadingIndicator) {
+            loadingIndicator.remove();
+        }
+        
+        // If no messages to prepend, just return
+        if (!messages || messages.length === 0) {
+            console.log('[CHAT_DEBUG] No older messages to prepend');
+            return;
+        }
+        
+        // Get reference to the sentinel element
+        const sentinel = document.getElementById('lazy-load-sentinel');
+        
+        // Create a document fragment to hold all the new messages
+        const fragment = document.createDocumentFragment();
+        
+        // Add messages in reverse order (oldest first)
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const message = messages[i];
+            
+            // Skip duplicates (messages that already exist in the DOM)
+            if (document.querySelector(`.message[data-message-id="${message.id}"]`)) {
+                continue;
+            }
+            
+            // Create message element
+            const messageEl = this._createMessageElement(message, false);
+            
+            // Add to fragment
+            fragment.appendChild(messageEl);
+        }
+        
+        // Insert all messages at once before the first existing message
+        if (sentinel) {
+            // Insert after the sentinel
+            if (sentinel.nextSibling) {
+                this.messagesContainer.insertBefore(fragment, sentinel.nextSibling);
+            } else {
+                this.messagesContainer.appendChild(fragment);
+            }
+        } else {
+            // If no sentinel, insert at the beginning
+            if (this.messagesContainer.firstChild) {
+                this.messagesContainer.insertBefore(fragment, this.messagesContainer.firstChild);
+            } else {
+                this.messagesContainer.appendChild(fragment);
+            }
+        }
+        
+        console.log('[CHAT_DEBUG] Older messages prepended successfully');
+    }
+    
+    // Helper method to create a message element
+    _createMessageElement(message, scrollToBottom = true) {
+        // Check if message is deleted
+        const isDeleted = message.is_deleted === true;
+        
+        // Create message element
+        const messageEl = document.createElement('div');
+        messageEl.className = 'message';
+        if (message.senderId === this.currentUser.id) {
+            messageEl.classList.add('own-message');
+        }
+        messageEl.setAttribute('data-message-id', message.id || '');
+        messageEl.setAttribute('data-sender-id', message.senderId || '');
+        
+        // Get sender info
+        const sender = message.sender || 'Unknown User';
+        const senderId = message.senderId || '';
+        const isCurrentUser = senderId === this.currentUser.id;
+        
+        // Get avatar URL
+        let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+        
+        // If it's the current user, use their avatar
+        if (isCurrentUser && this.currentUser.avatarUrl) {
+            avatarUrl = this.currentUser.avatarUrl;
+        } 
+        // Otherwise check if we have this user's info in allUsers
+        else if (senderId && this.allUsers[senderId] && this.allUsers[senderId].avatarUrl) {
+            avatarUrl = this.allUsers[senderId].avatarUrl;
+        }
+        
+        // Format timestamp
+        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
+        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        // Determine message content
+        let messageContent = isDeleted 
+            ? '<em class="deleted-message">[This message has been deleted]</em>' 
+            : this._formatMessageContent(message.content);
+        
+        // Build message HTML
+        messageEl.innerHTML = `
+            <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="message-author">${sender}</span>
+                    <span class="message-timestamp">${timeString}</span>
+                </div>
+                <div class="message-text">${messageContent}</div>
+            </div>
+            ${isCurrentUser && !isDeleted ? '<div class="message-actions"><button class="message-actions-btn" title="Message Options"><i class="bi bi-three-dots-vertical"></i></button><div class="message-actions-menu"><div class="message-action-item danger" data-action="delete"><i class="bi bi-trash"></i>Delete Message</div></div></div>' : ''}
+        `;
+        
+        // Add delete button event listener if it's the current user's message
+        if (isCurrentUser && !isDeleted) {
+            const actionBtn = messageEl.querySelector('.message-actions-btn');
+            const actionMenu = messageEl.querySelector('.message-actions-menu');
+            const deleteAction = messageEl.querySelector('.message-action-item[data-action="delete"]');
+            
+            if (actionBtn && actionMenu) {
+                actionBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    actionMenu.classList.toggle('show');
+                });
+                
+                // Close menu when clicking outside
+                document.addEventListener('click', () => {
+                    actionMenu.classList.remove('show');
+                });
+            }
+            
+            if (deleteAction) {
+                deleteAction.addEventListener('click', () => {
+                    this._deleteMessage(message.id);
+                    actionMenu.classList.remove('show');
+                });
+            }
+        }
+        
+        return messageEl;
     }
     
     // Set up keep-alive mechanism to prevent Glitch from sleeping

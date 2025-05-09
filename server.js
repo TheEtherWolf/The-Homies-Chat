@@ -704,9 +704,14 @@ io.on("connection", (socket) => {
     });
     
     // Handle channel-specific message requests
-    socket.on('get-messages', async (data) => {
+    socket.on('get-channel-messages', async (data) => {
         const channel = data.channel || 'general';
-        console.log(`Requested messages for channel: ${channel}`);
+        const limit = data.limit || 25; // Default to 25 messages per page
+        const offset = data.offset || 0; // Default to first page
+        const isOlderMessages = data.isOlderMessages === true; // Whether this is a lazy load request
+        const isInitialLoad = data.isInitialLoad === true; // Whether this is the initial load
+        
+        console.log(`Requested messages for channel: ${channel} (limit: ${limit}, offset: ${offset}, isOlderMessages: ${isOlderMessages})`);
         
         try {
             let messages = [];
@@ -717,13 +722,28 @@ io.on("connection", (socket) => {
                 console.log(`Handling DM channel request for ${channel} with participants:`, data.participants);
                 
                 try {
-                    // Load DM messages from Supabase
-                    const result = await getSupabaseClient(true)
+                    // Load DM messages from Supabase with pagination
+                    const query = getSupabaseClient(true)
                         .from('messages')
                         .select('*')
                         .or(`recipient_id.eq.${data.participants[0]},recipient_id.eq.${data.participants[1]}`)
-                        .or(`sender_id.eq.${data.participants[0]},sender_id.eq.${data.participants[1]}`)
-                        .order('created_at', { ascending: true });
+                        .or(`sender_id.eq.${data.participants[0]},sender_id.eq.${data.participants[1]}`);
+                    
+                    // For older messages, we want to get messages before the current ones
+                    // For initial load or newer messages, we want the most recent ones
+                    if (isOlderMessages) {
+                        // For older messages, order by created_at descending to get older ones first
+                        // and then reverse the array later
+                        query.order('created_at', { ascending: false })
+                            .limit(limit)
+                            .range(offset, offset + limit - 1);
+                    } else {
+                        // For initial load, get the most recent messages
+                        query.order('created_at', { ascending: false })
+                            .limit(limit);
+                    }
+                        
+                    const result = await query;
                         
                     if (result.error) {
                         console.error('Error loading DM messages:', result.error);
@@ -744,6 +764,11 @@ io.on("connection", (socket) => {
                             return isCorrectUsers && isNotDeleted;
                         });
                         
+                        // Reverse the array to get chronological order if we're getting older messages
+                        if (isOlderMessages) {
+                            messages.reverse();
+                        }
+                        
                         console.log(`Found ${messages.length} DM messages between users`);
                     }
                 } catch (err) {
@@ -751,14 +776,31 @@ io.on("connection", (socket) => {
                     error = err;
                 }
             } else {
-                // For regular channels, load from Supabase
+                // For regular channels, load from Supabase with pagination
                 try {
-                    console.log(`Querying Supabase for messages in channel: ${channel}`);
-                    const result = await getSupabaseClient(true)
+                    console.log(`Querying Supabase for messages in channel: ${channel} with pagination`);
+                    
+                    // Build the query with pagination
+                    const query = getSupabaseClient(true)
                         .from('messages')
                         .select('*')
-                        .eq('channel', channel)
-                        .order('created_at', { ascending: true });
+                        .eq('channel', channel);
+                    
+                    // For older messages, we want to get messages before the current ones
+                    // For initial load or newer messages, we want the most recent ones
+                    if (isOlderMessages) {
+                        // For older messages, order by created_at descending to get older ones first
+                        // and then reverse the array later
+                        query.order('created_at', { ascending: false })
+                            .limit(limit)
+                            .range(offset, offset + limit - 1);
+                    } else {
+                        // For initial load, get the most recent messages
+                        query.order('created_at', { ascending: false })
+                            .limit(limit);
+                    }
+                    
+                    const result = await query;
                     
                     if (result.error) {
                         console.error('Error loading channel messages:', result.error);
@@ -769,6 +811,11 @@ io.on("connection", (socket) => {
                             return (msg.is_deleted === undefined || msg.is_deleted === null || msg.is_deleted === false) &&
                                   (msg.deleted === undefined || msg.deleted === null || msg.deleted === false);
                         });
+                        
+                        // Reverse the array to get chronological order if we're getting older messages
+                        if (isOlderMessages) {
+                            messages.reverse();
+                        }
                         
                         console.log(`Found ${messages.length} messages for channel ${channel}`);
                         
@@ -804,7 +851,8 @@ io.on("connection", (socket) => {
                     type: msg.type,
                     fileUrl: msg.file_url,
                     fileType: msg.file_type,
-                    fileSize: msg.file_size
+                    fileSize: msg.file_size,
+                    is_deleted: msg.is_deleted
                 };
             }));
             
@@ -813,7 +861,9 @@ io.on("connection", (socket) => {
             socket.emit('message-history', { 
                 channel, 
                 messages: clientMessages,
-                error: error ? error.message : null
+                error: error ? error.message : null,
+                isOlderMessages: isOlderMessages,
+                hasMore: clientMessages.length >= limit
             });
             
         } catch (err) {
@@ -821,9 +871,17 @@ io.on("connection", (socket) => {
             socket.emit('message-history', { 
                 channel, 
                 messages: [],
-                error: err.message 
+                error: err.message,
+                isOlderMessages: isOlderMessages,
+                hasMore: false
             });
         }
+    });
+    
+    // Legacy handler for backward compatibility
+    socket.on('get-messages', async (data) => {
+        // Forward to the new handler
+        socket.emit('get-channel-messages', data);
     });
     
     // Chat message handler
