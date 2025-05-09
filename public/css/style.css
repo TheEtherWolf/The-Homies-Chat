@@ -415,36 +415,43 @@ body {
 .message {
   position: relative;
   margin-bottom: 8px;
-  padding-left: 40px; /* Space for avatar */
+  padding-left: 72px; /* Space for avatar (40px) + padding */
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   width: 100%;
+  transition: background-color 0.15s ease-in-out;
+  border-radius: 4px;
 }
 
+.message:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* All messages aligned left, including own messages */
 .message.own-message {
-  padding-left: 0;
-  padding-right: 40px;
-  align-items: flex-end;
+  padding-left: 72px;
+  padding-right: 0;
+  align-items: flex-start;
 }
 
 .message-text {
   font-size: 15px;
   line-height: 1.4;
   color: var(--text-light);
-  padding: 8px 12px;
-  border-radius: var(--border-radius-md);
-  background-color: var(--message-bg);
+  padding: 0;
   max-width: 95%;
   min-width: 80px;
   word-break: normal;
   overflow-wrap: break-word;
   margin-bottom: 2px;
   white-space: normal;
+  background-color: transparent;
 }
 
+/* No special background for own messages */
 .message.own-message .message-text {
-  background-color: var(--own-message-bg);
+  background-color: transparent;
 }
 
 .message-header {
@@ -452,6 +459,7 @@ body {
   font-size: 14px;
   display: flex;
   align-items: center;
+  padding-top: 4px;
 }
 
 .message-author {
@@ -467,23 +475,26 @@ body {
 
 /* Message avatar styling */
 .message-avatar {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   position: absolute;
-  left: 8px;
-  top: 0;
+  left: 16px;
+  top: 4px;
+  object-fit: cover;
 }
 
+/* All avatars on the left, including own messages */
 .message.own-message .message-avatar {
-  left: auto;
-  right: 8px;
+  left: 16px;
+  right: auto;
 }
 
 /* Grouped message styling */
 .message.grouped {
-  margin-top: 2px;
+  margin-top: 0;
   padding-top: 0;
+  margin-bottom: 0;
 }
 
 .message.grouped .message-avatar,
@@ -491,21 +502,35 @@ body {
   display: none;
 }
 
+.message.grouped .message-text {
+  margin-top: 0;
+  padding-top: 2px;
+}
+
+/* Add spacing between message groups */
+.message:not(.grouped) {
+  margin-top: 16px;
+}
+
+/* First message in the chat doesn't need top margin */
+.message:first-child {
+  margin-top: 0;
+}
+
 /* Message actions styling */
 .message-actions {
   position: absolute;
-  right: auto;
-  left: -30px;
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0.2;
-  transition: opacity 0.2s ease;
+  right: 8px;
+  top: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
   z-index: 10;
 }
 
-.message.own-message .message-actions {
+/* All messages have actions on the right */
+.message .message-actions {
+  right: 8px;
   left: auto;
-  right: -30px;
 }
 
 .message:hover .message-actions {
@@ -513,19 +538,19 @@ body {
 }
 
 .message-actions-btn {
-  background-color: var(--dark-secondary);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: transparent;
+  border: none;
   color: var(--text-muted);
   font-size: 16px;
   cursor: pointer;
   padding: 4px;
-  border-radius: 50%;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  width: 24px;
-  height: 24px;
+  transition: all 0.15s ease-in-out;
+  width: 28px;
+  height: 28px;
 }
 
 .message-actions-btn:hover {
@@ -533,18 +558,19 @@ body {
   color: var(--text-light);
 }
 
+/* No rotation for three dots icon */
 .message-actions-btn i.bi-three-dots-vertical {
-  transform: rotate(90deg);
+  transform: none;
 }
 
-.message.own-message .message-actions-btn i.bi-three-dots-vertical {
-  transform: rotate(-90deg);
+.message .message-actions-btn i.bi-three-dots-vertical {
+  transform: none;
 }
 
 .message-actions-menu {
   position: absolute;
-  bottom: 100%;
-  left: 0;
+  top: 100%;
+  right: 0;
   background-color: var(--dark-secondary);
   border-radius: var(--border-radius-md);
   box-shadow: var(--box-shadow);
@@ -553,9 +579,12 @@ body {
   display: none;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 4px;
+  animation: menu-slide-in 0.15s ease-in-out;
 }
 
-.message.own-message .message-actions-menu {
+/* All message action menus on the right */
+.message .message-actions-menu {
   left: auto;
   right: 0;
 }
@@ -566,6 +595,17 @@ body {
 
 .message-actions-menu.show {
   display: block;
+}
+
+@keyframes menu-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message-action-item {
@@ -598,6 +638,27 @@ body {
 /* Hide copy/delete buttons by default */
 .message-options {
   display: none;
+}
+
+/* Copy tooltip styling */
+.copy-tooltip {
+  position: fixed;
+  background-color: var(--dark-secondary);
+  color: var(--text-light);
+  padding: 6px 12px;
+  border-radius: var(--border-radius-md);
+  font-size: 12px;
+  z-index: 1000;
+  box-shadow: var(--box-shadow);
+  pointer-events: none;
+  animation: fade-in-out 1.5s ease-in-out;
+}
+
+@keyframes fade-in-out {
+  0% { opacity: 0; transform: translateY(5px); }
+  10% { opacity: 1; transform: translateY(0); }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .message-option-btn {

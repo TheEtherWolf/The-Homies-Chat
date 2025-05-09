@@ -716,8 +716,11 @@ class ChatManager {
             return;
         }
         
+        // Check if this message should be grouped with the previous message
+        const shouldGroup = this._shouldGroupWithPreviousMessage(message);
+        
         // Create message element using the helper method
-        const messageEl = this._createMessageElement(message, scrollToBottom);
+        const messageEl = this._createMessageElement(message, scrollToBottom, shouldGroup);
         
         // Add to messages container
         this.messagesContainer.appendChild(messageEl);
@@ -726,6 +729,34 @@ class ChatManager {
         if (scrollToBottom) {
             this._scrollToBottom();
         }
+    }
+    
+    // Determine if a message should be grouped with the previous message
+    _shouldGroupWithPreviousMessage(message) {
+        if (!this.messagesContainer) return false;
+        
+        // Get the last message in the container
+        const lastMessageEl = this.messagesContainer.querySelector('.message:last-child');
+        if (!lastMessageEl) return false;
+        
+        // Get the sender ID of the last message
+        const lastSenderId = lastMessageEl.getAttribute('data-sender-id');
+        
+        // Get the timestamp of the last message
+        const lastTimestampStr = lastMessageEl.getAttribute('data-timestamp');
+        const lastTimestamp = lastTimestampStr ? new Date(lastTimestampStr) : null;
+        
+        // Current message timestamp
+        const currentTimestamp = message.timestamp ? new Date(message.timestamp) : new Date();
+        
+        // Check if the messages are from the same sender
+        const sameSender = lastSenderId === message.senderId;
+        
+        // Check if the messages are within 3 minutes of each other
+        const timeThreshold = 3 * 60 * 1000; // 3 minutes in milliseconds
+        const closeInTime = lastTimestamp && (currentTimestamp - lastTimestamp) < timeThreshold;
+        
+        return sameSender && closeInTime;
     }
     
     // Delete a message
@@ -967,8 +998,28 @@ class ChatManager {
                 continue;
             }
             
-            // Create message element
-            const messageEl = this._createMessageElement(message, false);
+            // Check if this message should be grouped with the next message
+            // (which would be the previous message in the UI since we're prepending)
+            let shouldGroup = false;
+            
+            // If this isn't the first message in the batch, check if it should be grouped with the next one
+            if (i < messages.length - 1) {
+                const nextMessage = messages[i + 1];
+                
+                // Check if the messages are from the same sender
+                const sameSender = message.senderId === nextMessage.senderId;
+                
+                // Check if the messages are within 3 minutes of each other
+                const currentTimestamp = message.timestamp ? new Date(message.timestamp) : new Date();
+                const nextTimestamp = nextMessage.timestamp ? new Date(nextMessage.timestamp) : new Date();
+                const timeThreshold = 3 * 60 * 1000; // 3 minutes in milliseconds
+                const closeInTime = Math.abs(currentTimestamp - nextTimestamp) < timeThreshold;
+                
+                shouldGroup = sameSender && closeInTime;
+            }
+            
+            // Create message element with grouping info
+            const messageEl = this._createMessageElement(message, false, shouldGroup);
             
             // Add to fragment
             fragment.appendChild(messageEl);
@@ -991,11 +1042,37 @@ class ChatManager {
             }
         }
         
+        // Check if the first visible message should be grouped with the next message
+        // (which would be the first existing message in the DOM)
+        const firstVisibleMessage = this.messagesContainer.querySelector('.message:not(.lazy-load-sentinel):not(.date-separator):not(.system-message)');
+        const secondVisibleMessage = firstVisibleMessage?.nextElementSibling;
+        
+        if (firstVisibleMessage && secondVisibleMessage && 
+            secondVisibleMessage.classList.contains('message')) {
+            
+            const firstSenderId = firstVisibleMessage.getAttribute('data-sender-id');
+            const secondSenderId = secondVisibleMessage.getAttribute('data-sender-id');
+            
+            // If they're from the same sender, check timestamps
+            if (firstSenderId === secondSenderId) {
+                const firstTimestamp = new Date(firstVisibleMessage.getAttribute('data-timestamp'));
+                const secondTimestamp = new Date(secondVisibleMessage.getAttribute('data-timestamp'));
+                
+                const timeThreshold = 3 * 60 * 1000; // 3 minutes in milliseconds
+                const closeInTime = Math.abs(firstTimestamp - secondTimestamp) < timeThreshold;
+                
+                if (closeInTime) {
+                    // Group the second message with the first
+                    secondVisibleMessage.classList.add('grouped');
+                }
+            }
+        }
+        
         console.log('[CHAT_DEBUG] Older messages prepended successfully');
     }
     
     // Helper method to create a message element
-    _createMessageElement(message, scrollToBottom = true) {
+    _createMessageElement(message, scrollToBottom = true, isGrouped = false) {
         // Check if message is deleted
         const isDeleted = message.is_deleted === true;
         
@@ -1005,8 +1082,15 @@ class ChatManager {
         if (message.senderId === this.currentUser.id) {
             messageEl.classList.add('own-message');
         }
+        if (isGrouped) {
+            messageEl.classList.add('grouped');
+        }
         messageEl.setAttribute('data-message-id', message.id || '');
         messageEl.setAttribute('data-sender-id', message.senderId || '');
+        
+        // Store timestamp for grouping logic
+        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
+        messageEl.setAttribute('data-timestamp', timestamp.toISOString());
         
         // Get sender info
         const sender = message.sender || 'Unknown User';
@@ -1026,7 +1110,6 @@ class ChatManager {
         }
         
         // Format timestamp
-        const timestamp = message.timestamp ? new Date(message.timestamp) : new Date();
         const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
         // Determine message content
@@ -1034,36 +1117,54 @@ class ChatManager {
             ? '<em class="deleted-message">[This message has been deleted]</em>' 
             : this._formatMessageContent(message.content);
         
-        // Build message HTML
+        // Build message HTML - Discord style with all messages aligned left
         messageEl.innerHTML = `
             <img src="${avatarUrl}" alt="${sender}" class="message-avatar">
             <div class="message-content">
-                <div class="message-header">
+                ${!isGrouped ? `<div class="message-header">
                     <span class="message-author">${sender}</span>
                     <span class="message-timestamp">${timeString}</span>
-                </div>
+                </div>` : ''}
                 <div class="message-text">${messageContent}</div>
             </div>
-            ${isCurrentUser && !isDeleted ? '<div class="message-actions"><button class="message-actions-btn" title="Message Options"><i class="bi bi-three-dots-vertical"></i></button><div class="message-actions-menu"><div class="message-action-item danger" data-action="delete"><i class="bi bi-trash"></i>Delete Message</div></div></div>' : ''}
+            <div class="message-actions">
+                <button class="message-actions-btn" title="Message Options">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <div class="message-actions-menu">
+                    ${!isDeleted && isCurrentUser ? `<div class="message-action-item danger" data-action="delete">
+                        <i class="bi bi-trash"></i>Delete Message
+                    </div>` : ''}
+                    <div class="message-action-item" data-action="copy">
+                        <i class="bi bi-clipboard"></i>Copy Text
+                    </div>
+                </div>
+            </div>
         `;
+        
+        // Add event listeners for message actions
+        const actionBtn = messageEl.querySelector('.message-actions-btn');
+        const actionMenu = messageEl.querySelector('.message-actions-menu');
+        
+        if (actionBtn && actionMenu) {
+            actionBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                
+                // Close all other open menus first
+                document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
+                    if (menu !== actionMenu) {
+                        menu.classList.remove('show');
+                    }
+                });
+                
+                // Toggle this menu
+                actionMenu.classList.toggle('show');
+            });
+        }
         
         // Add delete button event listener if it's the current user's message
         if (isCurrentUser && !isDeleted) {
-            const actionBtn = messageEl.querySelector('.message-actions-btn');
-            const actionMenu = messageEl.querySelector('.message-actions-menu');
             const deleteAction = messageEl.querySelector('.message-action-item[data-action="delete"]');
-            
-            if (actionBtn && actionMenu) {
-                actionBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    actionMenu.classList.toggle('show');
-                });
-                
-                // Close menu when clicking outside
-                document.addEventListener('click', () => {
-                    actionMenu.classList.remove('show');
-                });
-            }
             
             if (deleteAction) {
                 deleteAction.addEventListener('click', () => {
@@ -1071,6 +1172,55 @@ class ChatManager {
                     actionMenu.classList.remove('show');
                 });
             }
+        }
+        
+        // Add copy text button event listener
+        const copyAction = messageEl.querySelector('.message-action-item[data-action="copy"]');
+        if (copyAction && !isDeleted) {
+            copyAction.addEventListener('click', () => {
+                // Get the raw text content without HTML
+                const textToCopy = message.content || '';
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    // Show a temporary tooltip or notification
+                    console.log('Text copied to clipboard');
+                    
+                    // Create and show a temporary tooltip
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'copy-tooltip';
+                    tooltip.textContent = 'Copied!';
+                    document.body.appendChild(tooltip);
+                    
+                    // Position near the cursor
+                    const rect = copyAction.getBoundingClientRect();
+                    tooltip.style.top = `${rect.top - 30}px`;
+                    tooltip.style.left = `${rect.left}px`;
+                    
+                    // Remove after a short delay
+                    setTimeout(() => {
+                        tooltip.remove();
+                    }, 1500);
+                    
+                    // Close the menu
+                    actionMenu.classList.remove('show');
+                }).catch(err => {
+                    console.error('Failed to copy text:', err);
+                });
+            });
+        }
+        
+        // Global click handler to close menus (added once, not per message)
+        if (!this.hasSetupGlobalClickHandler) {
+            document.addEventListener('click', (e) => {
+                // Only close if click is outside any message-actions element
+                if (!e.target.closest('.message-actions')) {
+                    document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
+                        menu.classList.remove('show');
+                    });
+                }
+            });
+            this.hasSetupGlobalClickHandler = true;
         }
         
         return messageEl;
