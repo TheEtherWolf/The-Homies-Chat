@@ -1061,11 +1061,25 @@ class ChatManager {
         loadingText.textContent = 'Loading older messages...';
         loadingIndicator.appendChild(loadingText);
         
+        // Create a container for the loading indicator to ensure proper positioning
+        const loadingContainer = document.createElement('div');
+        loadingContainer.style.width = '100%';
+        loadingContainer.style.textAlign = 'center';
+        loadingContainer.style.position = 'absolute';
+        loadingContainer.style.top = '0';
+        loadingContainer.style.left = '0';
+        loadingContainer.style.zIndex = '10';
+        loadingContainer.style.pointerEvents = 'none';
+        loadingContainer.appendChild(loadingIndicator);
+        
         // Insert at the top of the container
-        if (this.messagesContainer && this.messagesContainer.firstChild) {
-            this.messagesContainer.insertBefore(loadingIndicator, this.messagesContainer.firstChild);
-        } else if (this.messagesContainer) {
-            this.messagesContainer.appendChild(loadingIndicator);
+        if (this.messagesContainer) {
+            // Insert as the first child but with absolute positioning
+            if (this.messagesContainer.firstChild) {
+                this.messagesContainer.insertBefore(loadingContainer, this.messagesContainer.firstChild);
+            } else {
+                this.messagesContainer.appendChild(loadingContainer);
+            }
         }
         
         // Let CSS handle the animations
@@ -1482,11 +1496,25 @@ class ChatManager {
         beginningIndicator.className = 'beginning-indicator';
         beginningIndicator.textContent = 'Beginning of conversation history';
         
+        // Create a container for the beginning indicator to ensure proper positioning
+        const indicatorContainer = document.createElement('div');
+        indicatorContainer.style.width = '100%';
+        indicatorContainer.style.textAlign = 'center';
+        indicatorContainer.style.position = 'relative';
+        indicatorContainer.style.zIndex = '10';
+        indicatorContainer.style.pointerEvents = 'none';
+        indicatorContainer.style.marginTop = '10px';
+        indicatorContainer.style.marginBottom = '10px';
+        indicatorContainer.appendChild(beginningIndicator);
+        
         // Add to the beginning of the messages container
-        if (this.messagesContainer && this.messagesContainer.firstChild) {
-            this.messagesContainer.insertBefore(beginningIndicator, this.messagesContainer.firstChild);
-        } else if (this.messagesContainer) {
-            this.messagesContainer.appendChild(beginningIndicator);
+        if (this.messagesContainer) {
+            // Insert as the first child with proper positioning
+            if (this.messagesContainer.firstChild) {
+                this.messagesContainer.insertBefore(indicatorContainer, this.messagesContainer.firstChild);
+            } else {
+                this.messagesContainer.appendChild(indicatorContainer);
+            }
         }
     }
     
