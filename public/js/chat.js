@@ -62,6 +62,17 @@ class ChatManager {
     initialize() {
         console.log('[CHAT_DEBUG] Initializing chat interface');
         
+        // Set up document-wide click handler for message action menus
+        document.addEventListener('click', (event) => {
+            // Check if we clicked outside any message action menu
+            if (!event.target.closest('.message-actions-btn') && !event.target.closest('.message-actions-menu')) {
+                // Close all open menus
+                document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
+                    menu.classList.remove('show');
+                });
+            }
+        });
+        
         // Check if user is logged in via session storage
         const userData = sessionStorage.getItem('user');
         if (!userData) {
@@ -283,17 +294,136 @@ class ChatManager {
             document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
             document.getElementById('dm-button').classList.add('active');
             
-            // Show DM list and hide channels
+            // Show Friends section and hide channels
             document.getElementById('channels-section')?.classList.add('d-none');
-            document.getElementById('dm-section')?.classList.remove('d-none');
+            document.getElementById('dm-section')?.classList.add('d-none');
+            document.getElementById('friends-section')?.classList.remove('d-none');
             
             // Update chat header
             if (this.chatTitle) {
-                this.chatTitle.innerHTML = '<i class="bi bi-chat-fill me-2"></i> Direct Messages';
+                this.chatTitle.innerHTML = '<i class="bi bi-people-fill me-2"></i> Friends';
             }
             
-            // Display DM conversations or empty state
-            this._displayChannelMessages('direct-messages');
+            // Clear messages container and show friends UI
+            if (this.messagesContainer) {
+                this.messagesContainer.innerHTML = '';
+                
+                // Add a container for the friends UI
+                const friendsUIContainer = document.createElement('div');
+                friendsUIContainer.className = 'friends-ui-container';
+                
+                // Check if we have friends
+                const hasFriends = Object.keys(this.friendships).length > 0;
+                
+                if (hasFriends) {
+                    // Show friends list
+                    const friendsList = document.createElement('div');
+                    friendsList.className = 'friends-list-container';
+                    
+                    // Add header
+                    const header = document.createElement('h3');
+                    header.textContent = 'Your Friends';
+                    friendsList.appendChild(header);
+                    
+                    // Add friends
+                    Object.values(this.friendships).forEach(friendship => {
+                        const friendItem = this._createFriendListItem(friendship);
+                        friendsList.appendChild(friendItem);
+                    });
+                    
+                    friendsUIContainer.appendChild(friendsList);
+                } else {
+                    // Show empty state with add friend option
+                    const emptyState = document.createElement('div');
+                    emptyState.className = 'friends-empty-state';
+                    
+                    const icon = document.createElement('i');
+                    icon.className = 'bi bi-people-fill empty-icon';
+                    emptyState.appendChild(icon);
+                    
+                    const message = document.createElement('h3');
+                    message.textContent = 'No friends yet';
+                    emptyState.appendChild(message);
+                    
+                    const subMessage = document.createElement('p');
+                    subMessage.textContent = 'Add friends to start chatting with them';
+                    emptyState.appendChild(subMessage);
+                    
+                    const addFriendBtn = document.createElement('button');
+                    addFriendBtn.className = 'btn btn-primary';
+                    addFriendBtn.innerHTML = '<i class="bi bi-person-plus-fill me-2"></i> Add Friend';
+                    addFriendBtn.addEventListener('click', () => {
+                        // Show the add friend tab
+                        document.querySelectorAll('.friend-tab-btn').forEach(btn => btn.classList.remove('active'));
+                        document.querySelectorAll('.friends-tab-pane').forEach(pane => pane.classList.remove('active'));
+                        
+                        document.querySelector('.friend-tab-btn[data-tab="add"]')?.classList.add('active');
+                        document.getElementById('friends-add')?.classList.add('active');
+                    });
+                    emptyState.appendChild(addFriendBtn);
+                    
+                    // Show friend code section
+                    const friendCodeSection = document.createElement('div');
+                    friendCodeSection.className = 'friend-code-section mt-4';
+                    
+                    const codeLabel = document.createElement('h4');
+                    codeLabel.textContent = 'Your Friend Code';
+                    friendCodeSection.appendChild(codeLabel);
+                    
+                    const codeDisplay = document.createElement('div');
+                    codeDisplay.className = 'friend-code-display d-flex align-items-center';
+                    
+                    const codeSpan = document.createElement('span');
+                    codeSpan.id = 'main-friend-code';
+                    codeSpan.textContent = document.getElementById('my-friend-code')?.textContent || 'Loading...';
+                    codeDisplay.appendChild(codeSpan);
+                    
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'btn btn-sm btn-outline-secondary ms-2';
+                    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                    copyBtn.addEventListener('click', () => {
+                        const code = document.getElementById('main-friend-code')?.textContent;
+                        if (code && code !== 'Loading...') {
+                            navigator.clipboard.writeText(code).then(() => {
+                                // Show copied tooltip
+                                const tooltip = document.createElement('div');
+                                tooltip.className = 'copy-tooltip';
+                                tooltip.textContent = 'Copied!';
+                                document.body.appendChild(tooltip);
+                                
+                                // Position near the button
+                                const rect = copyBtn.getBoundingClientRect();
+                                tooltip.style.top = `${rect.top - 30}px`;
+                                tooltip.style.left = `${rect.left}px`;
+                                
+                                // Remove after a short delay
+                                setTimeout(() => {
+                                    tooltip.remove();
+                                }, 1500);
+                            });
+                        }
+                    });
+                    codeDisplay.appendChild(copyBtn);
+                    
+                    friendCodeSection.appendChild(codeDisplay);
+                    emptyState.appendChild(friendCodeSection);
+                    
+                    friendsUIContainer.appendChild(emptyState);
+                }
+                
+                this.messagesContainer.appendChild(friendsUIContainer);
+            }
+            
+            // Fetch friend list from server
+            this.socket.emit('get-friends', (response) => {
+                if (response.success && response.friends) {
+                    console.log('[CHAT_DEBUG] Received friends list:', response.friends);
+                    // Update friendships object
+                    response.friends.forEach(friendship => {
+                        this.friendships[friendship.user_id] = friendship;
+                    });
+                }
+            });
         });
         
         // Home button click handler
@@ -477,6 +607,127 @@ class ChatManager {
         } catch (error) {
             console.error('[CHAT_DEBUG] Exception uploading profile picture:', error);
             alert('An error occurred while uploading your profile picture. Please try again.');
+        }
+    }
+    
+    // Create a friend list item element
+    _createFriendListItem(friendship) {
+        // Get the friend's user ID (the other user in the friendship)
+        const friendUserId = friendship.user_id;
+        const friendUsername = friendship.username || 'Unknown User';
+        const friendStatus = friendship.status || 'offline';
+        const friendAvatarUrl = friendship.avatar_url || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+        
+        // Create the friend item element
+        const friendItem = document.createElement('div');
+        friendItem.className = 'friend-item';
+        friendItem.setAttribute('data-user-id', friendUserId);
+        
+        // Create the friend item content
+        friendItem.innerHTML = `
+            <div class="friend-avatar">
+                <img src="${friendAvatarUrl}" alt="${friendUsername}">
+                <span class="status-indicator status-${friendStatus}"></span>
+            </div>
+            <div class="friend-info">
+                <div class="friend-name">${friendUsername}</div>
+                <div class="friend-status">${this._formatStatus(friendStatus)}</div>
+            </div>
+            <div class="friend-actions">
+                <button class="btn btn-sm btn-primary message-btn" title="Message">
+                    <i class="bi bi-chat-fill"></i>
+                </button>
+            </div>
+        `;
+        
+        // Add event listener for messaging
+        const messageBtn = friendItem.querySelector('.message-btn');
+        if (messageBtn) {
+            messageBtn.addEventListener('click', () => {
+                // Start a DM conversation with this friend
+                this._startDMConversation(friendUserId, friendUsername);
+            });
+        }
+        
+        return friendItem;
+    }
+    
+    // Format user status for display
+    _formatStatus(status) {
+        switch (status) {
+            case 'online':
+                return 'Online';
+            case 'idle':
+                return 'Idle';
+            case 'dnd':
+                return 'Do Not Disturb';
+            case 'offline':
+                return 'Offline';
+            default:
+                return 'Offline';
+        }
+    }
+    
+    // Start a DM conversation with a user
+    _startDMConversation(userId, username) {
+        console.log(`[CHAT_DEBUG] Starting DM conversation with ${username} (${userId})`);
+        
+        // Set current DM recipient
+        this.currentDmRecipientId = userId;
+        this.isDMMode = true;
+        this.currentChannel = `dm-${userId}`;
+        
+        // Update UI
+        document.getElementById('friends-section')?.classList.add('d-none');
+        document.getElementById('dm-section')?.classList.remove('d-none');
+        
+        // Update chat header
+        if (this.chatTitle) {
+            this.chatTitle.innerHTML = `<i class="bi bi-chat-fill me-2"></i> ${username}`;
+        }
+        
+        // Load DM messages
+        this.socket.emit('get-dm-messages', { recipientId: userId }, (response) => {
+            if (response && response.messages) {
+                // Cache the messages
+                this.dmConversations[userId] = response.messages;
+                
+                // Display the messages
+                this._displayDMConversation(userId);
+            }
+        });
+    }
+    
+    // Display a DM conversation
+    _displayDMConversation(userId) {
+        console.log(`[CHAT_DEBUG] Displaying DM conversation with user ${userId}`);
+        
+        // Clear messages container
+        if (this.messagesContainer) {
+            this.messagesContainer.innerHTML = '';
+            
+            // Get messages for this DM
+            const messages = this.dmConversations[userId] || [];
+            
+            if (messages.length === 0) {
+                // Show empty state
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-dm-state';
+                emptyState.innerHTML = `
+                    <i class="bi bi-chat-text"></i>
+                    <p>No messages yet</p>
+                    <p class="sub-text">Start the conversation by sending a message</p>
+                `;
+                this.messagesContainer.appendChild(emptyState);
+            } else {
+                // Display messages
+                messages.forEach(message => {
+                    this._displayMessage(message, false);
+                });
+                
+                // Scroll to bottom
+                this._scrollToBottom();
+            }
         }
     }
     
@@ -1452,6 +1703,12 @@ class ChatManager {
         // Format timestamp using our timestamp utilities
         const timeString = window.timestampUtils ? window.timestampUtils.formatTimestamp(timestamp) : timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
+        // Create timestamp element
+        const timestampElement = document.createElement('span');
+        timestampElement.className = 'message-timestamp';
+        timestampElement.textContent = timeString;
+        timestampElement.setAttribute('data-timestamp', timestamp.toISOString());
+        
         // Determine message content
         let messageContent = isDeleted 
             ? '<em class="deleted-message">[This message has been deleted]</em>' 
@@ -1463,7 +1720,7 @@ class ChatManager {
             <div class="message-content">
                 ${!isGrouped ? `<div class="message-header">
                     <span class="message-author">${sender}</span>
-                    <span class="message-timestamp">${timeString}</span>
+                    <span class="message-timestamp" data-timestamp="${timestamp.toISOString()}">${timeString}</span>
                 </div>` : ''}
                 <div class="message-text">${messageContent}</div>
             </div>

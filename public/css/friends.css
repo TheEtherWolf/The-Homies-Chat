@@ -1,0 +1,198 @@
+/* Friends list styling */
+.friend-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    background-color: #2a2d31;
+    transition: background-color 0.2s ease;
+}
+
+.friend-item:hover {
+    background-color: #36393f;
+}
+
+.friend-avatar {
+    position: relative;
+    margin-right: 12px;
+}
+
+.friend-avatar img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.status-indicator {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid #2a2d31;
+}
+
+.status-online {
+    background-color: #43b581;
+}
+
+.status-idle {
+    background-color: #faa61a;
+}
+
+.status-dnd {
+    background-color: #f04747;
+}
+
+.status-offline {
+    background-color: #747f8d;
+}
+
+.friend-info {
+    flex: 1;
+}
+
+.friend-name {
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.friend-status {
+    font-size: 0.8rem;
+    color: #b9bbbe;
+}
+
+.friend-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.empty-friends-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.empty-friends-state i {
+    font-size: 3rem;
+    color: #72767d;
+    margin-bottom: 16px;
+}
+
+.empty-friends-state p {
+    margin-bottom: 8px;
+    color: #ffffff;
+}
+
+.empty-friends-state .sub-text {
+    color: #b9bbbe;
+    font-size: 0.9rem;
+}
+
+.friend-code-section {
+    margin-top: 24px;
+    width: 100%;
+    max-width: 300px;
+}
+
+.friend-code {
+    display: flex;
+    align-items: center;
+    background-color: #36393f;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-top: 8px;
+}
+
+.friend-code span {
+    flex: 1;
+    font-family: monospace;
+    font-size: 1rem;
+    color: #ffffff;
+}
+
+.copy-code-btn {
+    padding: 4px 8px;
+    margin-left: 8px;
+}
+
+.add-friend-section {
+    margin-top: 24px;
+    width: 100%;
+    max-width: 300px;
+}
+
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 16px;
+    border-radius: 4px;
+    color: white;
+    font-weight: 500;
+    z-index: 9999;
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    max-width: 300px;
+}
+
+.notification.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.notification-success {
+    background-color: #43b581;
+}
+
+.notification-error {
+    background-color: #f04747;
+}
+
+.notification-info {
+    background-color: #7289da;
+}
+
+.copy-tooltip {
+    position: absolute;
+    background-color: #202225;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.empty-dm-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.empty-dm-state i {
+    font-size: 3rem;
+    color: #72767d;
+    margin-bottom: 16px;
+}
+
+.empty-dm-state p {
+    margin-bottom: 8px;
+    color: #ffffff;
+}
+
+.empty-dm-state .sub-text {
+    color: #b9bbbe;
+    font-size: 0.9rem;
+}
