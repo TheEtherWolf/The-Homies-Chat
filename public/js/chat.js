@@ -48,6 +48,7 @@ class ChatManager {
         
         // --- Lazy Loading Variables ---
         this.messagesPerPage = 25; // Number of messages to load at once
+        this.expectedChunkSize = 15; // Number of messages to load in each lazy loading chunk
         this.hasMoreMessagesToLoad = true; // Whether there are more messages to load
         this.isLoadingMoreMessages = false; // Whether we're currently loading more messages
         this.currentMessageOffset = 0; // Current offset for pagination
@@ -745,9 +746,10 @@ class ChatManager {
             this._setupLazyLoadingObserver();
             
             // Reset lazy loading state for new channel
-            this.hasMoreMessagesToLoad = messages.length >= this.messagesPerPage;
+            this.hasMoreMessagesToLoad = true; // Always assume there are more messages initially
             this.isLoadingMoreMessages = false;
             this.currentMessageOffset = messages.length;
+            this.expectedChunkSize = 15; // The number of messages we expect to load in each chunk
         }
     }
     
@@ -933,6 +935,11 @@ class ChatManager {
     _setupLazyLoadingObserver() {
         console.log('[CHAT_DEBUG] Setting up enhanced scroll-based lazy loading');
         
+        // Reset the hasMoreMessagesToLoad flag to true when setting up a new observer
+        // This ensures we always try to load messages at least once for a new channel
+        // The server response will determine if there are actually more messages
+        this.hasMoreMessagesToLoad = true;
+        
         // Remove any existing event listeners to prevent duplicates
         if (this.messagesContainer && this._boundScrollHandler) {
             this.messagesContainer.removeEventListener('scroll', this._boundScrollHandler);
@@ -987,6 +994,12 @@ class ChatManager {
             } else if (this.messagesContainer) {
                 this.messagesContainer.appendChild(sentinel);
             }
+        }
+        
+        // Remove any existing beginning indicator when setting up a new observer
+        const beginningIndicator = document.getElementById('beginning-indicator');
+        if (beginningIndicator && beginningIndicator.parentNode) {
+            beginningIndicator.parentNode.remove();
         }
     }
     
@@ -1068,10 +1081,10 @@ class ChatManager {
         const channel = this.currentChannel.startsWith('#') ? this.currentChannel.substring(1) : this.currentChannel;
         const offset = this.channelMessages[channel] ? this.channelMessages[channel].length : 0;
         
-        // Request older messages from the server with smaller chunks for smoother experience
+        // Request older messages from the server with consistent chunk size
         this.socket.emit('get-channel-messages', {
             channel: channel,
-            limit: 15, // Smaller chunks for smoother loading and animations
+            limit: this.expectedChunkSize, // Use the class property for consistency
             offset: offset,
             isOlderMessages: true
         });
@@ -1119,6 +1132,17 @@ class ChatManager {
                 this._showBeginningIndicator();
             }
             return;
+        }
+        
+        // Check if we received fewer messages than expected, indicating we're at or near the end
+        if (messages.length < this.expectedChunkSize) {
+            console.log(`[CHAT_DEBUG] Received ${messages.length} messages, which is less than expected ${this.expectedChunkSize}. Likely near the end.`);
+            // If we received fewer messages than expected, we're likely at the end
+            // Set hasMoreMessagesToLoad to false only if we received 0 messages
+            if (messages.length === 0) {
+                this.hasMoreMessagesToLoad = false;
+                this._showBeginningIndicator();
+            }
         }
         
         // Get reference to the sentinel element
@@ -1233,6 +1257,18 @@ class ChatManager {
         
         // Update the offset for the next batch
         this.currentMessageOffset += messages.length;
+        
+        // If we received fewer messages than expected, we might be at the end
+        // But we'll only mark as end of conversation if we received zero messages
+        if (messages.length < this.expectedChunkSize) {
+            console.log(`[CHAT_DEBUG] Received fewer messages (${messages.length}) than expected (${this.expectedChunkSize}), may be near the end`);
+            
+            // If we received zero messages, we're definitely at the end
+            if (messages.length === 0) {
+                this.hasMoreMessagesToLoad = false;
+                this._showBeginningIndicator();
+            }
+        }
         
         console.log('[CHAT_DEBUG] Older messages prepended successfully');
     }
@@ -1469,34 +1505,42 @@ class ChatManager {
      * @private
      */
     _showBeginningIndicator() {
-        // Check if we already have a beginning indicator
-        if (document.getElementById('beginning-indicator')) return;
-        
-        // Create beginning indicator
-        const beginningIndicator = document.createElement('div');
-        beginningIndicator.id = 'beginning-indicator';
-        beginningIndicator.className = 'beginning-indicator';
-        beginningIndicator.textContent = 'Beginning of conversation history';
-        
-        // Create a container for the beginning indicator to ensure proper positioning
-        const indicatorContainer = document.createElement('div');
-        indicatorContainer.style.width = '100%';
-        indicatorContainer.style.textAlign = 'center';
-        indicatorContainer.style.position = 'relative';
-        indicatorContainer.style.zIndex = '10';
-        indicatorContainer.style.pointerEvents = 'none';
-        indicatorContainer.style.marginTop = '10px';
-        indicatorContainer.style.marginBottom = '10px';
-        indicatorContainer.appendChild(beginningIndicator);
-        
-        // Add to the beginning of the messages container
-        if (this.messagesContainer) {
-            // Insert as the first child with proper positioning
-            if (this.messagesContainer.firstChild) {
-                this.messagesContainer.insertBefore(indicatorContainer, this.messagesContainer.firstChild);
-            } else {
-                this.messagesContainer.appendChild(indicatorContainer);
+        // Only show the beginning indicator if we truly have no more messages to load
+        if (!this.hasMoreMessagesToLoad) {
+            // Check if we already have a beginning indicator
+            if (document.getElementById('beginning-indicator')) return;
+            
+            console.log('[CHAT_DEBUG] Showing beginning of conversation indicator');
+            
+            // Create beginning indicator
+            const beginningIndicator = document.createElement('div');
+            beginningIndicator.id = 'beginning-indicator';
+            beginningIndicator.className = 'beginning-indicator';
+            beginningIndicator.textContent = 'Beginning of conversation history';
+            
+            // Create a container for the beginning indicator to ensure proper positioning
+            const indicatorContainer = document.createElement('div');
+            indicatorContainer.id = 'beginning-indicator-container';
+            indicatorContainer.style.width = '100%';
+            indicatorContainer.style.textAlign = 'center';
+            indicatorContainer.style.position = 'relative';
+            indicatorContainer.style.zIndex = '10';
+            indicatorContainer.style.pointerEvents = 'none';
+            indicatorContainer.style.marginTop = '10px';
+            indicatorContainer.style.marginBottom = '10px';
+            indicatorContainer.appendChild(beginningIndicator);
+            
+            // Add to the beginning of the messages container
+            if (this.messagesContainer) {
+                // Insert as the first child with proper positioning
+                if (this.messagesContainer.firstChild) {
+                    this.messagesContainer.insertBefore(indicatorContainer, this.messagesContainer.firstChild);
+                } else {
+                    this.messagesContainer.appendChild(indicatorContainer);
+                }
             }
+        } else {
+            console.log('[CHAT_DEBUG] Not showing beginning indicator because hasMoreMessagesToLoad is true');
         }
     }
     
