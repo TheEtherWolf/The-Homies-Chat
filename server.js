@@ -513,21 +513,44 @@ io.on("connection", (socket) => {
             
             console.log(`Registering user with username: ${username}`);
             
-            // Perform actual registration with simplified approach
-            const user = await registerUser(username, password, email);
-            
-            if (user) {
-                console.log(`User registered successfully: ${username}`);
+            // Check if username already exists before attempting registration
+            try {
+                const { data: existingUser, error: lookupError } = await getSupabaseClient(true)
+                    .from('users')
+                    .select('id')
+                    .eq('username', username)
+                    .maybeSingle();
                 
-                callback({ 
-                    success: true, 
-                    message: 'Registration successful! You can now log in with your credentials.',
-                    verificationRequired: false
-                });
-            } else {
+                if (existingUser) {
+                    console.log(`Username ${username} is already taken`);
+                    return callback({ 
+                        success: false, 
+                        message: 'This username is already taken. Please choose a different username.'
+                    });
+                }
+                
+                // If username is available, proceed with registration
+                const user = await registerUser(username, password, email);
+                
+                if (user) {
+                    console.log(`User registered successfully: ${username}`);
+                    
+                    callback({ 
+                        success: true, 
+                        message: 'Registration successful! You can now log in with your credentials.',
+                        verificationRequired: false
+                    });
+                } else {
+                    callback({ 
+                        success: false, 
+                        message: 'Failed to register user. Please try again.'
+                    });
+                }
+            } catch (lookupError) {
+                console.error('Error checking for existing username:', lookupError);
                 callback({ 
                     success: false, 
-                    message: 'Failed to register user. Please try again.'
+                    message: 'An error occurred while checking username availability. Please try again.'
                 });
             }
         } catch (error) {

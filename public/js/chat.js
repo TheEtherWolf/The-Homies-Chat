@@ -272,7 +272,51 @@ class ChatManager {
     _setupUIEventListeners() {
         console.log('[CHAT_DEBUG] Setting up UI event listeners');
         
-        // Existing event listeners...
+        // DM button click handler
+        document.getElementById('dm-button')?.addEventListener('click', () => {
+            console.log('[CHAT_DEBUG] DM button clicked');
+            this.isDMMode = true;
+            this.currentChannel = 'direct-messages';
+            
+            // Update UI to show we're in DM mode
+            document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('dm-button').classList.add('active');
+            
+            // Show DM list and hide channels
+            document.getElementById('channels-section')?.classList.add('d-none');
+            document.getElementById('dm-section')?.classList.remove('d-none');
+            
+            // Update chat header
+            if (this.chatTitle) {
+                this.chatTitle.innerHTML = '<i class="bi bi-chat-fill me-2"></i> Direct Messages';
+            }
+            
+            // Display DM conversations or empty state
+            this._displayChannelMessages('direct-messages');
+        });
+        
+        // Home button click handler
+        document.getElementById('home-button')?.addEventListener('click', () => {
+            console.log('[CHAT_DEBUG] Home button clicked');
+            this.isDMMode = false;
+            this.currentChannel = 'general';
+            
+            // Update UI to show we're in channels mode
+            document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('home-button').classList.add('active');
+            
+            // Show channels and hide DM list
+            document.getElementById('channels-section')?.classList.remove('d-none');
+            document.getElementById('dm-section')?.classList.add('d-none');
+            
+            // Update chat header
+            if (this.chatTitle) {
+                this.chatTitle.innerHTML = '<i class="bi bi-hash me-2"></i> general';
+            }
+            
+            // Display general chat
+            this._displayChannelMessages('general');
+        });
         
         // Settings button click handler
         document.getElementById('settings-button')?.addEventListener('click', () => {
