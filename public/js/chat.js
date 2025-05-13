@@ -1224,8 +1224,8 @@ class ChatManager {
             avatarUrl = this.allUsers[senderId].avatarUrl;
         }
         
-        // Format timestamp
-        const timeString = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        // Format timestamp using our timestamp utilities
+        const timeString = window.timestampUtils ? window.timestampUtils.formatTimestamp(timestamp) : timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
         // Determine message content
         let messageContent = isDeleted 
@@ -1325,7 +1325,7 @@ class ChatManager {
             });
         }
         
-        // Global click handler to close menus (added once, not per message)
+        // Add global click handler to close menus (added once, not per message)
         if (!this.hasSetupGlobalClickHandler) {
             document.addEventListener('click', (e) => {
                 // Only close if click is outside any message-actions element
@@ -1336,6 +1336,14 @@ class ChatManager {
                 }
             });
             this.hasSetupGlobalClickHandler = true;
+        }
+        
+        // Register the timestamp element for live updates
+        if (window.timestampUtils) {
+            const timestampElement = messageEl.querySelector('.message-timestamp');
+            if (timestampElement) {
+                window.timestampUtils.registerTimestampElement(timestampElement, timestamp.toISOString());
+            }
         }
         
         return messageEl;
