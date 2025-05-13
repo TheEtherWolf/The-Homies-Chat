@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/dm-friends.css">
     <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
     <style>
         :root {
@@ -163,16 +164,94 @@
                     </div>
                 </div>
                 
-                <!-- DMs Section (hidden by default, shown when DM button is clicked) -->
-                <div id="dm-section" class="d-none">
+                <!-- Friends Section (hidden by default, shown when DM button is clicked) -->
+                <div id="friends-section" class="d-none">
                     <div class="section-header">
-                        <span>DIRECT MESSAGES</span>
+                        <span>FRIENDS</span>
                         <button id="add-friend-btn" class="btn-icon" title="Add Friend">
                             <i class="bi bi-person-plus-fill"></i>
                         </button>
                     </div>
+                    
+                    <!-- Friends Tab Navigation -->
+                    <div class="friends-tabs">
+                        <button class="friend-tab-btn active" data-tab="all">All</button>
+                        <button class="friend-tab-btn" data-tab="pending">Pending</button>
+                        <button class="friend-tab-btn" data-tab="blocked">Blocked</button>
+                        <button class="friend-tab-btn" data-tab="add">Add</button>
+                    </div>
+                    
+                    <!-- Friends Tab Content -->
+                    <div class="friends-tab-content">
+                        <!-- All Friends Tab -->
+                        <div class="friends-tab-pane active" id="friends-all">
+                            <div id="friends-list" class="list-container">
+                                <!-- Friends will be added here by JS -->
+                                <div class="empty-state">
+                                    <i class="bi bi-people"></i>
+                                    <p>No friends yet. Add some friends to chat with!</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Pending Friends Tab -->
+                        <div class="friends-tab-pane" id="friends-pending">
+                            <div id="pending-requests-list" class="list-container">
+                                <!-- Pending requests will be added here by JS -->
+                                <div class="empty-state">
+                                    <i class="bi bi-hourglass"></i>
+                                    <p>No pending friend requests</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Blocked Users Tab -->
+                        <div class="friends-tab-pane" id="friends-blocked">
+                            <div id="blocked-users-list" class="list-container">
+                                <!-- Blocked users will be added here by JS -->
+                                <div class="empty-state">
+                                    <i class="bi bi-slash-circle"></i>
+                                    <p>No blocked users</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Add Friend Tab -->
+                        <div class="friends-tab-pane" id="friends-add">
+                            <div class="add-friend-form">
+                                <p>You can add friends with their Username#Tag</p>
+                                <div class="input-group">
+                                    <input type="text" id="friend-username-input" class="form-control" placeholder="Username#0000">
+                                    <button class="btn btn-primary" id="send-friend-request-btn">Send Request</button>
+                                </div>
+                                <div class="mt-3">
+                                    <p>Or use your friend code:</p>
+                                    <div class="friend-code-display">
+                                        <span id="my-friend-code">Loading...</span>
+                                        <button class="btn btn-sm btn-outline-secondary" id="copy-friend-code-btn">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- DMs Section -->
+                <div id="dm-section" class="d-none">
+                    <div class="section-header">
+                        <span>DIRECT MESSAGES</span>
+                        <button id="create-dm-btn" class="btn-icon" title="New Message">
+                            <i class="bi bi-pencil-square"></i>
+                        </button>
+                    </div>
                     <div id="dm-list" class="list-container">
                         <!-- DM items will be added here by JS -->
+                        <div class="empty-state">
+                            <i class="bi bi-chat"></i>
+                            <p>No conversations yet</p>
+                        </div>
                     </div>
                 </div>
                 
@@ -1088,6 +1167,95 @@
             </div>
         </div>
 
+        <!-- Create Group Chat Modal -->
+        <div class="modal fade" id="create-group-modal" tabindex="-1" aria-labelledby="createGroupModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="createGroupModalLabel">Create Group Chat</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <div class="group-avatar-container text-center">
+                                    <div class="group-avatar-preview">
+                                        <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911" alt="Group Avatar" id="group-avatar-preview">
+                                    </div>
+                                    <button class="btn btn-sm btn-primary mt-2" id="upload-group-avatar-btn">Upload Avatar</button>
+                                    <input type="file" id="group-avatar-input" accept="image/*" class="d-none">
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <label for="group-name-input" class="form-label">Group Name</label>
+                                    <input type="text" class="form-control" id="group-name-input" placeholder="Enter a name for your group">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Select Friends</label>
+                                    <div class="input-group mb-2">
+                                        <input type="text" class="form-control" id="group-friend-search" placeholder="Search friends...">
+                                        <button class="btn btn-outline-secondary" type="button" id="group-friend-search-btn">
+                                            <i class="bi bi-search"></i>
+                                        </button>
+                                    </div>
+                                    <div class="friends-selection-container" id="group-friends-selection">
+                                        <!-- Friends will be populated here by JS -->
+                                        <div class="empty-state">
+                                            <p>No friends available to add</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="selected-friends-container mt-3">
+                            <label class="form-label">Selected Friends (<span id="selected-friends-count">0</span>)</label>
+                            <div id="selected-friends-list" class="d-flex flex-wrap gap-2">
+                                <!-- Selected friends will appear here -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="create-group-chat-btn">Create Group Chat</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- New DM Modal -->
+        <div class="modal fade" id="new-dm-modal" tabindex="-1" aria-labelledby="newDmModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="newDmModalLabel">New Message</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Select a Friend</label>
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control" id="dm-friend-search" placeholder="Search friends...">
+                                <button class="btn btn-outline-secondary" type="button" id="dm-friend-search-btn">
+                                    <i class="bi bi-search"></i>
+                                </button>
+                            </div>
+                            <div class="friends-selection-container" id="dm-friends-selection">
+                                <!-- Friends will be populated here by JS -->
+                                <div class="empty-state">
+                                    <p>No friends available</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="start-dm-btn" disabled>Start Conversation</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Friend Request Notification Modal -->
         <div class="modal fade" id="friend-request-notification-modal" tabindex="-1" aria-labelledby="friendRequestModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
