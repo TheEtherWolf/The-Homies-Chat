@@ -1167,6 +1167,11 @@ class ChatManager {
             const messageEl = this._createMessageElement(message, false, shouldGroup);
             messageEl.classList.add('fade-in');
             
+            // Ensure visibility with explicit styles
+            messageEl.style.visibility = 'visible';
+            messageEl.style.opacity = '1';
+            messageEl.style.display = 'flex';
+            
             // Add to fragment
             fragment.appendChild(messageEl);
         }
@@ -1187,6 +1192,9 @@ class ChatManager {
                 this.messagesContainer.appendChild(fragment);
             }
         }
+        
+        // Force a reflow to ensure messages are rendered properly
+        this._forceReflow();
         
         // Check if the first visible message should be grouped with the next message
         // (which would be the first existing message in the DOM)
@@ -1279,6 +1287,11 @@ class ChatManager {
         if (isGrouped) {
             messageEl.classList.add('grouped');
         }
+        
+        // Ensure visibility with explicit styles
+        messageEl.style.visibility = 'visible';
+        messageEl.style.opacity = '1';
+        messageEl.style.display = 'flex';
         messageEl.setAttribute('data-message-id', message.id || '');
         messageEl.setAttribute('data-sender-id', message.senderId || '');
         
@@ -1426,6 +1439,33 @@ class ChatManager {
         }
         
         return messageEl;
+    }
+    
+    /**
+     * Force a reflow of the DOM to ensure elements are rendered properly
+     * @private
+     */
+    _forceReflow() {
+        if (!this.messagesContainer) return;
+        
+        // Temporarily hide the container
+        const originalDisplay = this.messagesContainer.style.display;
+        this.messagesContainer.style.display = 'none';
+        
+        // Force a reflow by accessing offsetHeight
+        void this.messagesContainer.offsetHeight;
+        
+        // Restore the original display
+        this.messagesContainer.style.display = originalDisplay;
+        
+        // Apply visibility to all messages to ensure they're visible
+        const messages = this.messagesContainer.querySelectorAll('.message');
+        messages.forEach(msg => {
+            if (msg.style.visibility !== 'visible') {
+                msg.style.visibility = 'visible';
+                msg.style.opacity = '1';
+            }
+        });
     }
     
     /**

@@ -423,6 +423,9 @@ body {
   transition: background-color 0.15s ease-in-out;
   border-radius: 4px;
   animation: message-appear 0.3s ease forwards;
+  visibility: visible !important; /* Force visibility */
+  opacity: 1 !important; /* Force opacity after animation */
+  will-change: transform, opacity; /* Optimize for animations */
 }
 
 .message:hover {
@@ -1790,6 +1793,8 @@ body {
 .fade-in {
   opacity: 0;
   animation: fade-in 0.3s ease forwards;
+  visibility: visible; /* Ensure visibility */
+  display: block; /* Ensure display */
 }
 
 @keyframes spin {
@@ -1798,6 +1803,11 @@ body {
 }
 
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); visibility: visible; }
+  to { opacity: 1; transform: translateY(0); visibility: visible; }
+}
+
+@keyframes message-appear {
+  from { opacity: 0; transform: translateY(10px); visibility: visible; }
+  to { opacity: 1; transform: translateY(0); visibility: visible; }
 }
