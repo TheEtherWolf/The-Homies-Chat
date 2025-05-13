@@ -652,6 +652,50 @@ class ChatManager {
             
             console.log(`[CHAT_DEBUG] Updated avatar in ${updatedCount} messages from user ${data.userId}`);
         });
+        
+        // Handle message deletion events
+        this.socket.on('message-deleted', (data) => {
+            console.log('[CHAT_DEBUG] Message deleted event received:', data);
+            
+            if (!data || !data.messageId) {
+                console.error('[CHAT_DEBUG] Invalid message deletion data');
+                return;
+            }
+            
+            // Find the message element in the DOM
+            const messageElement = document.querySelector(`.message[data-message-id="${data.messageId}"]`);
+            if (messageElement) {
+                // Update the message content to show it's deleted
+                const messageTextElement = messageElement.querySelector('.message-text');
+                if (messageTextElement) {
+                    messageTextElement.innerHTML = '<em class="deleted-message">[This message has been deleted]</em>';
+                }
+                
+                // Remove delete option from dropdown if it exists
+                const deleteAction = messageElement.querySelector('.message-action-item[data-action="delete"]');
+                if (deleteAction) {
+                    deleteAction.remove();
+                }
+                
+                console.log('[CHAT_DEBUG] Message marked as deleted in UI:', data.messageId);
+            } else {
+                console.error('[CHAT_DEBUG] Could not find message element to mark as deleted:', data.messageId);
+            }
+            
+            // Update the message in our cached arrays
+            for (const channel in this.channelMessages) {
+                const messages = this.channelMessages[channel];
+                const messageIndex = messages.findIndex(msg => msg.id === data.messageId);
+                
+                if (messageIndex !== -1) {
+                    // Mark the message as deleted in our cache
+                    messages[messageIndex].is_deleted = true;
+                    messages[messageIndex].deleted_at = new Date().toISOString();
+                    console.log(`[CHAT_DEBUG] Message marked as deleted in channel cache: ${channel}`);
+                    break;
+                }
+            }
+        });
     }
     
     // Send a message
@@ -828,12 +872,12 @@ class ChatManager {
         this._playDeleteSound();
         
         // Send delete request to server
-        this.socket.emit('delete-message', { messageId }, (response) => {
+        this.socket.emit('delete-message', { messageId, userId: this.currentUser.id }, (response) => {
             console.log('[CHAT_DEBUG] Delete message response:', response);
             
             if (!response.success) {
-                console.error('[CHAT_DEBUG] Error deleting message:', response.message);
-                alert('Failed to delete message: ' + response.message);
+                console.error('[CHAT_DEBUG] Error deleting message:', response.error);
+                alert('Failed to delete message: ' + (response.error || 'Unknown error'));
             }
         });
     }
