@@ -422,6 +422,7 @@ body {
   width: 100%;
   transition: background-color 0.15s ease-in-out;
   border-radius: 4px;
+  animation: message-appear 0.3s ease forwards;
 }
 
 .message:hover {
@@ -1740,4 +1741,63 @@ body {
   background-color: rgba(52, 152, 219, 0.2);
   color: var(--primary-color);
   border-color: var(--primary-color);
+}
+
+/* Lazy Loading Styles */
+.lazy-load-sentinel {
+  height: 1px;
+  width: 100%;
+  background: transparent;
+  pointer-events: none;
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  margin: 10px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.loading-indicator.fade-out {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid var(--primary-color);
+  border-radius: 50%;
+  margin-right: 8px;
+  animation: spin 1s linear infinite;
+}
+
+.beginning-indicator {
+  text-align: center;
+  padding: 10px;
+  margin: 10px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-style: italic;
+  animation: fade-in 0.5s ease forwards;
+}
+
+.fade-in {
+  opacity: 0;
+  animation: fade-in 0.3s ease forwards;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }

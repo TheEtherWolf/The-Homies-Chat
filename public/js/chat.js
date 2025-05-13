@@ -1036,9 +1036,20 @@ class ChatManager {
             top: previousScrollTop || (this.messagesContainer ? this.messagesContainer.scrollTop : 0)
         };
         
+        // Create a measurement node to calculate exact heights
+        const measureNode = document.createElement('div');
+        measureNode.style.position = 'absolute';
+        measureNode.style.visibility = 'hidden';
+        measureNode.style.height = '0px';
+        measureNode.id = 'scroll-measure-node';
+        if (this.messagesContainer && this.messagesContainer.firstChild) {
+            this.messagesContainer.insertBefore(measureNode, this.messagesContainer.firstChild);
+        }
+        
         // Add loading indicator with smooth animation
         const loadingIndicator = document.createElement('div');
-        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.id = 'loading-indicator';
+        loadingIndicator.className = 'loading-indicator fade-in';
         
         // Create spinner element for better visual feedback
         const spinner = document.createElement('div');
@@ -1053,7 +1064,11 @@ class ChatManager {
         // Insert at the top of the container
         if (this.messagesContainer && this.messagesContainer.firstChild) {
             this.messagesContainer.insertBefore(loadingIndicator, this.messagesContainer.firstChild);
+        } else if (this.messagesContainer) {
+            this.messagesContainer.appendChild(loadingIndicator);
         }
+        
+        // Let CSS handle the animations
         
         // Calculate the offset for pagination
         const channel = this.currentChannel.startsWith('#') ? this.currentChannel.substring(1) : this.currentChannel;
@@ -1084,7 +1099,7 @@ class ChatManager {
         };
         
         // Remove loading indicator with fade-out animation
-        const loadingIndicator = this.messagesContainer.querySelector('.loading-indicator');
+        const loadingIndicator = document.getElementById('loading-indicator');
         if (loadingIndicator) {
             // Add fade-out class
             loadingIndicator.classList.add('fade-out');
@@ -1092,7 +1107,7 @@ class ChatManager {
             // Remove after animation completes
             setTimeout(() => {
                 if (loadingIndicator.parentNode) {
-                    loadingIndicator.remove();
+                    loadingIndicator.parentNode.removeChild(loadingIndicator);
                 }
             }, 300); // Match the CSS animation duration
         }
@@ -1107,18 +1122,11 @@ class ChatManager {
                 this.hasMoreMessagesToLoad = false;
                 
                 // Show a "beginning of conversation" indicator
-                const beginningIndicator = document.createElement('div');
-                beginningIndicator.className = 'beginning-indicator';
-                beginningIndicator.textContent = 'Beginning of conversation';
-                
-                if (this.messagesContainer.firstChild) {
-                    this.messagesContainer.insertBefore(beginningIndicator, this.messagesContainer.firstChild);
-                } else {
-                    this.messagesContainer.appendChild(beginningIndicator);
-                }
+                this._showBeginningIndicator();
             }
             return;
         }
+
         
         // Get reference to the sentinel element
         const sentinel = document.getElementById('lazy-load-sentinel');
@@ -1206,19 +1214,46 @@ class ChatManager {
             }
         }
         
-        // Maintain scroll position after adding new content
+        // Maintain scroll position after adding new content with enhanced precision
         if (this.messagesContainer) {
+            // Get the measurement node if it exists
+            const measureNode = document.getElementById('scroll-measure-node');
+            if (measureNode) {
+                measureNode.remove();
+            }
+            
             // Calculate how much the scroll height has changed
             const newScrollHeight = this.messagesContainer.scrollHeight;
             const scrollHeightDiff = newScrollHeight - previousScrollData.height;
             
-            // Set the scroll position to maintain the same relative position
-            this.messagesContainer.scrollTop = previousScrollData.top + scrollHeightDiff;
-            
-            // Use requestAnimationFrame for smoother scrolling
-            requestAnimationFrame(() => {
+            // Create a function to handle scroll position adjustment with multiple attempts
+            const adjustScrollPosition = (attempt = 0) => {
+                // Set the scroll position to maintain the same relative position
                 this.messagesContainer.scrollTop = previousScrollData.top + scrollHeightDiff;
-            });
+                
+                // Check if we need to make additional adjustments (sometimes the first adjustment isn't perfect)
+                if (attempt < 3) {
+                    requestAnimationFrame(() => {
+                        adjustScrollPosition(attempt + 1);
+                    });
+                }
+            };
+            
+            // Start the scroll position adjustment process
+            // Use setTimeout to ensure the DOM has fully updated
+            setTimeout(() => {
+                // Disable smooth scrolling temporarily for precise positioning
+                const originalScrollBehavior = this.messagesContainer.style.scrollBehavior;
+                this.messagesContainer.style.scrollBehavior = 'auto';
+                
+                // Adjust scroll position
+                adjustScrollPosition();
+                
+                // Restore original scroll behavior after adjustment
+                setTimeout(() => {
+                    this.messagesContainer.style.scrollBehavior = originalScrollBehavior;
+                }, 100);
+            }, 0);
         }
         
         // Reset loading state
@@ -1391,6 +1426,28 @@ class ChatManager {
         }
         
         return messageEl;
+    }
+    
+    /**
+     * Show beginning of conversation indicator
+     * @private
+     */
+    _showBeginningIndicator() {
+        // Check if we already have a beginning indicator
+        if (document.getElementById('beginning-indicator')) return;
+        
+        // Create beginning indicator
+        const beginningIndicator = document.createElement('div');
+        beginningIndicator.id = 'beginning-indicator';
+        beginningIndicator.className = 'beginning-indicator';
+        beginningIndicator.textContent = 'Beginning of conversation history';
+        
+        // Add to the beginning of the messages container
+        if (this.messagesContainer && this.messagesContainer.firstChild) {
+            this.messagesContainer.insertBefore(beginningIndicator, this.messagesContainer.firstChild);
+        } else if (this.messagesContainer) {
+            this.messagesContainer.appendChild(beginningIndicator);
+        }
     }
     
     // Set up keep-alive mechanism to prevent Glitch from sleeping
