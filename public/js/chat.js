@@ -678,6 +678,9 @@ class ChatManager {
         this.messageInput.value = '';
         this.messageInput.focus();
         
+        // Play sent message sound
+        this._playSentMessageSound();
+        
         // Send message via socket with callback
         this.socket.emit('send-message', messageData, (response) => {
             if (response && !response.success) {
@@ -821,6 +824,9 @@ class ChatManager {
         
         console.log(`[CHAT_DEBUG] Deleting message: ${messageId}`);
         
+        // Play delete sound
+        this._playDeleteSound();
+        
         // Send delete request to server
         this.socket.emit('delete-message', { messageId }, (response) => {
             console.log('[CHAT_DEBUG] Delete message response:', response);
@@ -853,16 +859,55 @@ class ChatManager {
         }
     }
     
-    // Play notification sound
+    // Play notification sound for received messages
     _playNotificationSound() {
         // Check if notification sounds are enabled
         const notificationSoundsEnabled = document.getElementById('notification-sounds')?.checked !== false;
         
         if (notificationSoundsEnabled) {
             // Create and play notification sound
-            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/notification.mp3?v=1746110048911');
+            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/whoosh-blow-flutter-shortwav-14678.mp3?v=1747149171702');
             audio.volume = 0.5;
             audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing notification sound:', err));
+        }
+    }
+    
+    // Play sound effect for sent messages
+    _playSentMessageSound() {
+        // Check if notification sounds are enabled
+        const notificationSoundsEnabled = document.getElementById('notification-sounds')?.checked !== false;
+        
+        if (notificationSoundsEnabled) {
+            // Create and play sent message sound
+            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/Send%20message.mp3?v=1747149038729');
+            audio.volume = 0.3; // Slightly quieter than notification sound
+            audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing sent message sound:', err));
+        }
+    }
+    
+    // Play sound effect for copying message
+    _playCopySound() {
+        // Check if notification sounds are enabled
+        const notificationSoundsEnabled = document.getElementById('notification-sounds')?.checked !== false;
+        
+        if (notificationSoundsEnabled) {
+            // Create and play copy sound
+            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/Click%20sound.mp3?v=1747149269183');
+            audio.volume = 0.3;
+            audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing copy sound:', err));
+        }
+    }
+    
+    // Play sound effect for deleting message
+    _playDeleteSound() {
+        // Check if notification sounds are enabled
+        const notificationSoundsEnabled = document.getElementById('notification-sounds')?.checked !== false;
+        
+        if (notificationSoundsEnabled) {
+            // Create and play delete sound
+            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/11L-Make_a_short%2C_satisf-1747149354209.mp3?v=1747149378426');
+            audio.volume = 0.3;
+            audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing delete sound:', err));
         }
     }
     
@@ -1431,6 +1476,9 @@ class ChatManager {
             copyAction.addEventListener('click', () => {
                 // Get the raw text content without HTML
                 const textToCopy = message.content || '';
+                
+                // Play copy sound
+                this._playCopySound();
                 
                 // Copy to clipboard
                 navigator.clipboard.writeText(textToCopy).then(() => {
