@@ -750,6 +750,16 @@ class ChatManager {
             this.isLoadingMoreMessages = false;
             this.currentMessageOffset = messages.length;
             this.expectedChunkSize = 15; // The number of messages we expect to load in each chunk
+            
+            // Force a scroll event if we're near the top to trigger loading more messages
+            if (this.messagesContainer.scrollTop < 200) {
+                // Simulate a scroll event after a short delay to allow the UI to render
+                setTimeout(() => {
+                    if (this._boundScrollHandler) {
+                        this._boundScrollHandler();
+                    }
+                }, 500);  // 500ms delay to ensure the UI has rendered
+            }
         }
     }
     
@@ -1134,15 +1144,16 @@ class ChatManager {
             return;
         }
         
-        // Check if we received fewer messages than expected, indicating we're at or near the end
-        if (messages.length < this.expectedChunkSize) {
-            console.log(`[CHAT_DEBUG] Received ${messages.length} messages, which is less than expected ${this.expectedChunkSize}. Likely near the end.`);
-            // If we received fewer messages than expected, we're likely at the end
-            // Set hasMoreMessagesToLoad to false only if we received 0 messages
-            if (messages.length === 0) {
-                this.hasMoreMessagesToLoad = false;
-                this._showBeginningIndicator();
-            }
+        // Only consider it the end when we get exactly 0 messages
+        // Just getting fewer than expected doesn't mean we're at the end
+        if (messages.length === 0) {
+            console.log('[CHAT_DEBUG] Received 0 messages, definitely at the end of conversation');
+            this.hasMoreMessagesToLoad = false;
+            this._showBeginningIndicator();
+        } else if (messages.length < this.expectedChunkSize) {
+            // If we got fewer than expected but not zero, log it but don't mark as end
+            console.log(`[CHAT_DEBUG] Received ${messages.length} messages, which is less than expected ${this.expectedChunkSize}, but still have more to load.`);
+            // Keep hasMoreMessagesToLoad as true to allow more loading
         }
         
         // Get reference to the sentinel element
@@ -1258,16 +1269,15 @@ class ChatManager {
         // Update the offset for the next batch
         this.currentMessageOffset += messages.length;
         
-        // If we received fewer messages than expected, we might be at the end
-        // But we'll only mark as end of conversation if we received zero messages
-        if (messages.length < this.expectedChunkSize) {
-            console.log(`[CHAT_DEBUG] Received fewer messages (${messages.length}) than expected (${this.expectedChunkSize}), may be near the end`);
-            
-            // If we received zero messages, we're definitely at the end
-            if (messages.length === 0) {
-                this.hasMoreMessagesToLoad = false;
-                this._showBeginningIndicator();
-            }
+        // Only consider it the end when we get exactly 0 messages
+        if (messages.length === 0) {
+            console.log('[CHAT_DEBUG] Received 0 messages, definitely at the end of conversation');
+            this.hasMoreMessagesToLoad = false;
+            this._showBeginningIndicator();
+        } else if (messages.length < this.expectedChunkSize) {
+            // If we got fewer than expected but not zero, log it but don't mark as end
+            console.log(`[CHAT_DEBUG] Received ${messages.length} messages, which is less than expected ${this.expectedChunkSize}, but still have more to load.`);
+            // Keep hasMoreMessagesToLoad as true to allow more loading attempts
         }
         
         console.log('[CHAT_DEBUG] Older messages prepended successfully');
