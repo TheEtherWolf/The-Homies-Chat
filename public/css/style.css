@@ -1813,6 +1813,18 @@ body {
   display: block; /* Ensure display */
 }
 
+.message.new-loaded {
+  opacity: 0;
+  animation: message-fade-in 0.25s ease forwards;
+  visibility: visible !important;
+  display: flex !important;
+}
+
+@keyframes message-fade-in {
+  from { opacity: 0; transform: translateY(5px); visibility: visible; }
+  to { opacity: 1; transform: translateY(0); visibility: visible; }
+}
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }

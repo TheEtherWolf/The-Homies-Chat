@@ -929,16 +929,56 @@ class ChatManager {
         console.log('[CHAT_DEBUG] Initial data fetch complete');
     }
     
-    // Set up lazy loading observer for message scrolling with improved performance
+    // Set up scroll-based lazy loading for older messages
     _setupLazyLoadingObserver() {
-        console.log('[CHAT_DEBUG] Setting up enhanced lazy loading observer');
+        console.log('[CHAT_DEBUG] Setting up enhanced scroll-based lazy loading');
         
-        // Create a sentinel element at the top of the messages container
+        // Remove any existing event listeners to prevent duplicates
+        if (this.messagesContainer && this._boundScrollHandler) {
+            this.messagesContainer.removeEventListener('scroll', this._boundScrollHandler);
+            this._hasScrollListener = false;
+        }
+        
+        // Disconnect any existing observer if we're switching to scroll-based approach
+        if (this.scrollObserver) {
+            this.scrollObserver.disconnect();
+            this.scrollObserver = null;
+        }
+        
+        // Create a debounced scroll handler for better performance
+        this._boundScrollHandler = this._debounce((e) => {
+            // Only proceed if we have more messages and aren't already loading
+            if (!this.hasMoreMessagesToLoad || this.isLoadingMoreMessages) {
+                return;
+            }
+            
+            // Check if we're within 200px of the top of the container
+            const scrollTop = this.messagesContainer.scrollTop;
+            if (scrollTop <= 200) {
+                console.log('[CHAT_DEBUG] Near top of scroll area, loading more messages');
+                
+                // Save current scroll position before loading
+                const lastScrollHeight = this.messagesContainer.scrollHeight;
+                const lastScrollTop = scrollTop;
+                
+                // Load older messages with the saved position info
+                this._loadOlderMessages(lastScrollHeight, lastScrollTop);
+            }
+        }, 200); // 200ms debounce to prevent excessive calls
+        
+        // Add the scroll event listener
+        if (this.messagesContainer) {
+            this.messagesContainer.addEventListener('scroll', this._boundScrollHandler);
+            this._hasScrollListener = true;
+            console.log('[CHAT_DEBUG] Scroll-based lazy loading initialized');
+        }
+        
+        // Create a sentinel element at the top for visual reference and debugging
         if (!document.getElementById('lazy-load-sentinel')) {
             const sentinel = document.createElement('div');
             sentinel.id = 'lazy-load-sentinel';
             sentinel.className = 'lazy-load-sentinel';
-            sentinel.style.height = '5px'; // Slightly larger for better detection
+            sentinel.style.height = '1px';
             sentinel.style.width = '100%';
             
             // Add sentinel to the top of the messages container
@@ -947,64 +987,6 @@ class ChatManager {
             } else if (this.messagesContainer) {
                 this.messagesContainer.appendChild(sentinel);
             }
-        }
-        
-        // Disconnect any existing observer
-        if (this.scrollObserver) {
-            this.scrollObserver.disconnect();
-        }
-        
-        // Save scroll position for smooth scrolling
-        let lastScrollHeight = 0;
-        let lastScrollTop = 0;
-        
-        // Create a new intersection observer with improved settings
-        this.scrollObserver = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting && this.hasMoreMessagesToLoad && !this.isLoadingMoreMessages) {
-                    console.log('[CHAT_DEBUG] Lazy load sentinel visible, loading more messages');
-                    
-                    // Save current scroll position before loading
-                    if (this.messagesContainer) {
-                        lastScrollHeight = this.messagesContainer.scrollHeight;
-                        lastScrollTop = this.messagesContainer.scrollTop;
-                    }
-                    
-                    // Load older messages with the saved position info
-                    this._loadOlderMessages(lastScrollHeight, lastScrollTop);
-                }
-            });
-        }, {
-            root: this.messagesContainer,
-            rootMargin: '200px 0px 0px 0px', // Increased margin to load earlier
-            threshold: 0.05 // Lower threshold for earlier triggering
-        });
-        
-        // Start observing the sentinel element
-        const sentinel = document.getElementById('lazy-load-sentinel');
-        if (sentinel) {
-            this.scrollObserver.observe(sentinel);
-            console.log('[CHAT_DEBUG] Enhanced lazy loading observer started');
-        }
-        
-        // Add scroll event listener for smoother experience
-        if (this.messagesContainer && !this._hasScrollListener) {
-            this.messagesContainer.addEventListener('scroll', this._debounce(() => {
-                // Check if we're near the top of the container
-                if (this.messagesContainer.scrollTop < 150 && 
-                    this.hasMoreMessagesToLoad && 
-                    !this.isLoadingMoreMessages) {
-                    
-                    // Save scroll position
-                    lastScrollHeight = this.messagesContainer.scrollHeight;
-                    lastScrollTop = this.messagesContainer.scrollTop;
-                    
-                    // Preemptively load more messages
-                    this._loadOlderMessages(lastScrollHeight, lastScrollTop);
-                }
-            }, 100)); // Debounce to prevent too many calls
-            
-            this._hasScrollListener = true;
         }
     }
     
@@ -1030,7 +1012,7 @@ class ChatManager {
         console.log('[CHAT_DEBUG] Loading older messages');
         this.isLoadingMoreMessages = true;
         
-        // Store scroll position data for later use
+        // Store scroll position data for later use with precise measurements
         this._previousScrollData = {
             height: previousScrollHeight || (this.messagesContainer ? this.messagesContainer.scrollHeight : 0),
             top: previousScrollTop || (this.messagesContainer ? this.messagesContainer.scrollTop : 0)
@@ -1065,16 +1047,16 @@ class ChatManager {
         const loadingContainer = document.createElement('div');
         loadingContainer.style.width = '100%';
         loadingContainer.style.textAlign = 'center';
-        loadingContainer.style.position = 'absolute';
-        loadingContainer.style.top = '0';
-        loadingContainer.style.left = '0';
+        loadingContainer.style.position = 'relative';
         loadingContainer.style.zIndex = '10';
         loadingContainer.style.pointerEvents = 'none';
+        loadingContainer.style.marginTop = '5px';
+        loadingContainer.style.marginBottom = '5px';
         loadingContainer.appendChild(loadingIndicator);
         
         // Insert at the top of the container
         if (this.messagesContainer) {
-            // Insert as the first child but with absolute positioning
+            // Insert as the first child with proper positioning
             if (this.messagesContainer.firstChild) {
                 this.messagesContainer.insertBefore(loadingContainer, this.messagesContainer.firstChild);
             } else {
@@ -1082,16 +1064,14 @@ class ChatManager {
             }
         }
         
-        // Let CSS handle the animations
-        
         // Calculate the offset for pagination
         const channel = this.currentChannel.startsWith('#') ? this.currentChannel.substring(1) : this.currentChannel;
         const offset = this.channelMessages[channel] ? this.channelMessages[channel].length : 0;
         
-        // Request older messages from the server with increased limit for smoother experience
+        // Request older messages from the server with smaller chunks for smoother experience
         this.socket.emit('get-channel-messages', {
             channel: channel,
-            limit: 30, // Increased from default messagesPerPage for smoother scrolling
+            limit: 15, // Smaller chunks for smoother loading and animations
             offset: offset,
             isOlderMessages: true
         });
@@ -1114,14 +1094,14 @@ class ChatManager {
         
         // Remove loading indicator with fade-out animation
         const loadingIndicator = document.getElementById('loading-indicator');
-        if (loadingIndicator) {
+        if (loadingIndicator && loadingIndicator.parentNode) {
             // Add fade-out class
             loadingIndicator.classList.add('fade-out');
             
             // Remove after animation completes
             setTimeout(() => {
                 if (loadingIndicator.parentNode) {
-                    loadingIndicator.parentNode.removeChild(loadingIndicator);
+                    loadingIndicator.parentNode.remove(); // Remove the entire container
                 }
             }, 300); // Match the CSS animation duration
         }
@@ -1140,7 +1120,6 @@ class ChatManager {
             }
             return;
         }
-
         
         // Get reference to the sentinel element
         const sentinel = document.getElementById('lazy-load-sentinel');
@@ -1177,27 +1156,28 @@ class ChatManager {
                 shouldGroup = sameSender && closeInTime;
             }
             
-            // Create message element with grouping info and add fade-in animation
+            // Create message element with grouping info
             const messageEl = this._createMessageElement(message, false, shouldGroup);
-            messageEl.classList.add('fade-in');
+            
+            // Add new-loaded class for fade-in animation
+            messageEl.classList.add('new-loaded');
             
             // Ensure visibility with explicit styles
             messageEl.style.visibility = 'visible';
-            messageEl.style.opacity = '1';
+            messageEl.style.opacity = '0'; // Start at 0 opacity for animation
             messageEl.style.display = 'flex';
             
             // Add to fragment
             fragment.appendChild(messageEl);
         }
         
+        // Measure the height before insertion
+        const beforeHeight = this.messagesContainer.scrollHeight;
+        
         // Insert all messages at once before the first existing message
         if (sentinel) {
             // Insert after the sentinel
-            if (sentinel.nextSibling) {
-                this.messagesContainer.insertBefore(fragment, sentinel.nextSibling);
-            } else {
-                this.messagesContainer.appendChild(fragment);
-            }
+            this.messagesContainer.insertBefore(fragment, sentinel.nextSibling || null);
         } else {
             // If no sentinel, insert at the beginning
             if (this.messagesContainer.firstChild) {
@@ -1210,73 +1190,43 @@ class ChatManager {
         // Force a reflow to ensure messages are rendered properly
         this._forceReflow();
         
-        // Check if the first visible message should be grouped with the next message
-        // (which would be the first existing message in the DOM)
-        const firstVisibleMessage = this.messagesContainer.querySelector('.message:not(.lazy-load-sentinel):not(.date-separator):not(.system-message)');
-        const secondVisibleMessage = firstVisibleMessage?.nextElementSibling;
+        // Measure the height after insertion
+        const afterHeight = this.messagesContainer.scrollHeight;
+        const heightDifference = afterHeight - beforeHeight;
         
-        if (firstVisibleMessage && secondVisibleMessage && 
-            secondVisibleMessage.classList.contains('message')) {
-            
-            const firstSenderId = firstVisibleMessage.getAttribute('data-sender-id');
-            const secondSenderId = secondVisibleMessage.getAttribute('data-sender-id');
-            
-            // If they're from the same sender, check timestamps
-            if (firstSenderId === secondSenderId) {
-                const firstTimestamp = new Date(firstVisibleMessage.getAttribute('data-timestamp'));
-                const secondTimestamp = new Date(secondVisibleMessage.getAttribute('data-timestamp'));
-                
-                const timeThreshold = 3 * 60 * 1000; // 3 minutes in milliseconds
-                const closeInTime = Math.abs(firstTimestamp - secondTimestamp) < timeThreshold;
-                
-                if (closeInTime) {
-                    // Group the second message with the first
-                    secondVisibleMessage.classList.add('grouped');
-                }
-            }
-        }
-        
-        // Maintain scroll position after adding new content with enhanced precision
+        // Maintain scroll position with the new content
         if (this.messagesContainer) {
-            // Get the measurement node if it exists
-            const measureNode = document.getElementById('scroll-measure-node');
-            if (measureNode) {
-                measureNode.remove();
-            }
+            // Disable smooth scrolling temporarily for precise positioning
+            const originalScrollBehavior = this.messagesContainer.style.scrollBehavior;
+            this.messagesContainer.style.scrollBehavior = 'auto';
             
-            // Calculate how much the scroll height has changed
-            const newScrollHeight = this.messagesContainer.scrollHeight;
-            const scrollHeightDiff = newScrollHeight - previousScrollData.height;
+            // Adjust scroll position to account for new content
+            this.messagesContainer.scrollTop = previousScrollData.top + heightDifference;
             
-            // Create a function to handle scroll position adjustment with multiple attempts
-            const adjustScrollPosition = (attempt = 0) => {
-                // Set the scroll position to maintain the same relative position
-                this.messagesContainer.scrollTop = previousScrollData.top + scrollHeightDiff;
-                
-                // Check if we need to make additional adjustments (sometimes the first adjustment isn't perfect)
-                if (attempt < 3) {
-                    requestAnimationFrame(() => {
-                        adjustScrollPosition(attempt + 1);
-                    });
-                }
-            };
-            
-            // Start the scroll position adjustment process
-            // Use setTimeout to ensure the DOM has fully updated
-            setTimeout(() => {
-                // Disable smooth scrolling temporarily for precise positioning
-                const originalScrollBehavior = this.messagesContainer.style.scrollBehavior;
-                this.messagesContainer.style.scrollBehavior = 'auto';
-                
-                // Adjust scroll position
-                adjustScrollPosition();
+            // Use requestAnimationFrame for more precise adjustments
+            requestAnimationFrame(() => {
+                // Double-check the position and make final adjustment if needed
+                const finalHeightDiff = this.messagesContainer.scrollHeight - beforeHeight;
+                this.messagesContainer.scrollTop = previousScrollData.top + finalHeightDiff;
                 
                 // Restore original scroll behavior after adjustment
                 setTimeout(() => {
                     this.messagesContainer.style.scrollBehavior = originalScrollBehavior;
-                }, 100);
-            }, 0);
+                    
+                    // Trigger animations for newly added messages
+                    const newMessages = this.messagesContainer.querySelectorAll('.message.new-loaded');
+                    newMessages.forEach(msg => {
+                        // Stagger the animations slightly for a more natural feel
+                        setTimeout(() => {
+                            msg.style.opacity = '1';
+                        }, Math.random() * 100); // Random delay up to 100ms for natural staggering
+                    });
+                }, 50);
+            });
         }
+        
+        // Check if the first visible message should be grouped with the next message
+        this._updateMessageGrouping();
         
         // Reset loading state
         this.isLoadingMoreMessages = false;
@@ -1285,6 +1235,40 @@ class ChatManager {
         this.currentMessageOffset += messages.length;
         
         console.log('[CHAT_DEBUG] Older messages prepended successfully');
+    }
+    
+    // Helper method to update message grouping after new messages are added
+    _updateMessageGrouping() {
+        const messages = this.messagesContainer.querySelectorAll('.message:not(.lazy-load-sentinel):not(.date-separator):not(.system-message)');
+        
+        // Loop through messages to check grouping
+        for (let i = 0; i < messages.length - 1; i++) {
+            const currentMsg = messages[i];
+            const nextMsg = messages[i + 1];
+            
+            const currentSenderId = currentMsg.getAttribute('data-sender-id');
+            const nextSenderId = nextMsg.getAttribute('data-sender-id');
+            
+            // If they're from the same sender, check timestamps
+            if (currentSenderId === nextSenderId) {
+                const currentTimestamp = new Date(currentMsg.getAttribute('data-timestamp'));
+                const nextTimestamp = new Date(nextMsg.getAttribute('data-timestamp'));
+                
+                const timeThreshold = 3 * 60 * 1000; // 3 minutes in milliseconds
+                const closeInTime = Math.abs(currentTimestamp - nextTimestamp) < timeThreshold;
+                
+                if (closeInTime) {
+                    // Group the next message with the current one
+                    nextMsg.classList.add('grouped');
+                } else {
+                    // Remove grouping if not close in time
+                    nextMsg.classList.remove('grouped');
+                }
+            } else {
+                // Remove grouping if different senders
+                nextMsg.classList.remove('grouped');
+            }
+        }
     }
     
     // Helper method to create a message element
@@ -1462,24 +1446,22 @@ class ChatManager {
     _forceReflow() {
         if (!this.messagesContainer) return;
         
-        // Temporarily hide the container
-        const originalDisplay = this.messagesContainer.style.display;
-        this.messagesContainer.style.display = 'none';
-        
         // Force a reflow by accessing offsetHeight
         void this.messagesContainer.offsetHeight;
-        
-        // Restore the original display
-        this.messagesContainer.style.display = originalDisplay;
         
         // Apply visibility to all messages to ensure they're visible
         const messages = this.messagesContainer.querySelectorAll('.message');
         messages.forEach(msg => {
-            if (msg.style.visibility !== 'visible') {
+            // Skip messages with new-loaded class as they have their own animation
+            if (!msg.classList.contains('new-loaded')) {
                 msg.style.visibility = 'visible';
                 msg.style.opacity = '1';
+                msg.style.display = 'flex';
             }
         });
+        
+        // Force another reflow to ensure changes are applied
+        void this.messagesContainer.offsetHeight;
     }
     
     /**
