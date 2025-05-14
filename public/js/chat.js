@@ -592,6 +592,10 @@ class ChatManager {
                 alert('Failed to upload profile picture: ' + (result.message || 'Unknown error'));
             }
         } catch (error) {
+            console.error('[CHAT_DEBUG] Error uploading profile picture:', error);
+            alert('Failed to upload profile picture: ' + (error.message || 'Unknown error'));
+        }
+    }
     
     // Update chat header
     if (this.chatTitle) {

@@ -113,8 +113,10 @@ class AuthManager {
             return;
         }
         
-        this.loginBtn.disabled = true;
-        this.loginBtn.textContent = 'Logging in...';
+        if (this.loginBtn) {
+            this.loginBtn.disabled = true;
+            this.loginBtn.textContent = 'Logging in...';
+        }
         
         // Clear previous errors
         this.hideLoginError();
@@ -124,8 +126,10 @@ class AuthManager {
             if (window.NextAuth) {
                 const response = await window.NextAuth.signIn({ username, password });
                 
-                this.loginBtn.disabled = false;
-                this.loginBtn.textContent = 'Login';
+                if (this.loginBtn) {
+                    this.loginBtn.disabled = false;
+                    this.loginBtn.textContent = 'Login';
+                }
                 
                 if (response.success) {
                     this.currentUser = response.user;

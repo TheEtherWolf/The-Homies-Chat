@@ -65,9 +65,14 @@ function initializeApp() {
         console.log('[APP_DEBUG] AuthManager created.');
     }
     if (!chatManager) {
-        // Pass authManager instance to ChatManager
-        chatManager = new ChatManager(window.socket, authManager); 
-        console.log('[APP_DEBUG] ChatManager created.');
+        // Check if ChatManager class exists before creating an instance
+        if (typeof ChatManager === 'undefined') {
+            console.error('[APP_DEBUG] ChatManager class is not defined. Make sure chat.js is loaded properly.');
+        } else {
+            // Pass authManager instance to ChatManager
+            chatManager = new ChatManager(window.socket, authManager); 
+            console.log('[APP_DEBUG] ChatManager created.');
+        }
     }
     // VideoCallManager initialization would go here if needed
 
