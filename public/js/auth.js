@@ -126,7 +126,8 @@ class AuthManager {
     
     /**
      * Handle the login form submission
-     * Temporary implementation until NextAuth is integrated
+     * Connects to server for authentication via Supabase
+     * Will be replaced with NextAuth in the future
      */
     handleLogin() {
         const username = this.loginUsername.value.trim();
@@ -142,19 +143,36 @@ class AuthManager {
         
         console.log('[AUTH_DEBUG] Attempting to sign in user:', username);
         
-        // Create user data for session
-        const userData = {
-            username: username,
-            id: 'user-' + Date.now(),
-            authenticated: true
-        };
+        // Check if socket is available
+        if (!window.socket) {
+            console.error('[AUTH_DEBUG] Socket connection not available');
+            this.showMessage('Connection error. Please refresh the page.', 'danger');
+            return;
+        }
         
-        // Store user in session storage
-        sessionStorage.setItem('user', JSON.stringify(userData));
-        console.log('[AUTH_DEBUG] Created user session', userData);
-        
-        // Show success and proceed to app
-        this.showLoginSuccess(userData);
+        // Send login request to server via socket
+        window.socket.emit('login-user', { username, password }, (response) => {
+            console.log('[AUTH_DEBUG] Login response received:', response);
+            
+            if (response && response.success) {
+                // Store user in session storage
+                const userData = {
+                    ...response.user,
+                    authenticated: true
+                };
+                
+                sessionStorage.setItem('user', JSON.stringify(userData));
+                console.log('[AUTH_DEBUG] Created user session', userData);
+                
+                // Show success and proceed to app
+                this.showLoginSuccess(userData);
+            } else {
+                // Show error message
+                const errorMessage = response && response.message ? response.message : 'Login failed. Please check your credentials.';
+                this.showMessage(errorMessage, 'danger');
+                console.error('[AUTH_DEBUG] Login failed:', errorMessage);
+            }
+        });
     }
     
     /**
@@ -208,7 +226,8 @@ class AuthManager {
     
     /**
      * Handle the registration form submission
-     * Temporary implementation until NextAuth is integrated
+     * Connects to server for registration via Supabase
+     * Will be replaced with NextAuth in the future
      */
     handleRegistration() {
         const username = this.registerUsername.value.trim();
@@ -240,30 +259,46 @@ class AuthManager {
             return;
         }
         
+        // Check if socket is available
+        if (!window.socket) {
+            console.error('[AUTH_DEBUG] Socket connection not available');
+            this.showMessage('Connection error. Please refresh the page.', 'danger');
+            return;
+        }
+        
         // Show loading message
         this.showMessage('Creating account...', 'info');
         
         console.log('[AUTH_DEBUG] Attempting to register user:', username);
         
-        // Create user data for session (temporary until NextAuth)
-        const userData = {
-            username: username,
-            email: email,
-            id: 'user-' + Date.now(),
-            authenticated: true
-        };
-        
-        // Store user in session storage
-        sessionStorage.setItem('user', JSON.stringify(userData));
-        console.log('[AUTH_DEBUG] Created user session after registration', userData);
-        
-        // Show success message
-        this.showMessage('Account created successfully! Redirecting...', 'success');
-        
-        // Proceed to app
-        setTimeout(() => {
-            this.showLoginSuccess(userData);
-        }, 1500);
+        // Send registration request to server via socket
+        window.socket.emit('register-user', { username, email, password }, (response) => {
+            console.log('[AUTH_DEBUG] Registration response received:', response);
+            
+            if (response && response.success) {
+                // Store user in session storage
+                const userData = {
+                    ...response.user,
+                    authenticated: true
+                };
+                
+                sessionStorage.setItem('user', JSON.stringify(userData));
+                console.log('[AUTH_DEBUG] Created user session after registration', userData);
+                
+                // Show success message
+                this.showMessage('Account created successfully! Redirecting...', 'success');
+                
+                // Proceed to app
+                setTimeout(() => {
+                    this.showLoginSuccess(userData);
+                }, 1500);
+            } else {
+                // Show error message
+                const errorMessage = response && response.message ? response.message : 'Registration failed. Please try again.';
+                this.showMessage(errorMessage, 'danger');
+                console.error('[AUTH_DEBUG] Registration failed:', errorMessage);
+            }
+        });
     }
     
     /**
