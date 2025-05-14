@@ -1,6 +1,7 @@
 /**
- * Authentication Module for The Homies App
+ * Authentication Module for The Homies Chat
  * Handles user login, registration, and session management
+ * Temporary solution until NextAuth integration
  */
 
 class AuthManager {
@@ -43,32 +44,42 @@ class AuthManager {
      */
     initialize() {
         // Set up form toggling
-        this.showRegisterLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.toggleForms('register');
-        });
+        if (this.showRegisterLink) {
+            this.showRegisterLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.toggleForms('register');
+            });
+        }
         
-        this.showLoginLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.toggleForms('login');
-        });
+        if (this.showLoginLink) {
+            this.showLoginLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.toggleForms('login');
+            });
+        }
         
         // Set up form submissions
-        this.loginForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleLogin();
-        });
+        if (this.loginForm) {
+            this.loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleLogin();
+            });
+        }
         
-        this.registerForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleRegistration();
-        });
+        if (this.registerForm) {
+            this.registerForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleRegistration();
+            });
+        }
         
         // Set up logout
-        this.logoutButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.handleLogout();
-        });
+        if (this.logoutButton) {
+            this.logoutButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.handleLogout();
+            });
+        }
         
         console.log('[AUTH_DEBUG] Calling checkSession from initialize...');
         this.checkSession();
@@ -88,7 +99,7 @@ class AuthManager {
         } else {
             this.registerForm.classList.add('d-none');
             this.loginForm.classList.remove('d-none');
-            document.getElementById('auth-title').textContent = 'Welcome to The Homies App';
+            document.getElementById('auth-title').textContent = 'Welcome to The Homies Chat';
         }
         
         // Clear any previous messages
@@ -101,6 +112,8 @@ class AuthManager {
      * @param {string} type - The type of message ('success', 'danger', 'warning', 'info')
      */
     showMessage(message, type) {
+        if (!this.authMessage) return;
+        
         if (!message) {
             this.authMessage.classList.add('d-none');
             return;
@@ -113,6 +126,7 @@ class AuthManager {
     
     /**
      * Handle the login form submission
+     * Temporary implementation until NextAuth is integrated
      */
     handleLogin() {
         const username = this.loginUsername.value.trim();
@@ -128,77 +142,51 @@ class AuthManager {
         
         console.log('[AUTH_DEBUG] Attempting to sign in user:', username);
         
-        // Check if socket is available
-        if (!window.socket) {
-            console.error('[AUTH_DEBUG] Socket connection not available');
-            this.showMessage('Connection error. Please refresh the page.', 'danger');
-            return;
-        }
+        // Create user data for session
+        const userData = {
+            username: username,
+            id: 'user-' + Date.now(),
+            authenticated: true
+        };
         
-        console.log('[AUTH_DEBUG] Emitting login-user event...');
-        window.socket.emit('login-user', { username, password }, (response) => {
-            console.log('[AUTH_DEBUG] Login response received:', response);
-            if (response.success) {
-                // Store user data in session storage
-                sessionStorage.setItem('user', JSON.stringify({
-                    username: username,
-                    id: response.userId || response.id || 'unknown'
-                }));
-                
-                console.log('[AUTH_DEBUG] Login successful, calling showLoginSuccess...');
-                this.showLoginSuccess();
-            } else {
-                // Try bypassing authentication if needed for testing
-                const forceAuth = true; // Change to false to disable this fallback
-                
-                if (forceAuth) {
-                    console.log('[AUTH_DEBUG] Using authentication fallback');
-                    // Create fallback user data
-                    const fallbackUser = {
-                        username: username,
-                        id: 'user-' + Date.now()
-                    };
-                    
-                    // Store user in session storage
-                    sessionStorage.setItem('user', JSON.stringify(fallbackUser));
-                    console.log('[AUTH_DEBUG] Created fallback user', fallbackUser);
-                    
-                    // Show success and proceed to app
-                    this.showLoginSuccess();
-                    return;
-                }
-                
-                this.showMessage(response.message || 'Login failed. Please check your credentials.', 'danger');
-                console.error('Login failed:', response.message);
-            }
-        });
+        // Store user in session storage
+        sessionStorage.setItem('user', JSON.stringify(userData));
+        console.log('[AUTH_DEBUG] Created user session', userData);
+        
+        // Show success and proceed to app
+        this.showLoginSuccess(userData);
     }
     
     /**
      * Handle successful login
+     * @param {Object} user - User data
      */
-    showLoginSuccess() {
+    showLoginSuccess(user) {
         console.log('[AUTH_DEBUG] Inside showLoginSuccess...');
-        let user = null;
-        try {
-            user = JSON.parse(sessionStorage.getItem('user'));
-        } catch (e) {
-            console.error('[AUTH_DEBUG] Error parsing user from sessionStorage in showLoginSuccess:', e);
-            this.showMessage('An error occurred retrieving user data after login.', 'danger');
-            return;
+        
+        if (!user) {
+            try {
+                user = JSON.parse(sessionStorage.getItem('user'));
+            } catch (e) {
+                console.error('[AUTH_DEBUG] Error parsing user from sessionStorage in showLoginSuccess:', e);
+                this.showMessage('An error occurred retrieving user data after login.', 'danger');
+                return;
+            }
         }
         
         if (!user || !user.username) {
-            console.error('[AUTH_DEBUG] Login success called but user data is invalid in sessionStorage.');
+            console.error('[AUTH_DEBUG] Login success called but user data is invalid.');
             this.showMessage('An error occurred after login. Please try again.', 'danger');
             return;
         }
 
         // Update UI
         console.log('[AUTH_DEBUG] Updating UI with username:', user.username);
-        this.currentUserDisplay.textContent = user.username;
+        if (this.currentUserDisplay) {
+            this.currentUserDisplay.textContent = user.username;
+        }
 
-        // ** Dispatch the userLoggedIn event for app.js **
+        // Dispatch the userLoggedIn event for app.js
         console.log('[AUTH_DEBUG] Dispatching userLoggedIn event from showLoginSuccess with user:', user);
         const event = new CustomEvent('userLoggedIn', { detail: { user } });
         document.dispatchEvent(event);
@@ -208,18 +196,19 @@ class AuthManager {
         
         // Hide auth container and show app
         setTimeout(() => {
-            this.authContainer.classList.add('d-none');
-            this.appContainer.classList.remove('d-none');
+            if (this.authContainer) this.authContainer.classList.add('d-none');
+            if (this.appContainer) this.appContainer.classList.remove('d-none');
             
             // Reset forms
-            this.loginForm.reset();
-            this.registerForm.reset();
+            if (this.loginForm) this.loginForm.reset();
+            if (this.registerForm) this.registerForm.reset();
             this.showMessage('', 'none');
         }, 1000);
     }
     
     /**
      * Handle the registration form submission
+     * Temporary implementation until NextAuth is integrated
      */
     handleRegistration() {
         const username = this.registerUsername.value.trim();
@@ -252,145 +241,87 @@ class AuthManager {
         }
         
         // Show loading message
-        this.showMessage('Creating your account...', 'info');
+        this.showMessage('Creating account...', 'info');
         
-        // Debug log
-        console.log(`[AUTH_DEBUG] Attempting to register user: ${username} with email: ${email}`);
+        console.log('[AUTH_DEBUG] Attempting to register user:', username);
         
-        // Check if socket is available
-        if (!window.socket) {
-            console.error('[AUTH_DEBUG] Socket connection not available');
-            this.showMessage('Connection error. Please refresh the page.', 'danger');
-            return;
-        }
+        // Create user data for session (temporary until NextAuth)
+        const userData = {
+            username: username,
+            email: email,
+            id: 'user-' + Date.now(),
+            authenticated: true
+        };
         
-        // Fallback registration for testing
-        const forceRegistration = true; // Change to false to disable this fallback
+        // Store user in session storage
+        sessionStorage.setItem('user', JSON.stringify(userData));
+        console.log('[AUTH_DEBUG] Created user session after registration', userData);
         
-        if (forceRegistration) {
-            console.log('[AUTH_DEBUG] Using registration fallback');
-            
-            // Create fallback user data
-            const fallbackUser = {
-                username: username,
-                email: email,
-                id: 'user-' + Date.now()
-            };
-            
-            // Show success message
-            this.showMessage('Account created successfully! You can now log in.', 'success');
-            console.log('[AUTH_DEBUG] Created fallback user account', fallbackUser);
-            
-            // Switch to login form after a delay
-            setTimeout(() => {
-                this.toggleForms('login');
-                // Pre-fill the login form for convenience
-                this.loginUsername.value = username;
-            }, 2000);
-            
-            return;
-        }
+        // Show success message
+        this.showMessage('Account created successfully! Redirecting...', 'success');
         
-        // Emit registration event to server
-        window.socket.emit('register-user', { username, email, password }, (response) => {
-            console.log('[AUTH_DEBUG] Registration response:', response);
-            
-            if (response.success) {
-                if (response.requireVerification) {
-                    // Show verification message
-                    this.showMessage(`${response.message}`, 'success');
-                    // Switch to login form after a delay
-                    setTimeout(() => {
-                        this.toggleForms('login');
-                    }, 5000);
-                } else {
-                    // If no verification required, proceed to login
-                    this.showMessage('Account created successfully! You can now log in.', 'success');
-                    // Switch to login form after a delay
-                    setTimeout(() => {
-                        this.toggleForms('login');
-                    }, 2000);
-                }
-                
-                // Reset form
-                this.registerForm.reset();
-            } else {
-                this.showMessage(response.message || 'Registration failed. Please try again.', 'danger');
-                console.error('[AUTH_DEBUG] Registration failed:', response.message);
-            }
-        });
+        // Proceed to app
+        setTimeout(() => {
+            this.showLoginSuccess(userData);
+        }, 1500);
     }
     
     /**
-     * Handle user logout
+     * Handle logout
      */
     handleLogout() {
+        console.log('[AUTH_DEBUG] Logging out user');
+        
         // Clear session storage
         sessionStorage.removeItem('user');
         
-        // Emit logout event to server
-        if (window.socket) {
-            window.socket.emit('logout-user');
-        }
-        
         // Show auth container and hide app
-        this.appContainer.classList.add('d-none');
-        this.authContainer.classList.remove('d-none');
+        if (this.authContainer) this.authContainer.classList.remove('d-none');
+        if (this.appContainer) this.appContainer.classList.add('d-none');
         
         // Reset forms
-        this.loginForm.reset();
-        this.registerForm.reset();
+        if (this.loginForm) this.loginForm.reset();
+        if (this.registerForm) this.registerForm.reset();
+        
+        // Show login form
         this.toggleForms('login');
         
-        console.log('User logged out');
+        // Dispatch event for app.js
+        document.dispatchEvent(new Event('userLoggedOut'));
+        
+        console.log('[AUTH_DEBUG] User logged out successfully');
     }
     
     /**
-     * Check if user is already logged in from session storage
+     * Check if user is already logged in
      */
     checkSession() {
-        console.log('[AUTH_DEBUG] Checking session...');
-        const userData = sessionStorage.getItem('user');
+        console.log('[AUTH_DEBUG] Checking for existing session');
         
-        if (userData) {
-            console.log('[AUTH_DEBUG] Found user data in sessionStorage:', userData);
-            try {
+        try {
+            const userData = sessionStorage.getItem('user');
+            if (userData) {
                 const user = JSON.parse(userData);
                 if (user && user.username) {
-                    console.log('[AUTH_DEBUG] Valid user found in session:', user.username);
-                    // Update user display
-                    this.currentUserDisplay.textContent = user.username;
-                    
-                    // Hide auth container and show app
-                    console.log('[AUTH_DEBUG] Hiding auth container, showing app container.');
-                    this.authContainer.classList.add('d-none');
-                    this.appContainer.classList.remove('d-none');
-                    
-                    // ** Dispatch the userLoggedIn event for app.js **
-                    console.log('[AUTH_DEBUG] Dispatching userLoggedIn event from checkSession with user:', user);
-                    const event = new CustomEvent('userLoggedIn', { detail: { user } });
-                    document.dispatchEvent(event);
-                    
-                    console.log('[AUTH_DEBUG] Session restored for user:', user.username);
-                } else {
-                    console.warn('[AUTH_DEBUG] Invalid user data structure found in session storage.');
-                    sessionStorage.removeItem('user'); // Clear invalid data
-                    console.log('[AUTH_DEBUG] Cleared invalid user data from sessionStorage.');
-                    // Ensure login form is visible if session check fails
-                    this.toggleForms('login'); 
+                    console.log('[AUTH_DEBUG] Found existing session for user:', user.username);
+                    this.showLoginSuccess(user);
+                    return;
                 }
-            } catch (e) {
-                console.error('[AUTH_DEBUG] Error parsing user data from session:', e);
-                sessionStorage.removeItem('user'); // Clear corrupted data
-                console.log('[AUTH_DEBUG] Cleared corrupted user data from sessionStorage.');
-                // Ensure login form is visible if session check fails
-                 this.toggleForms('login');
             }
-        } else {
-            console.log('[AUTH_DEBUG] No user data found in sessionStorage. Showing login form.');
-             // Ensure login form is visible if no session data
-            this.toggleForms('login');
+            
+            console.log('[AUTH_DEBUG] No existing session found');
+        } catch (e) {
+            console.error('[AUTH_DEBUG] Error checking session:', e);
         }
+    }
+    
+    /**
+     * Prepare for NextAuth integration
+     * This method will be expanded when NextAuth is added
+     */
+    prepareNextAuthIntegration() {
+        console.log('[AUTH_DEBUG] NextAuth integration is planned but not yet implemented');
+        // This will be expanded when NextAuth is added to the project
     }
 }
 
