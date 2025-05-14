@@ -445,19 +445,6 @@ class ChatManager {
                 this.chatTitle.innerHTML = '<i class="bi bi-hash me-2"></i> general';
             }
             
-            // Display general chat
-            this._displayChannelMessages('general');
-        });
-        
-        // Settings button click handler
-        document.getElementById('settings-button')?.addEventListener('click', () => {
-            console.log('[CHAT_DEBUG] Settings button clicked');
-            // Update the avatar preview in the settings modal
-            const avatarPreview = document.getElementById('profile-picture-preview');
-            if (avatarPreview && this.currentUser.avatarUrl) {
-                avatarPreview.src = this.currentUser.avatarUrl;
-            }
-            
             // Show the settings modal
             const settingsModal = new bootstrap.Modal(document.getElementById('settings-modal'));
             settingsModal.show();

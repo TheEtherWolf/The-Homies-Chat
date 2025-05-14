@@ -101,6 +101,12 @@
     max-width: 300px;
 }
 
+.friend-tab-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .friend-code {
     display: flex;
     align-items: center;

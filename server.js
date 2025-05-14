@@ -6,7 +6,11 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4, validate: isValidUUID } = require('uuid');
+const cookieParser = require('cookie-parser');
 require('dotenv').config();
+
+// Import NextAuth adapter
+const { nextAuthRouter, requireAuth, getSession } = require('./next-auth-adapter');
 
 // Import storage and email verification modules
 const storage = require('./mega-storage');
@@ -60,6 +64,7 @@ const io = socketIo(server, {
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser()); // Add cookie parser for NextAuth sessions
 
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -91,6 +96,9 @@ console.log(`Serving static files from: ${staticPath}`);
 
 // Add extension download routes
 app.use(extensionDownload.router);
+
+// Add NextAuth routes
+app.use(nextAuthRouter);
 
 // Serve the index.html for root path with fallback options
 app.get('/', (req, res) => {
@@ -486,19 +494,90 @@ io.on("connection", (socket) => {
         console.log('Sent active users list to client on request:', Array.from(activeUsers));
     });
     
-    // Register user handler
+    // Handle registration requests
+    // Handle login requests
+    socket.on('login-user', async (data, callback) => {
+        try {
+            const { username, password } = data;
+            
+            if (!username || !password) {
+                return callback({ success: false, message: 'Username and password are required' });
+            }
+            
+            // Attempt to sign in the user
+            const user = await signInUser(username, password);
+            
+            if (!user) {
+                return callback({ success: false, message: 'Invalid username or password' });
+            }
+            
+            // Update user status to online
+            try {
+                const { error: statusError } = await getSupabaseClient(true)
+                    .from('user_status')
+                    .upsert({
+                        user_id: user.id,
+                        status: 'online',
+                        last_updated: new Date().toISOString()
+                    }, { onConflict: 'user_id' });
+                
+                if (statusError) {
+                    console.error('Error updating user status:', statusError);
+                }
+            } catch (statusErr) {
+                console.error('Exception updating user status:', statusErr);
+            }
+            
+            // Create NextAuth-like session
+            const { createSession } = require('./next-auth-adapter');
+            const session = createSession(user);
+            
+            // Associate the socket with the user
+            socket.userId = user.id;
+            socket.username = user.username;
+            socket.sessionToken = session.token;
+            
+            // Join a room specific to this user for private messages
+            socket.join(`user:${user.id}`);
+            
+            // Mark user as active
+            activeUsers.add(username);
+            updateUserList();
+            
+            // Broadcast user's online status
+            socket.broadcast.emit('user-status-change', {
+                userId: user.id,
+                status: 'online',
+                username: user.username
+            });
+            
+            // Return success with user data and session
+            return callback({
+                success: true,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    avatar_url: user.avatar_url,
+                    status: 'online'
+                },
+                session: {
+                    token: session.token,
+                    expires: session.expires
+                }
+            });
+        } catch (error) {
+            console.error('Login error:', error);
+            return callback({ success: false, message: 'An error occurred during login' });
+        }
+    });
+    
     socket.on('register-user', async (data, callback) => {
         try {
-            console.log('Received registration request:', data.username);
-            
             const { username, password, email } = data;
             
-            // Validate inputs first to prevent any security issues
             if (!username || !password) {
-                return callback({ 
-                    success: false, 
-                    message: 'Username and password are required'
-                });
+                return callback({ success: false, message: 'Username and password are required' });
             }
             
             // Check if username already exists
@@ -509,96 +588,52 @@ io.on("connection", (socket) => {
                 .maybeSingle();
                 
             if (existingUser) {
-                return callback({ 
-                    success: false, 
-                    message: 'Username already exists'
-                });
+                return callback({ success: false, message: 'Username already exists' });
             }
             
-            // Attempt to register the user
+            // Register the user
             const user = await registerUser(username, password, email);
             
             if (!user) {
-                console.error(`Registration failed for ${username}: No user returned`);
                 return callback({ success: false, message: 'Registration failed' });
             }
             
-            // Register the user's session
-            users[socket.id] = {
-                socketId: socket.id,
-                authenticated: true,
-                username: user.username,
-                id: user.id
-            };
+            // Create NextAuth-like session
+            const { createSession } = require('./next-auth-adapter');
+            const session = createSession(user);
             
-            console.log(`User ${username} registered successfully with ID: ${user.id}`);
+            // Associate the socket with the user
+            socket.userId = user.id;
+            socket.username = user.username;
+            socket.sessionToken = session.token;
+            
+            // Join a room specific to this user for private messages
+            socket.join(`user:${user.id}`);
             
             // Mark user as active
             activeUsers.add(username);
             updateUserList();
             
-            // Return success with user info
-            callback({
+            // Return success with user data and session
+            return callback({
                 success: true,
                 user: {
                     id: user.id,
                     username: user.username,
-                    email: user.user_metadata?.email || email || '',
-                    avatarUrl: null
+                    email: user.email || `${username}@homies.app`,
+                    avatar_url: null,
+                    status: 'online'
+                },
+                session: {
+                    token: session.token,
+                    expires: session.expires
                 }
             });
-        } catch (err) {
-            console.error(`Registration error for ${username}:`, err);
-            return callback({ success: false, message: 'Server error during registration' });
+        } catch (error) {
+            console.error('Registration error:', error);
+            return callback({ success: false, message: 'An error occurred during registration' });
         }
     });
-
-    // Login user handler
-    socket.on('login-user', async (data, callback) => {
-        const { username, password } = data;
-        
-        console.log(`Login attempt for user: ${username}`);
-        
-        try {
-            // Validate inputs first to prevent any security issues
-            if (!username || !password) {
-                return callback({ 
-                    success: false, 
-                    message: 'Username and password are required'
-                });
-            }
-
-            // Attempt to sign in the user
-            const user = await signInUser(username, password);
-            
-            if (!user) {
-                console.error(`Login failed for ${username}: No user returned`);
-                return callback({ success: false, message: 'Invalid username or password' });
-            }
-            
-            // Get the user's avatar URL from Supabase
-            const { data: userData, error: userError } = await getSupabaseClient(true)
-                .from('users')
-                .select('avatar_url')
-                .eq('id', user.id)
-                .single();
-                
-            const avatarUrl = userData?.avatar_url || null;
-            
-            // Register the user's session
-            users[socket.id] = {
-                socketId: socket.id,
-                authenticated: true,
-                username: user.username,
-                id: user.id,
-                avatarUrl: avatarUrl
-            };
-            
-            console.log(`User ${username} logged in successfully with ID: ${user.id}`);
-            
-            // Mark user as active
-            activeUsers.add(username);
-            updateUserList();
             
             // Load messages from Supabase for this user
             console.log(`Loading messages for user ${username}`);
