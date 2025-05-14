@@ -303,7 +303,16 @@ class AuthManager {
             usernameDisplay.textContent = this.currentUser.username || this.currentUser.name;
         }
         
-        // Initialize chat if needed
+        // Store user in session storage for other components to access
+        sessionStorage.setItem('user', JSON.stringify(this.currentUser));
+        
+        // Dispatch userLoggedIn event to trigger ChatManager initialization in app.js
+        console.log('[AUTH_DEBUG] Dispatching userLoggedIn event with user:', this.currentUser);
+        document.dispatchEvent(new CustomEvent('userLoggedIn', {
+            detail: { user: this.currentUser }
+        }));
+        
+        // Initialize chat if needed (legacy support)
         if (window.chatManager) {
             window.chatManager.setCurrentUser(this.currentUser);
         }
