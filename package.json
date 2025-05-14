@@ -21,7 +21,8 @@
     "megajs": "^1.1.4",
     "crypto-js": "^4.1.1",
     "nodemailer": "^6.9.7",
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^2.6.7",
+    "cookie-parser": "^1.4.6"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
