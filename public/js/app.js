@@ -78,9 +78,9 @@ function initializeApp() {
 
     // Initialize AuthManager FIRST. It will handle checking the session 
     // and deciding whether to show login or proceed.
-    console.log('[APP_DEBUG] Calling AuthManager.initialize...');
-    authManager.initialize();
-    console.log('[APP_DEBUG] AuthManager.initialize finished.');
+    console.log('[APP_DEBUG] Calling AuthManager.checkLoggedInState...');
+    authManager.checkLoggedInState();
+    console.log('[APP_DEBUG] AuthManager.checkLoggedInState finished.');
     
     // ChatManager initialization is now TRIGGERED BY AuthManager
     // after successful login or session restoration. See event listener below.

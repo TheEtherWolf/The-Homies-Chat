@@ -184,30 +184,6 @@ class ChatManager {
             }
         }
         
-        // Update UI with user info
-        this._updateUserUI();
-        
-        // Setup socket listeners
-        this._setupSocketListeners();
-        
-        // Setup UI event listeners
-        this._setupUIEventListeners();
-        
-        // Load emoji data
-        this.setupEmojiPicker();
-        
-        // Mark as initialized
-        this.isInitialized = true;
-        
-        // Set flag for data fetch on connect
-        this.needsInitialDataFetch = true;
-        
-        if (this.socket && this.socket.connected) {
-            this.performInitialDataFetch();
-        }
-        
-        console.log('[CHAT_DEBUG] Chat interface initialized');
-    }
     
     // Update UI with user info
     _updateUserUI() {
@@ -597,68 +573,65 @@ class ChatManager {
         }
     }
     
-    // Update chat header
-    if (this.chatTitle) {
-        this.chatTitle.innerHTML = '<i class="bi bi-hash me-2"></i> general';
-    }
-    
-    // Display general chat
-    this._displayChannelMessages('general');
-});
-
-// Settings button click handler
-document.getElementById('settings-button')?.addEventListener('click', () => {
-    console.log('[CHAT_DEBUG] Settings button clicked');
-    // Update the avatar preview in the settings modal
-    const avatarPreview = document.getElementById('profile-picture-preview');
-    if (avatarPreview && this.currentUser.avatarUrl) {
-        avatarPreview.src = this.currentUser.avatarUrl;
-    }
-    
-    // Show the settings modal
-    const settingsModal = new bootstrap.Modal(document.getElementById('settings-modal'));
-    settingsModal.show();
-});
-
-// Profile picture change button click handler
-document.getElementById('change-profile-picture-btn')?.addEventListener('click', () => {
-    console.log('[CHAT_DEBUG] Change profile picture button clicked');
-    // Trigger the file input click
-    document.getElementById('profile-picture-input')?.click();
-});
-
-// Profile picture input change handler
-document.getElementById('profile-picture-input')?.addEventListener('change', async (event) => {
-    console.log('[CHAT_DEBUG] Profile picture input changed');
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    // Validate file type and size
-    const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
-    if (!validTypes.includes(file.type)) {
-        alert('Please select a valid image file (JPG, PNG, or GIF)');
+    /**
+     * Initialize the UI for the chat interface
+     */
+    initializeChatUI() {
+        // Update chat header
+        if (this.chatTitle) {
+            this.chatTitle.innerHTML = '<i class="bi bi-hash me-2"></i> general';
+        }
+        
+        // Display general chat
+        this._displayChannelMessages('general');
+        
+        // Settings button click handler
+        if (this.settingsButton) {
+            this.settingsButton.addEventListener('click', () => {
+                console.log('[CHAT_DEBUG] Settings button clicked');
+                // Update the avatar preview in the settings modal
+                const avatarPreview = document.getElementById('profile-picture-preview');
+                if (avatarPreview && this.currentUser && this.currentUser.avatarUrl) {
+                    avatarPreview.src = this.currentUser.avatarUrl;
+                }
+                
+                // Show the settings modal
+                const settingsModal = new bootstrap.Modal(document.getElementById('settings-modal'));
+                settingsModal.show();
+            });
+        }
+        
+        // Profile picture change button click handler
+        const changeProfilePictureBtn = document.getElementById('change-profile-picture-btn');
+        if (changeProfilePictureBtn) {
+            changeProfilePictureBtn.addEventListener('click', () => {
+                console.log('[CHAT_DEBUG] Change profile picture button clicked');
+                // Trigger the file input click
+                document.getElementById('profile-picture-input')?.click();
+            });
+        }
+        
+        // Profile picture input change handler
+        const profilePictureInput = document.getElementById('profile-picture-input');
+        if (profilePictureInput) {
+            profilePictureInput.addEventListener('change', async (event) => {
+                console.log('[CHAT_DEBUG] Profile picture input changed');
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                // Validate file type and size
+                const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
+                if (!validTypes.includes(file.type)) {
+                    alert('Please select a valid image file (JPG, PNG, or GIF)');
+                    return;
+                }
+                
+                // Continue with the upload process
         return;
     }
     
-    if (file.size > 2 * 1024 * 1024) { // 2MB max
-        alert('Image size should be less than 2MB');
-        return;
-    }
-    
-    // Show preview
-    const avatarPreview = document.getElementById('profile-picture-preview');
-    if (avatarPreview) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            avatarPreview.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-    }
-    
-    // Compress the image before upload
-    const compressedImage = await this._compressImage(file);
-    
-    // Upload the image
+    // Continue with the upload process
+    this._uploadProfilePicture(file);
     this._uploadProfilePicture(compressedImage);
 });
 
