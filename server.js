@@ -1185,10 +1185,11 @@ io.on("connection", (socket) => {
     // Handle message deletion
     socket.on('delete-message', async (data, callback) => {
         try {
-            const { messageId, userId } = data;
+            const { messageId } = data;
+            const userId = users[socket.id]?.id;
             
             // Validate input
-            if (!messageId || !userId) {
+            if (!messageId) {
                 console.error('Missing required fields for message deletion');
                 return callback({ 
                     success: false, 
@@ -1196,9 +1197,16 @@ io.on("connection", (socket) => {
                 });
             }
             
-            console.log(`Attempting to delete message ${messageId} by user ${userId}`);
-            
             // Verify the user is authenticated
+            if (!users[socket.id] || !users[socket.id].authenticated) {
+                console.error('Unauthenticated user attempting to delete message');
+                return callback({ 
+                    success: false, 
+                    error: 'Authentication required' 
+                });
+            }
+            
+            console.log(`Attempting to delete message ${messageId} by user ${userId}`);
             if (!users[socket.id] || !users[socket.id].authenticated) {
                 console.error('Unauthenticated user tried to delete a message');
                 return callback({ 
@@ -1950,6 +1958,57 @@ io.on("connection", (socket) => {
     
     // Friends system handlers
     
+    // Update friend code in Supabase
+    socket.on('update-friend-code', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            return callback({ success: false, message: 'Not authenticated' });
+        }
+        
+        const userId = users[socket.id].id;
+        const { friendCode } = data;
+        
+        if (!friendCode) {
+            return callback({ success: false, message: 'Friend code is required' });
+        }
+        
+        try {
+            console.log(`Updating friend code for user ${userId} to ${friendCode}`);
+            
+            // Update the user record in Supabase
+            const { data: updateData, error } = await getSupabaseClient(true)
+                .from('users')
+                .update({ friend_code: friendCode })
+                .eq('id', userId);
+                
+            if (error) {
+                console.error('Error updating friend code in Supabase:', error);
+                return callback({ success: false, message: 'Failed to update friend code', error: error.message });
+            }
+            
+            // Update the user object in memory
+            if (users[socket.id]) {
+                users[socket.id].friendCode = friendCode;
+            }
+            
+            console.log(`Friend code updated successfully for user ${userId}`);
+            return callback({ success: true, message: 'Friend code updated successfully' });
+        } catch (err) {
+            console.error('Error in update-friend-code handler:', err);
+            return callback({ success: false, message: 'Server error', error: err.message });
+        }
+    });
+    
+    // Helper function to generate a random friend code
+    function generateCode() {
+        const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let code = '';
+        for (let i = 0; i < 8; i++) {
+            code += characters.charAt(Math.floor(Math.random() * characters.length));
+        }
+        return code;
+    }
+    
     // Generate a friend code for the user if they don't have one
     socket.on('generate-friend-code', async (data, callback) => {
         // Validate user authentication
@@ -2043,7 +2102,78 @@ io.on("connection", (socket) => {
     });
     
     // Add friend by username and friend code
-    // socket.on('add-friend', async (data, callback) => { ... }); // Entire handler removed
+    socket.on('add-friend-by-username-code', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            return callback({ success: false, message: 'Not authenticated' });
+        }
+        
+        // Validate input data
+        if (!data || !data.username || !data.friendCode) {
+            return callback({ success: false, message: 'Both username and friend code are required' });
+        }
+        
+        const senderId = users[socket.id].id;
+        const targetUsername = data.username;
+        const targetFriendCode = data.friendCode;
+        
+        try {
+            // Find the user with the given username and friend code
+            const { data: recipient, error } = await getSupabaseClient(true)
+                .from('users')
+                .select('id, username')
+                .eq('username', targetUsername)
+                .eq('friend_code', targetFriendCode)
+                .single();
+                
+            if (error || !recipient) {
+                console.error('Error finding user by username and friend code:', error || 'No matching user found');
+                return callback({ success: false, message: 'Invalid username or friend code' });
+            }
+            
+            const recipientId = recipient.id;
+            
+            // Prevent adding self
+            if (senderId === recipientId) {
+                return callback({ success: false, message: 'Cannot add yourself as a friend' });
+            }
+            
+            // Check existing friendship status first to avoid unnecessary inserts/errors
+            const existingStatus = await getFriendshipStatus(senderId, recipientId);
+            if (existingStatus) {
+                if (existingStatus.status === 'accepted') {
+                    return callback({ success: false, message: 'Already friends' });
+                } else if (existingStatus.status === 'pending') {
+                    return callback({ success: false, message: 'Friend request already pending' });
+                }
+            }
+            
+            // Proceed to send the request
+            const result = await sendFriendRequest(senderId, recipientId);
+            
+            if (result) {
+                // Request sent successfully
+                callback({ success: true, friendship: result, recipientUsername: recipient.username });
+                
+                // Notify the recipient if they are currently online
+                const recipientSocketId = Object.keys(users).find(id => users[id] && users[id].id === recipientId);
+                if (recipientSocketId) {
+                    io.to(recipientSocketId).emit('friend-request-received', { 
+                        senderId: senderId, 
+                        senderUsername: users[socket.id].username, 
+                        friendshipId: result.id 
+                    }); 
+                    console.log(`Notified ${recipientId} about incoming friend request from ${senderId}`);
+                }
+            } else {
+                console.error(`sendFriendRequest returned null/false between ${senderId} and ${recipientId} unexpectedly.`);
+                callback({ success: false, message: 'Failed to send friend request (database error)' });
+            }
+        } catch (err) {
+            console.error('Error in add-friend-by-username-code handler:', err);
+            callback({ success: false, message: 'Server error sending request' });
+        }
+    });
 
     // Get friends list
     socket.on('get-friends', async (callback) => {

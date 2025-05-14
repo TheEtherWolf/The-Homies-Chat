@@ -86,6 +86,11 @@ class ChatManager {
             this.currentUser = JSON.parse(userData);
             console.log('[CHAT_DEBUG] User data loaded from session storage:', this.currentUser);
             
+            // Generate friend code if not already present
+            if (!this.currentUser.friendCode) {
+                this._generateFriendCode();
+            }
+            
             // Make sure we have the avatar URL
             if (!this.currentUser.avatarUrl) {
                 console.log('[CHAT_DEBUG] No avatarUrl in user data, checking for avatar_url');
@@ -124,6 +129,9 @@ class ChatManager {
             
             // Load emoji data
             this.setupEmojiPicker();
+            
+            // Update friend code display
+            this._updateFriendCodeDisplay();
             
             // Mark as initialized
             this.isInitialized = true;
@@ -215,6 +223,59 @@ class ChatManager {
             console.log('[CHAT_DEBUG] Updated user avatar with URL:', this.currentUser.avatarUrl);
         }
     }
+    
+    // Generate a new friend code for the user
+    _generateFriendCode() {
+        console.log('[CHAT_DEBUG] Generating new friend code');
+        
+        // Generate a random 8-character code
+        const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let friendCode = '';
+        for (let i = 0; i < 8; i++) {
+            friendCode += characters.charAt(Math.floor(Math.random() * characters.length));
+        }
+        
+        // Save friend code to user data
+        this.currentUser.friendCode = friendCode;
+        
+        // Update session storage
+        sessionStorage.setItem('user', JSON.stringify(this.currentUser));
+        
+        // Send to server to save in Supabase
+        this.socket.emit('update-friend-code', { 
+            userId: this.currentUser.id,
+            friendCode: friendCode 
+        }, (response) => {
+            console.log('[CHAT_DEBUG] Friend code update response:', response);
+            if (response && response.success) {
+                // Show success notification
+                this._showNotification('Friend code updated successfully', 'success');
+                
+                // Update the UI
+                this._updateFriendCodeDisplay();
+            } else {
+                console.error('[CHAT_DEBUG] Failed to update friend code:', response?.error || 'Unknown error');
+                this._showNotification('Failed to update friend code', 'error');
+            }
+        });
+        
+        return friendCode;
+    }
+    
+    // Update the friend code display in the UI
+    _updateFriendCodeDisplay() {
+        const friendCodeElement = document.getElementById('my-friend-code');
+        const friendCodeContainer = document.querySelector('.friend-code-container');
+        
+        if (friendCodeElement && this.currentUser.friendCode) {
+            friendCodeElement.textContent = this.currentUser.friendCode;
+            
+            // Make the container visible if it was hidden
+            if (friendCodeContainer) {
+                friendCodeContainer.classList.remove('d-none');
+            }
+        }
+    }
 
     // Update user avatar URL in session storage and UI
     updateUserAvatar(avatarUrl) {
@@ -287,143 +348,82 @@ class ChatManager {
         // DM button click handler
         document.getElementById('dm-button')?.addEventListener('click', () => {
             console.log('[CHAT_DEBUG] DM button clicked');
-            this.isDMMode = true;
-            this.currentChannel = 'direct-messages';
+            this._handleDMButtonClick();
+        });
+        
+        // Set up friend tabs
+        const friendTabButtons = document.querySelectorAll('.friend-tab-btn');
+        if (friendTabButtons.length > 0) {
+            friendTabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Remove active class from all buttons
+                    friendTabButtons.forEach(btn => btn.classList.remove('active'));
+                    
+                    // Add active class to clicked button
+                    button.classList.add('active');
+                    
+                    // Hide all tab panes
+                    document.querySelectorAll('.friends-tab-pane').forEach(pane => {
+                        pane.classList.remove('active');
+                    });
+                    
+                    // Show the corresponding tab pane
+                    const tabName = button.getAttribute('data-tab');
+                    const tabPane = document.getElementById(`friends-${tabName}`);
+                    if (tabPane) {
+                        tabPane.classList.add('active');
+                    }
+                    
+                    // Load appropriate content based on tab
+                    if (tabName === 'pending') {
+                        this._loadPendingRequests();
+                    } else if (tabName === 'blocked') {
+                        this._loadBlockedUsers();
+                    } else if (tabName === 'all') {
+                        this._loadFriendsList();
+                    }
+                });
+            });
+        }
             
-            // Update UI to show we're in DM mode
+        // Home button click handler
+        document.getElementById('home-button')?.addEventListener('click', () => {
+            console.log('[CHAT_DEBUG] Home button clicked');
+            this.isDMMode = false;
+            this.currentChannel = 'general';
+            
+            // Update UI to show we're in channels mode
             document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
-            document.getElementById('dm-button').classList.add('active');
+            document.getElementById('home-button').classList.add('active');
             
-            // Show Friends section and hide channels
-            document.getElementById('channels-section')?.classList.add('d-none');
+            // Show channels and hide DM list
+            document.getElementById('channels-section')?.classList.remove('d-none');
             document.getElementById('dm-section')?.classList.add('d-none');
-            document.getElementById('friends-section')?.classList.remove('d-none');
+            document.getElementById('friends-section')?.classList.add('d-none');
             
             // Update chat header
             if (this.chatTitle) {
-                this.chatTitle.innerHTML = '<i class="bi bi-people-fill me-2"></i> Friends';
+                this.chatTitle.innerHTML = '<i class="bi bi-hash me-2"></i> general';
             }
             
-            // Clear messages container and show friends UI
-            if (this.messagesContainer) {
-                this.messagesContainer.innerHTML = '';
-                
-                // Add a container for the friends UI
-                const friendsUIContainer = document.createElement('div');
-                friendsUIContainer.className = 'friends-ui-container';
-                
-                // Check if we have friends
-                const hasFriends = Object.keys(this.friendships).length > 0;
-                
-                if (hasFriends) {
-                    // Show friends list
-                    const friendsList = document.createElement('div');
-                    friendsList.className = 'friends-list-container';
-                    
-                    // Add header
-                    const header = document.createElement('h3');
-                    header.textContent = 'Your Friends';
-                    friendsList.appendChild(header);
-                    
-                    // Add friends
-                    Object.values(this.friendships).forEach(friendship => {
-                        const friendItem = this._createFriendListItem(friendship);
-                        friendsList.appendChild(friendItem);
-                    });
-                    
-                    friendsUIContainer.appendChild(friendsList);
-                } else {
-                    // Show empty state with add friend option
-                    const emptyState = document.createElement('div');
-                    emptyState.className = 'friends-empty-state';
-                    
-                    const icon = document.createElement('i');
-                    icon.className = 'bi bi-people-fill empty-icon';
-                    emptyState.appendChild(icon);
-                    
-                    const message = document.createElement('h3');
-                    message.textContent = 'No friends yet';
-                    emptyState.appendChild(message);
-                    
-                    const subMessage = document.createElement('p');
-                    subMessage.textContent = 'Add friends to start chatting with them';
-                    emptyState.appendChild(subMessage);
-                    
-                    const addFriendBtn = document.createElement('button');
-                    addFriendBtn.className = 'btn btn-primary';
-                    addFriendBtn.innerHTML = '<i class="bi bi-person-plus-fill me-2"></i> Add Friend';
-                    addFriendBtn.addEventListener('click', () => {
-                        // Show the add friend tab
-                        document.querySelectorAll('.friend-tab-btn').forEach(btn => btn.classList.remove('active'));
-                        document.querySelectorAll('.friends-tab-pane').forEach(pane => pane.classList.remove('active'));
-                        
-                        document.querySelector('.friend-tab-btn[data-tab="add"]')?.classList.add('active');
-                        document.getElementById('friends-add')?.classList.add('active');
-                    });
-                    emptyState.appendChild(addFriendBtn);
-                    
-                    // Show friend code section
-                    const friendCodeSection = document.createElement('div');
-                    friendCodeSection.className = 'friend-code-section mt-4';
-                    
-                    const codeLabel = document.createElement('h4');
-                    codeLabel.textContent = 'Your Friend Code';
-                    friendCodeSection.appendChild(codeLabel);
-                    
-                    const codeDisplay = document.createElement('div');
-                    codeDisplay.className = 'friend-code-display d-flex align-items-center';
-                    
-                    const codeSpan = document.createElement('span');
-                    codeSpan.id = 'main-friend-code';
-                    codeSpan.textContent = document.getElementById('my-friend-code')?.textContent || 'Loading...';
-                    codeDisplay.appendChild(codeSpan);
-                    
-                    const copyBtn = document.createElement('button');
-                    copyBtn.className = 'btn btn-sm btn-outline-secondary ms-2';
-                    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
-                    copyBtn.addEventListener('click', () => {
-                        const code = document.getElementById('main-friend-code')?.textContent;
-                        if (code && code !== 'Loading...') {
-                            navigator.clipboard.writeText(code).then(() => {
-                                // Show copied tooltip
-                                const tooltip = document.createElement('div');
-                                tooltip.className = 'copy-tooltip';
-                                tooltip.textContent = 'Copied!';
-                                document.body.appendChild(tooltip);
-                                
-                                // Position near the button
-                                const rect = copyBtn.getBoundingClientRect();
-                                tooltip.style.top = `${rect.top - 30}px`;
-                                tooltip.style.left = `${rect.left}px`;
-                                
-                                // Remove after a short delay
-                                setTimeout(() => {
-                                    tooltip.remove();
-                                }, 1500);
-                            });
-                        }
-                    });
-                    codeDisplay.appendChild(copyBtn);
-                    
-                    friendCodeSection.appendChild(codeDisplay);
-                    emptyState.appendChild(friendCodeSection);
-                    
-                    friendsUIContainer.appendChild(emptyState);
-                }
-                
-                this.messagesContainer.appendChild(friendsUIContainer);
+            // Display general chat
+            this._displayChannelMessages('general');
+        });
+        
+        // Settings button click handler
+        document.getElementById('settings-button')?.addEventListener('click', () => {
+            console.log('[CHAT_DEBUG] Settings button clicked');
+            // Show settings modal
+            const settingsModal = document.getElementById('settings-modal');
+            if (settingsModal) {
+                settingsModal.classList.add('show');
+                document.body.classList.add('modal-open');
             }
-            
-            // Fetch friend list from server
-            this.socket.emit('get-friends', (response) => {
-                if (response.success && response.friends) {
-                    console.log('[CHAT_DEBUG] Received friends list:', response.friends);
-                    // Update friendships object
-                    response.friends.forEach(friendship => {
-                        this.friendships[friendship.user_id] = friendship;
-                    });
-                }
-            });
+        });
+        
+        // DM button click handler
+        document.getElementById('dm-button')?.addEventListener('click', () => {
+            this._handleDMButtonClick();
         });
         
         // Home button click handler
@@ -605,9 +605,276 @@ class ChatManager {
                 alert('Failed to upload profile picture: ' + (result.message || 'Unknown error'));
             }
         } catch (error) {
-            console.error('[CHAT_DEBUG] Exception uploading profile picture:', error);
-            alert('An error occurred while uploading your profile picture. Please try again.');
+    
+    // Update chat header
+    if (this.chatTitle) {
+        this.chatTitle.innerHTML = '<i class="bi bi-hash me-2"></i> general';
+    }
+    
+    // Display general chat
+    this._displayChannelMessages('general');
+});
+
+// Settings button click handler
+document.getElementById('settings-button')?.addEventListener('click', () => {
+    console.log('[CHAT_DEBUG] Settings button clicked');
+    // Update the avatar preview in the settings modal
+    const avatarPreview = document.getElementById('profile-picture-preview');
+    if (avatarPreview && this.currentUser.avatarUrl) {
+        avatarPreview.src = this.currentUser.avatarUrl;
+    }
+    
+    // Show the settings modal
+    const settingsModal = new bootstrap.Modal(document.getElementById('settings-modal'));
+    settingsModal.show();
+});
+
+// Profile picture change button click handler
+document.getElementById('change-profile-picture-btn')?.addEventListener('click', () => {
+    console.log('[CHAT_DEBUG] Change profile picture button clicked');
+    // Trigger the file input click
+    document.getElementById('profile-picture-input')?.click();
+});
+
+// Profile picture input change handler
+document.getElementById('profile-picture-input')?.addEventListener('change', async (event) => {
+    console.log('[CHAT_DEBUG] Profile picture input changed');
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Validate file type and size
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+        alert('Please select a valid image file (JPG, PNG, or GIF)');
+        return;
+    }
+    
+    if (file.size > 2 * 1024 * 1024) { // 2MB max
+        alert('Image size should be less than 2MB');
+        return;
+    }
+    
+    // Show preview
+    const avatarPreview = document.getElementById('profile-picture-preview');
+    if (avatarPreview) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            avatarPreview.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+    
+    // Compress the image before upload
+    const compressedImage = await this._compressImage(file);
+    
+    // Upload the image
+    this._uploadProfilePicture(compressedImage);
+});
+
+// Save settings button click handler
+document.getElementById('save-settings')?.addEventListener('click', () => {
+    console.log('[CHAT_DEBUG] Save settings button clicked');
+    // Close the modal
+    const settingsModal = bootstrap.Modal.getInstance(document.getElementById('settings-modal'));
+    settingsModal.hide();
+});
+
+// Send message button click handler
+this.sendButton?.addEventListener('click', () => {
+    console.log('[CHAT_DEBUG] Send message button clicked');
+    this.sendMessage();
+});
+
+// Message input keypress handler
+this.messageInput?.addEventListener('keypress', (event) => {
+    if (event.key === 'Enter') {
+        console.log('[CHAT_DEBUG] Enter key pressed, sending message');
+        event.preventDefault(); // Prevent the default behavior (adding a newline)
+        this.sendMessage();
+    }
+});
+
+// Add friend button click handler
+document.getElementById('add-friend-btn')?.addEventListener('click', () => {
+    this._handleAddFriendClick();
+});
+
+// Handle DM button click
+_handleDMButtonClick() {
+    console.log('[CHAT_DEBUG] Handling DM button click');
+    
+    // Set DM mode
+    this.isDMMode = true;
+    this.currentChannel = 'direct-messages';
+    
+    // Update UI to show we're in DM mode
+    document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('dm-button').classList.add('active');
+    
+    // Show Friends section and hide channels
+    document.getElementById('channels-section')?.classList.add('d-none');
+    document.getElementById('dm-section')?.classList.add('d-none');
+    document.getElementById('friends-section')?.classList.remove('d-none');
+    
+    // Update chat header
+    if (this.chatTitle) {
+        this.chatTitle.innerHTML = '<i class="bi bi-people-fill me-2"></i> Friends';
+    }
+    
+    // Load friends list
+    this._loadFriendsList();
+}
+
+// Load friends list
+_loadFriendsList() {
+    console.log('[CHAT_DEBUG] Loading friends list');
+    
+    // Get the friends list container
+    const friendsListContainer = document.getElementById('friends-list');
+    if (!friendsListContainer) return;
+    
+    // Clear the container
+    friendsListContainer.innerHTML = '';
+    
+    // Show loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'loading-indicator';
+    loadingIndicator.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+    friendsListContainer.appendChild(loadingIndicator);
+    
+    // Request friends list from server
+    this.socket.emit('get-friends', {}, (response) => {
+        // Remove loading indicator
+        loadingIndicator.remove();
+        
+        if (response && response.success && response.friends) {
+            const friends = response.friends;
+            
+            if (friends.length === 0) {
+                // Show empty state
+                this._showEmptyFriendsState(friendsListContainer);
+            } else {
+                // Display friends
+                friends.forEach(friend => {
+                    const friendItem = this._createFriendListItem(friend);
+                    friendsListContainer.appendChild(friendItem);
+                });
+            }
+        } else {
+            // Show error state
+            this._showEmptyFriendsState(friendsListContainer, true);
         }
+    });
+}
+
+// Show empty friends list state
+_showEmptyFriendsState(container, isError = false) {
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-friends-state';
+    
+    if (isError) {
+        emptyState.innerHTML = `
+            <i class="bi bi-exclamation-circle"></i>
+            <p>Could not load friends</p>
+            <p class="sub-text">Please try again later</p>
+        `;
+    } else {
+        // Get the user's friend code
+        const friendCode = this.currentUser?.friendCode || this._generateFriendCode();
+        
+        emptyState.innerHTML = `
+            <i class="bi bi-people"></i>
+            <p>No friends yet</p>
+            <p class="sub-text">Use a username and friend code to add friends</p>
+            <div class="friend-code-section">
+                <p>Your friend code:</p>
+                <div class="friend-code">
+                    <span id="friend-code">${friendCode}</span>
+                    <button class="btn btn-sm btn-outline-primary copy-code-btn" title="Copy friend code">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary regenerate-code-btn" title="Generate new code">
+                        <i class="bi bi-arrow-repeat"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="add-friend-section mt-3">
+                <button class="btn btn-primary add-friend-modal-btn">
+                    <i class="bi bi-person-plus-fill"></i> Add Friend
+                </button>
+            </div>
+        `;
+    }
+    
+    container.appendChild(emptyState);
+    
+    // Add event listeners after the element is added to the DOM
+    if (!isError) {
+            // Copy friend code button
+            const copyCodeBtn = container.querySelector('.copy-code-btn');
+            if (copyCodeBtn) {
+                copyCodeBtn.addEventListener('click', () => {
+                    const friendCode = document.getElementById('friend-code')?.textContent;
+                    if (friendCode) {
+                        navigator.clipboard.writeText(friendCode).then(() => {
+                            // Show copied notification
+                            this._showNotification('Copied friend code to clipboard!', 'success');
+                        });
+                    }
+                });
+            }
+            
+            // Regenerate friend code button
+            const regenerateCodeBtn = container.querySelector('.regenerate-code-btn');
+            if (regenerateCodeBtn) {
+                regenerateCodeBtn.addEventListener('click', () => {
+                    // Generate new friend code
+                    const newFriendCode = this._generateFriendCode();
+                    
+                    // Update the displayed code
+                    const friendCodeElement = document.getElementById('friend-code');
+                    if (friendCodeElement) {
+                        friendCodeElement.textContent = newFriendCode;
+                    }
+                    
+                    // Show success notification
+                    this._showNotification('Generated new friend code!', 'success');
+                });
+            }
+            
+            // Add friend button
+            const addFriendModalBtn = container.querySelector('.add-friend-modal-btn');
+            if (addFriendModalBtn) {
+                addFriendModalBtn.addEventListener('click', () => {
+                    this._showAddFriendModal();
+                });
+            }
+        }
+    }
+    
+    // Show notification
+    _showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        
+        // Add to document
+        document.body.appendChild(notification);
+        
+        // Animate in
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 10);
+        
+        // Remove after delay
+        setTimeout(() => {
+            notification.classList.remove('show');
+            
+            // Remove from DOM after animation
+            setTimeout(() => {
+                notification.remove();
+            }, 300);
+        }, 3000);
     }
     
     // Create a friend list item element
@@ -652,7 +919,7 @@ class ChatManager {
         return friendItem;
     }
     
-    // Format user status for display
+    // Format user status
     _formatStatus(status) {
         switch (status) {
             case 'online':
@@ -662,12 +929,439 @@ class ChatManager {
             case 'dnd':
                 return 'Do Not Disturb';
             case 'offline':
-                return 'Offline';
             default:
                 return 'Offline';
         }
     }
     
+    // Show add friend modal
+    _showAddFriendModal() {
+        // Create modal element
+        const modalEl = document.createElement('div');
+        modalEl.className = 'modal fade';
+        modalEl.id = 'addFriendModal';
+        modalEl.setAttribute('tabindex', '-1');
+        modalEl.setAttribute('aria-labelledby', 'addFriendModalLabel');
+        modalEl.setAttribute('aria-hidden', 'true');
+        
+        // Create modal content
+        modalEl.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="addFriendModalLabel">Add Friend</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="friend-username-input" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="friend-username-input" placeholder="Enter username">
+                        </div>
+                        <div class="mb-3">
+                            <label for="friend-code-input" class="form-label">Friend Code</label>
+                            <input type="text" class="form-control" id="friend-code-input" placeholder="Enter friend code">
+                        </div>
+                        <hr>
+                        <div class="friend-code-container">
+                            <p>Your friend code: <span id="my-friend-code">${this.currentUser.friendCode || 'Loading...'}</span></p>
+                            <button class="btn btn-sm btn-outline-primary copy-code-btn" title="Copy to clipboard">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary generate-code-btn" title="Generate new code">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary send-request-btn">Send Friend Request</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add modal to document body
+        document.body.appendChild(modalEl);
+        
+        // Initialize modal
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+        
+        // Add event listener for send request button
+        const sendRequestBtn = modalEl.querySelector('.send-request-btn');
+        if (sendRequestBtn) {
+            sendRequestBtn.addEventListener('click', () => {
+                const usernameInput = document.getElementById('friend-username-input');
+                const friendCodeInput = document.getElementById('friend-code-input');
+                const username = usernameInput.value.trim();
+                const friendCode = friendCodeInput.value.trim();
+                
+                if (!username) {
+                    this._showNotification('Please enter a username', 'error');
+                    return;
+                }
+                
+                if (!friendCode) {
+                    this._showNotification('Please enter a friend code', 'error');
+                    return;
+                }
+                
+                // Send friend request with both username and friend code
+                this.socket.emit('add-friend-by-username-code', { username, friendCode }, (response) => {
+                    if (response && response.success) {
+                        // Show success notification
+                        this._showNotification(`Friend request sent to ${response.recipientUsername}`, 'success');
+                        
+                        // Close modal
+                        modal.hide();
+                    } else {
+                        // Show error notification
+                        this._showNotification(response?.message || 'Failed to send friend request', 'error');
+                    }
+                });
+            });
+        }
+        
+        // Add event listener for copy code button
+        const copyCodeBtn = modalEl.querySelector('.copy-code-btn');
+        if (copyCodeBtn) {
+            copyCodeBtn.addEventListener('click', () => {
+                const friendCodeEl = document.getElementById('my-friend-code');
+                const friendCode = friendCodeEl.textContent;
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(friendCode).then(() => {
+                    this._showNotification('Friend code copied to clipboard', 'success');
+                    this._playCopySound();
+                }).catch(err => {
+                    console.error('Could not copy text: ', err);
+                    this._showNotification('Failed to copy friend code', 'error');
+                });
+            });
+        }
+        
+        // Add event listener for generate code button
+        const generateCodeBtn = modalEl.querySelector('.generate-code-btn');
+        if (generateCodeBtn) {
+            generateCodeBtn.addEventListener('click', () => {
+                // Generate new friend code
+                this._generateFriendCode();
+            });
+        }
+        
+        // Clean up when modal is hidden
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            modalEl.remove();
+        });
+    }
+    
+    // Add friend button click handler
+    _handleAddFriendClick() {
+        this._showAddFriendModal();
+    }
+    
+    // Load pending friend requests
+    _loadPendingRequests() {
+        console.log('[CHAT_DEBUG] Loading pending friend requests');
+        
+        // Get the friends list container
+        const friendsListContainer = document.getElementById('friends-list');
+        if (!friendsListContainer) return;
+        
+        // Clear the container
+        friendsListContainer.innerHTML = '';
+        
+        // Show loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+        friendsListContainer.appendChild(loadingIndicator);
+        
+        // Request pending friend requests from server
+        this.socket.emit('get-pending-requests', {}, (response) => {
+            // Remove loading indicator
+            loadingIndicator.remove();
+            
+            if (response && response.success && response.requests) {
+                const pendingRequests = response.requests;
+                
+                if (pendingRequests.length === 0) {
+                    // Show empty state
+                    this._showEmptyPendingState(friendsListContainer);
+                } else {
+                    // Display pending requests
+                    pendingRequests.forEach(request => {
+                        const requestItem = this._createPendingRequestItem(request);
+                        friendsListContainer.appendChild(requestItem);
+                    });
+                }
+            } else {
+                // Show error state
+                this._showEmptyPendingState(friendsListContainer, true);
+            }
+        });
+    }
+    
+    // Show empty pending requests state
+    _showEmptyPendingState(container, isError = false) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-friends-state';
+        
+        if (isError) {
+            emptyState.innerHTML = `
+                <i class="bi bi-exclamation-circle"></i>
+                <p>Could not load pending requests</p>
+                <p class="sub-text">Please try again later</p>
+            `;
+        } else {
+            emptyState.innerHTML = `
+                <i class="bi bi-person-check"></i>
+                <p>No pending requests</p>
+                <p class="sub-text">When someone sends you a friend request, it will appear here</p>
+            `;
+        }
+        
+        container.appendChild(emptyState);
+    }
+    
+    // Create a pending request item element
+    _createPendingRequestItem(request) {
+        const isIncoming = request.direction === 'incoming';
+        const username = request.username || 'Unknown User';
+        const avatarUrl = request.avatar_url || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+        
+        // Create the request item element
+        const requestItem = document.createElement('div');
+        requestItem.className = 'friend-item pending-request';
+        requestItem.setAttribute('data-request-id', request.id);
+        
+        // Create the request item content
+        if (isIncoming) {
+            requestItem.innerHTML = `
+                <div class="friend-avatar">
+                    <img src="${avatarUrl}" alt="${username}">
+                </div>
+                <div class="friend-info">
+                    <div class="friend-name">${username}</div>
+                    <div class="friend-status">Incoming Friend Request</div>
+                </div>
+                <div class="friend-actions">
+                    <button class="btn btn-sm btn-success accept-btn" title="Accept">
+                        <i class="bi bi-check-lg"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger reject-btn" title="Reject">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            `;
+            
+            // Add event listeners for accept and reject buttons
+            const acceptBtn = requestItem.querySelector('.accept-btn');
+            if (acceptBtn) {
+                acceptBtn.addEventListener('click', () => {
+                    this._acceptFriendRequest(request.id);
+                });
+            }
+            
+            const rejectBtn = requestItem.querySelector('.reject-btn');
+            if (rejectBtn) {
+                rejectBtn.addEventListener('click', () => {
+                    this._rejectFriendRequest(request.id);
+                });
+            }
+        } else {
+            requestItem.innerHTML = `
+                <div class="friend-avatar">
+                    <img src="${avatarUrl}" alt="${username}">
+                </div>
+                <div class="friend-info">
+                    <div class="friend-name">${username}</div>
+                    <div class="friend-status">Outgoing Friend Request</div>
+                </div>
+                <div class="friend-actions">
+                    <button class="btn btn-sm btn-danger cancel-btn" title="Cancel Request">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            `;
+            
+            // Add event listener for cancel button
+            const cancelBtn = requestItem.querySelector('.cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => {
+                    this._cancelFriendRequest(request.id);
+                });
+            }
+        }
+        
+        return requestItem;
+    }
+    
+    // Accept a friend request
+    _acceptFriendRequest(requestId) {
+        this.socket.emit('respond-friend-request', { requestId, accept: true }, (response) => {
+            if (response && response.success) {
+                // Show success notification
+                this._showNotification('Friend request accepted!', 'success');
+                
+                // Reload pending requests
+                this._loadPendingRequests();
+            } else {
+                // Show error notification
+                this._showNotification(response?.message || 'Failed to accept friend request', 'error');
+            }
+        });
+    }
+    
+    // Reject a friend request
+    _rejectFriendRequest(requestId) {
+        this.socket.emit('respond-friend-request', { requestId, accept: false }, (response) => {
+            if (response && response.success) {
+                // Show success notification
+                this._showNotification('Friend request rejected', 'success');
+                
+                // Reload pending requests
+                this._loadPendingRequests();
+            } else {
+                // Show error notification
+                this._showNotification(response?.message || 'Failed to reject friend request', 'error');
+            }
+        });
+    }
+    
+    // Cancel a friend request
+    _cancelFriendRequest(requestId) {
+        this.socket.emit('cancel-friend-request', { requestId }, (response) => {
+            if (response && response.success) {
+                // Show success notification
+                this._showNotification('Friend request cancelled', 'success');
+                
+                // Reload pending requests
+                this._loadPendingRequests();
+            } else {
+                // Show error notification
+                this._showNotification(response?.message || 'Failed to cancel friend request', 'error');
+            }
+        });
+    }
+    
+    // Load blocked users
+    _loadBlockedUsers() {
+        console.log('[CHAT_DEBUG] Loading blocked users');
+        
+        // Get the friends list container
+        const friendsListContainer = document.getElementById('friends-list');
+        if (!friendsListContainer) return;
+        
+        // Clear the container
+        friendsListContainer.innerHTML = '';
+        
+        // Show loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+        friendsListContainer.appendChild(loadingIndicator);
+        
+        // Request blocked users from server
+        this.socket.emit('get-blocked-users', {}, (response) => {
+            // Remove loading indicator
+            loadingIndicator.remove();
+            
+            if (response && response.success && response.blockedUsers) {
+                const blockedUsers = response.blockedUsers;
+                
+                if (blockedUsers.length === 0) {
+                    // Show empty state
+                    this._showEmptyBlockedState(friendsListContainer);
+                } else {
+                    // Display blocked users
+                    blockedUsers.forEach(user => {
+                        const blockedUserItem = this._createBlockedUserItem(user);
+                        friendsListContainer.appendChild(blockedUserItem);
+                    });
+                }
+            } else {
+                // Show error state
+                this._showEmptyBlockedState(friendsListContainer, true);
+            }
+        });
+    }
+    
+    // Show empty blocked users state
+    _showEmptyBlockedState(container, isError = false) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-friends-state';
+        
+        if (isError) {
+            emptyState.innerHTML = `
+                <i class="bi bi-exclamation-circle"></i>
+                <p>Could not load blocked users</p>
+                <p class="sub-text">Please try again later</p>
+            `;
+        } else {
+            emptyState.innerHTML = `
+                <i class="bi bi-shield-check"></i>
+                <p>No blocked users</p>
+                <p class="sub-text">When you block someone, they will appear here</p>
+            `;
+        }
+        
+        container.appendChild(emptyState);
+    }
+    
+    // Create a blocked user item element
+    _createBlockedUserItem(user) {
+        const username = user.username || 'Unknown User';
+        const avatarUrl = user.avatar_url || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+        
+        // Create the blocked user item element
+        const blockedUserItem = document.createElement('div');
+        blockedUserItem.className = 'friend-item blocked-user';
+        blockedUserItem.setAttribute('data-user-id', user.id);
+        
+        // Create the blocked user item content
+        blockedUserItem.innerHTML = `
+            <div class="friend-avatar">
+                <img src="${avatarUrl}" alt="${username}">
+            </div>
+            <div class="friend-info">
+                <div class="friend-name">${username}</div>
+                <div class="friend-status">Blocked</div>
+            </div>
+            <div class="friend-actions">
+                <button class="btn btn-sm btn-primary unblock-btn" title="Unblock">
+                    <i class="bi bi-unlock"></i>
+                </button>
+            </div>
+        `;
+        
+        // Add event listener for unblock button
+        const unblockBtn = blockedUserItem.querySelector('.unblock-btn');
+        if (unblockBtn) {
+            unblockBtn.addEventListener('click', () => {
+                this._unblockUser(user.id);
+            });
+        }
+        
+        return blockedUserItem;
+    }
+    
+    // Unblock a user
+    _unblockUser(userId) {
+        this.socket.emit('unblock-user', { userId }, (response) => {
+            if (response && response.success) {
+                // Show success notification
+                this._showNotification('User unblocked', 'success');
+                
+                // Reload blocked users
+                this._loadBlockedUsers();
+            } else {
+                // Show error notification
+                this._showNotification(response?.message || 'Failed to unblock user', 'error');
+            }
+        });
+    }
+
     // Start a DM conversation with a user
     _startDMConversation(userId, username) {
         console.log(`[CHAT_DEBUG] Starting DM conversation with ${username} (${userId})`);
@@ -1623,6 +2317,92 @@ class ChatManager {
         console.log('[CHAT_DEBUG] Older messages prepended successfully');
     }
     
+    // Delete a message
+    _deleteMessage(messageId) {
+        if (!messageId) {
+            console.error('[CHAT_DEBUG] Cannot delete message: No message ID provided');
+            return;
+        }
+        
+        console.log(`[CHAT_DEBUG] Deleting message with ID: ${messageId}`);
+        
+        // Confirm deletion
+        if (confirm('Are you sure you want to delete this message? This cannot be undone.')) {
+            // First, mark the message as deleted in the UI
+            const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+            if (messageEl) {
+                const messageTextEl = messageEl.querySelector('.message-text');
+                if (messageTextEl) {
+                    messageTextEl.innerHTML = '<em class="deleted-message">[This message has been deleted]</em>';
+                }
+                
+                // Remove message actions
+                const messageActions = messageEl.querySelector('.message-actions');
+                if (messageActions) {
+                    messageActions.remove();
+                }
+                
+                // Add deleted class
+                messageEl.classList.add('deleted');
+            }
+            
+            // Send delete request to server
+            this.socket.emit('delete-message', { messageId }, (response) => {
+                if (response && response.success) {
+                    console.log(`[CHAT_DEBUG] Message ${messageId} deleted successfully`);
+                    
+                    // Also delete from Supabase
+                    this._deleteMessageFromSupabase(messageId);
+                    
+                    // Update message in cache
+                    this._updateDeletedMessageInCache(messageId);
+                } else {
+                    console.error('[CHAT_DEBUG] Failed to delete message:', response?.error || 'Unknown error');
+                    this._showNotification('Failed to delete message', 'error');
+                }
+            });
+        }
+    }
+    
+    // Delete message from Supabase
+    _deleteMessageFromSupabase(messageId) {
+        console.log(`[CHAT_DEBUG] Deleting message ${messageId} from Supabase`);
+        
+        // Send request to server to delete from Supabase
+        this.socket.emit('delete-message-from-supabase', { messageId }, (response) => {
+            if (response && response.success) {
+                console.log(`[CHAT_DEBUG] Message ${messageId} deleted from Supabase successfully`);
+            } else {
+                console.error('[CHAT_DEBUG] Failed to delete message from Supabase:', response?.error || 'Unknown error');
+            }
+        });
+    }
+    
+    // Update deleted message in cache
+    _updateDeletedMessageInCache(messageId) {
+        // Update in channel messages cache
+        Object.keys(this.channelMessages).forEach(channel => {
+            const messages = this.channelMessages[channel];
+            const messageIndex = messages.findIndex(msg => msg.id === messageId);
+            
+            if (messageIndex !== -1) {
+                messages[messageIndex].is_deleted = true;
+                messages[messageIndex].content = '[This message has been deleted]';
+            }
+        });
+        
+        // Update in DM conversations cache
+        Object.keys(this.dmConversations).forEach(userId => {
+            const messages = this.dmConversations[userId];
+            const messageIndex = messages.findIndex(msg => msg.id === messageId);
+            
+            if (messageIndex !== -1) {
+                messages[messageIndex].is_deleted = true;
+                messages[messageIndex].content = '[This message has been deleted]';
+            }
+        });
+    }
+    
     // Helper method to update message grouping after new messages are added
     _updateMessageGrouping() {
         const messages = this.messagesContainer.querySelectorAll('.message:not(.lazy-load-sentinel):not(.date-separator):not(.system-message)');
@@ -1747,7 +2527,10 @@ class ChatManager {
             actionBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 
-                // Close all other open menus first
+                // Check if this menu is already open
+                const isThisMenuOpen = actionMenu.classList.contains('show');
+                
+                // Close ALL OTHER open menus first
                 document.querySelectorAll('.message-actions-menu.show').forEach(menu => {
                     if (menu !== actionMenu) {
                         menu.classList.remove('show');
