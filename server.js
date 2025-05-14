@@ -634,8 +634,16 @@ io.on("connection", (socket) => {
             return callback({ success: false, message: 'An error occurred during registration' });
         }
     });
+    
+    // Handle loading messages for a user
+    socket.on('load-user-messages', async (data, callback) => {
+        try {
+            const username = data.username || (users[socket.id] ? users[socket.id].username : null);
             
-            // Load messages from Supabase for this user
+            if (!username) {
+                return callback({ success: false, message: 'Username is required' });
+            }
+            
             console.log(`Loading messages for user ${username}`);
             const messages = await loadMessagesFromSupabase();
             
@@ -676,36 +684,19 @@ io.on("connection", (socket) => {
                 console.log(`No messages found for user ${username}`);
             }
             
-            // Broadcast to all clients that this user is now online
-            socket.broadcast.emit('user-status-change', {
-                username: user.username,
-                status: 'online'
-            });
-            
-            // Return success with user info
+            // Return success with message data
             callback({
                 success: true,
-                user: {
-                    id: user.id,
-                    username: user.username,
-                    email: user.user_metadata?.email || '',
-                    avatarUrl: avatarUrl || user.user_metadata?.avatar_url || null,
-                    avatar_url: avatarUrl || user.user_metadata?.avatar_url || null // Include both formats for compatibility
-                }
+                messages: channelMessages['general'],
+                channel: 'general'
             });
             
-            // Send chat history to the user
-            for (const channel in channelMessages) {
-                if (channelMessages.hasOwnProperty(channel)) {
-                    socket.emit('message-history', {
-                        channel,
-                        messages: channelMessages[channel] || []
-                    });
-                }
-            }
-        } catch (err) {
-            console.error(`Login error for ${username}:`, err);
-            return callback({ success: false, message: 'Server error during login' });
+        } catch (error) {
+            console.error(`Error loading messages for user ${username || 'unknown'}:`, error);
+            callback({
+                success: false,
+                message: 'An error occurred while loading messages'
+            });
         }
     });
     
