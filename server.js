@@ -2801,6 +2801,62 @@ io.on("connection", (socket) => {
     });
 });
 
+// Profile picture upload endpoint
+app.post('/api/upload-profile-picture', async (req, res) => {
+    try {
+        const { userId, username, imageData } = req.body;
+        
+        if (!userId || !username || !imageData) {
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+        
+        // Extract base64 data from the data URL
+        const base64Data = imageData.split(',')[1];
+        
+        // Generate a unique filename
+        const timestamp = Date.now();
+        const filename = `avatar_${userId}_${timestamp}.jpg`;
+        
+        // Upload to Supabase storage
+        const { data, error } = await supabase.storage
+            .from('avatars')
+            .upload(`public/${filename}`, Buffer.from(base64Data, 'base64'), {
+                contentType: 'image/jpeg',
+                upsert: true
+            });
+            
+        if (error) {
+            console.error('Error uploading to Supabase:', error);
+            return res.status(500).json({ success: false, message: 'Failed to upload image to storage' });
+        }
+        
+        // Get the public URL
+        const avatarUrl = `${SUPABASE_URL}/storage/v1/object/public/avatars/public/${filename}`;
+        
+        // Update user record in database
+        const { data: userData, error: userError } = await supabase
+            .from('users')
+            .update({ avatar_url: avatarUrl })
+            .eq('id', userId);
+            
+        if (userError) {
+            console.error('Error updating user record:', userError);
+            return res.status(500).json({ success: false, message: 'Failed to update user record' });
+        }
+        
+        // Broadcast avatar update to all connected users
+        io.emit('user-avatar-updated', {
+            userId: userId,
+            avatarUrl: avatarUrl
+        });
+        
+        return res.json({ success: true, avatarUrl: avatarUrl });
+    } catch (error) {
+        console.error('Error in profile picture upload:', error);
+        return res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 server.listen(process.env.PORT || 3000, () => {
     console.log('Server listening on port 3000');
 });
