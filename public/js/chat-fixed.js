@@ -59,7 +59,7 @@ class ChatManager {
     }
 
     // Initialize the chat interface
-    initialize() {
+    initialize(user) {
         console.log('[CHAT_DEBUG] Initializing chat interface');
         
         // Set up document-wide click handler for message action menus
@@ -73,41 +73,49 @@ class ChatManager {
             }
         });
         
-        // Check if user is logged in via session storage
-        const userData = sessionStorage.getItem('user');
-        if (!userData) {
-            console.log('[CHAT_DEBUG] No user data in session storage, redirecting to login');
-            window.location.href = '/login.html';
-            return;
+        // Use user parameter if provided, otherwise check session storage
+        if (user) {
+            this.currentUser = user;
+            console.log('[CHAT_DEBUG] User data provided directly:', this.currentUser);
+        } else {
+            // Check if user is logged in via session storage
+            const userData = sessionStorage.getItem('user');
+            if (!userData) {
+                console.log('[CHAT_DEBUG] No user data in session storage, redirecting to login');
+                window.location.href = '/login.html';
+                return;
+            }
+            
+            try {
+                // Parse user data
+                this.currentUser = JSON.parse(userData);
+                console.log('[CHAT_DEBUG] User data loaded from session storage:', this.currentUser);
+            } catch (error) {
+                console.error('[CHAT_DEBUG] Error parsing user data from session storage:', error);
+                window.location.href = '/login.html';
+                return;
+            }
         }
         
-        try {
-            // Parse user data
-            this.currentUser = JSON.parse(userData);
-            console.log('[CHAT_DEBUG] User data loaded from session storage:', this.currentUser);
-            
-            // Update UI with user info
-            this._updateUserUI();
-            
-            // Set up socket event listeners
-            this._setupSocketListeners();
-            
-            // Initialize emoji picker
-            this._initializeEmojiPicker();
-            
-            // Initialize chat UI components and event listeners
-            this.initializeChatUI();
-            
-            // Mark as initialized
-            this.isInitialized = true;
-            console.log('[CHAT_DEBUG] Chat interface initialized successfully');
-            
-            // Fetch initial data if needed
-            if (this.needsInitialDataFetch) {
-                this._fetchInitialData();
-            }
-        } catch (error) {
-            console.error('[CHAT_DEBUG] Error initializing chat:', error);
+        // Update UI with user info
+        this._updateUserUI();
+        
+        // Set up socket event listeners
+        this._setupSocketListeners();
+        
+        // Initialize emoji picker
+        this._initializeEmojiPicker();
+        
+        // Initialize chat UI components and event listeners
+        this.initializeChatUI();
+        
+        // Mark as initialized
+        this.isInitialized = true;
+        console.log('[CHAT_DEBUG] Chat interface initialized successfully');
+        
+        // Fetch initial data if needed
+        if (this.needsInitialDataFetch) {
+            this._fetchInitialData();
         }
     }
     
@@ -295,6 +303,12 @@ class ChatManager {
             userAvatar.src = this.currentUser.avatarUrl;
             console.log('[CHAT_DEBUG] Updated user avatar with URL:', this.currentUser.avatarUrl);
         }
+    }
+    
+    // Public method to update user display (called from app.js)
+    updateCurrentUserDisplay() {
+        console.log('[CHAT_DEBUG] Updating current user display');
+        this._updateUserUI();
     }
     
     // Setup keep-alive mechanism to prevent Glitch from sleeping
