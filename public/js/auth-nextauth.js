@@ -485,13 +485,10 @@ class AuthManager {
                 console.log('[AUTH_DEBUG] No existing chatManager found, relying on event to initialize it');
             }
             
-            // Force a reload of the page if the chat container was created as a fallback
+            // Check if the chat container is empty - log but don't reload
             if (chatContainer && chatContainer.childElementCount === 0) {
-                console.log('[AUTH_DEBUG] Chat container is empty, refreshing the page to fully load the interface');
-                // Only reload if it's been at least 2 seconds since login to avoid infinite reload loops
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500);
+                console.log('[AUTH_DEBUG] Chat container is empty, but continuing without reload');
+                // No reload - just continue with the current page
             }
             
             console.log('[AUTH_DEBUG] showChatInterface completed');
