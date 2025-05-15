@@ -19,6 +19,14 @@ class AuthManager {
         this.registerContainer = document.getElementById('register-container');
         this.chatContainer = document.getElementById('chat-container');
         
+        // Debug log for element initialization
+        console.log('[AUTH_DEBUG] Elements initialized:', {
+            loginForm: !!this.loginForm,
+            loginError: !!this.loginError,
+            loginBtn: !!this.loginBtn,
+            chatContainer: !!this.chatContainer
+        });
+        
         this.initEventListeners();
         this.checkLoggedInState();
     }
@@ -104,7 +112,11 @@ class AuthManager {
     /**
      * Handle login form submission using NextAuth
      */
-    async handleLogin() {
+    async handleLogin(event) {
+        if (event) {
+            event.preventDefault();
+        }
+        
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value;
         
@@ -113,44 +125,31 @@ class AuthManager {
             return;
         }
         
-        if (this.loginBtn) {
-            this.loginBtn.disabled = true;
-            this.loginBtn.textContent = 'Logging in...';
+        // Get reference to login button
+        const loginBtn = document.getElementById('login-btn');
+        
+        if (loginBtn) {
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
         }
         
         // Clear previous errors
         this.hideLoginError();
         
         try {
+            console.log('[AUTH_DEBUG] Starting login process for user:', username);
+            
             // Try to use NextAuth if available
             if (window.NextAuth) {
-                const response = await window.NextAuth.signIn({ username, password });
+                console.log('[AUTH_DEBUG] Using NextAuth for login');
                 
-                if (this.loginBtn) {
-                    this.loginBtn.disabled = false;
-                    this.loginBtn.textContent = 'Login';
-                }
-                
-                if (response.success) {
-                    this.currentUser = response.user;
-                    // Still store in localStorage for backward compatibility
-                    localStorage.setItem('user', JSON.stringify(this.currentUser));
-                    this.showChatInterface();
-                } else {
-                    this.showLoginError(response.message || 'Login failed');
-                }
-                return;
-            }
-            
-            // Fall back to socket.io if NextAuth is not available
-            if (window.socket) {
-                console.log('[AUTH_DEBUG] Attempting socket.io login for', username);
-                window.socket.emit('login-user', { username, password }, (response) => {
-                    console.log('[AUTH_DEBUG] Login response received:', response);
+                try {
+                    const response = await window.NextAuth.signIn({ username, password });
+                    console.log('[AUTH_DEBUG] NextAuth login response:', response);
                     
-                    if (this.loginBtn) {
-                        this.loginBtn.disabled = false;
-                        this.loginBtn.textContent = 'Login';
+                    if (loginBtn) {
+                        loginBtn.disabled = false;
+                        loginBtn.textContent = 'Login';
                     }
                     
                     if (response && response.success) {
@@ -161,23 +160,86 @@ class AuthManager {
                         localStorage.setItem('user', JSON.stringify(this.currentUser));
                         sessionStorage.setItem('user', JSON.stringify(this.currentUser));
                         
+                        // Emit the userLoggedIn event
+                        const userLoggedInEvent = new CustomEvent('userLoggedIn', {
+                            detail: { user: this.currentUser }
+                        });
+                        document.dispatchEvent(userLoggedInEvent);
+                        
+                        // Show chat interface
                         console.log('[AUTH_DEBUG] Showing chat interface...');
                         this.showChatInterface();
                     } else {
-                        console.error('[AUTH_DEBUG] Login failed:', response ? response.message : 'No response');
-                        this.showLoginError(response && response.message ? response.message : 'Login failed');
+                        const errorMsg = response && response.message ? response.message : 'Login failed';
+                        console.error('[AUTH_DEBUG] Login failed:', errorMsg);
+                        this.showLoginError(errorMsg);
+                    }
+                } catch (nextAuthError) {
+                    console.error('[AUTH_DEBUG] NextAuth login error:', nextAuthError);
+                    
+                    if (loginBtn) {
+                        loginBtn.disabled = false;
+                        loginBtn.textContent = 'Login';
+                    }
+                    
+                    this.showLoginError('Authentication error: ' + (nextAuthError.message || 'Unknown error'));
+                }
+                return;
+            }
+            
+            // Fall back to socket.io if NextAuth is not available
+            if (window.socket) {
+                console.log('[AUTH_DEBUG] NextAuth not available, falling back to socket.io login for', username);
+                
+                window.socket.emit('login-user', { username, password }, (response) => {
+                    console.log('[AUTH_DEBUG] Socket.io login response received:', response);
+                    
+                    if (loginBtn) {
+                        loginBtn.disabled = false;
+                        loginBtn.textContent = 'Login';
+                    }
+                    
+                    if (response && response.success) {
+                        console.log('[AUTH_DEBUG] Socket.io login successful, user:', response.user);
+                        this.currentUser = response.user;
+                        
+                        // Store in both localStorage and sessionStorage
+                        localStorage.setItem('user', JSON.stringify(this.currentUser));
+                        sessionStorage.setItem('user', JSON.stringify(this.currentUser));
+                        
+                        // Emit the userLoggedIn event
+                        const userLoggedInEvent = new CustomEvent('userLoggedIn', {
+                            detail: { user: this.currentUser }
+                        });
+                        document.dispatchEvent(userLoggedInEvent);
+                        
+                        console.log('[AUTH_DEBUG] Showing chat interface...');
+                        this.showChatInterface();
+                    } else {
+                        const errorMsg = response && response.message ? response.message : 'Login failed';
+                        console.error('[AUTH_DEBUG] Socket.io login failed:', errorMsg);
+                        this.showLoginError(errorMsg);
                     }
                 });
             } else {
-                this.loginBtn.disabled = false;
-                this.loginBtn.textContent = 'Login';
+                console.error('[AUTH_DEBUG] Neither NextAuth nor socket.io available for login');
+                
+                if (loginBtn) {
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Login';
+                }
+                
                 this.showLoginError('Connection to server lost. Please refresh the page.');
             }
         } catch (error) {
-            console.error('Login error:', error);
-            this.loginBtn.disabled = false;
-            this.loginBtn.textContent = 'Login';
-            this.showLoginError('An error occurred during login. Please try again.');
+            console.error('[AUTH_DEBUG] Unexpected login error:', error);
+            
+            if (loginBtn) {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
+            }
+            
+            this.showLoginError('An error occurred during login: ' + (error.message || 'Please try again.'));
         }
     }
     
@@ -290,6 +352,7 @@ class AuthManager {
         if (this.loginContainer) this.loginContainer.style.display = 'block';
         if (this.registerContainer) this.registerContainer.style.display = 'none';
         if (this.chatContainer) this.chatContainer.style.display = 'none';
+        console.log('[AUTH_DEBUG] Login form shown');
     }
     
     /**
@@ -299,84 +362,99 @@ class AuthManager {
         if (this.loginContainer) this.loginContainer.style.display = 'none';
         if (this.registerContainer) this.registerContainer.style.display = 'block';
         if (this.chatContainer) this.chatContainer.style.display = 'none';
+        console.log('[AUTH_DEBUG] Register form shown');
     }
     
     /**
-     * Show chat interface after successful login
+     * Show the chat interface
+     * @param {Object} user - The user object to use for display
      */
-    showChatInterface() {
-        console.log('[AUTH_DEBUG] showChatInterface called with currentUser:', this.currentUser);
+    showChatInterface(user) {
+        console.log('[AUTH_DEBUG] Showing chat interface for user:', user || this.currentUser);
         
-        // Hide login/register containers, show chat container
-        if (this.loginContainer) {
-            this.loginContainer.style.display = 'none';
-            console.log('[AUTH_DEBUG] Login container hidden');
-        } else {
-            console.warn('[AUTH_DEBUG] Login container not found');
+        // Make sure we have a current user set
+        if (user && !this.currentUser) {
+            this.currentUser = user;
+            console.log('[AUTH_DEBUG] Setting current user from parameter:', user);
+        } else if (!this.currentUser) {
+            // Try to get user from localStorage as a fallback
+            const storedUser = localStorage.getItem('user');
+            if (storedUser) {
+                try {
+                    this.currentUser = JSON.parse(storedUser);
+                    console.log('[AUTH_DEBUG] Retrieved user from localStorage:', this.currentUser);
+                } catch (e) {
+                    console.error('[AUTH_DEBUG] Error parsing stored user:', e);
+                }
+            }
         }
         
-        if (this.registerContainer) {
-            this.registerContainer.style.display = 'none';
-            console.log('[AUTH_DEBUG] Register container hidden');
-        } else {
-            console.warn('[AUTH_DEBUG] Register container not found');
+        if (!this.currentUser) {
+            console.error('[AUTH_DEBUG] Cannot show chat interface: No user data available');
+            this.showLoginError('User data is missing. Please try logging in again.');
+            return;
         }
         
-        if (this.chatContainer) {
-            this.chatContainer.style.display = 'block';
-            console.log('[AUTH_DEBUG] Chat container shown');
+        // Get the auth container (parent container for login/register forms)
+        const authContainer = document.getElementById('auth-container');
+        if (authContainer) {
+            authContainer.style.display = 'none';
+            console.log('[AUTH_DEBUG] Auth container hidden');
+        } else {
+            console.warn('[AUTH_DEBUG] Auth container not found');
+        }
+        
+        // Get the chat container
+        const chatContainer = document.getElementById('chat-container');
+        if (chatContainer) {
+            // Remove any classes that might hide it
+            chatContainer.classList.remove('d-none', 'hidden');
+            // Set display to flex (as per the original HTML structure)
+            chatContainer.style.display = 'flex';
+            this.chatContainer = chatContainer;
+            console.log('[AUTH_DEBUG] Chat container shown and set to flex display');
         } else {
             console.error('[AUTH_DEBUG] Chat container not found! Cannot show chat interface.');
-            // Try to find it by ID as a fallback
-            const chatContainerFallback = document.getElementById('chat-container');
-            if (chatContainerFallback) {
-                console.log('[AUTH_DEBUG] Found chat container by ID, showing it');
-                chatContainerFallback.style.display = 'block';
-                this.chatContainer = chatContainerFallback;
-            } else {
-                console.error('[AUTH_DEBUG] Chat container not found by ID either. Login may appear successful but UI won\'t update.');
-            }
+            this.showLoginError('Error loading chat interface. Please refresh the page and try again.');
+            return;
         }
         
         // Update UI with user info
-        const usernameDisplay = document.getElementById('username-display');
-        if (usernameDisplay && this.currentUser) {
-            usernameDisplay.textContent = this.currentUser.username || this.currentUser.name;
-            console.log('[AUTH_DEBUG] Updated username display to:', this.currentUser.username || this.currentUser.name);
-        } else {
-            console.warn('[AUTH_DEBUG] Could not update username display:', 
-                          usernameDisplay ? 'currentUser missing' : 'usernameDisplay element not found');
-        }
+        this.updateCurrentUserDisplay();
         
         // Store user in session storage for other components to access
         sessionStorage.setItem('user', JSON.stringify(this.currentUser));
-        console.log('[AUTH_DEBUG] User data stored in sessionStorage');
+        localStorage.setItem('user', JSON.stringify(this.currentUser));
+        console.log('[AUTH_DEBUG] User data stored in sessionStorage and localStorage');
         
-        // Dispatch userLoggedIn event to trigger ChatManager initialization in app.js
-        console.log('[AUTH_DEBUG] Dispatching userLoggedIn event with user:', this.currentUser);
-        try {
-            document.dispatchEvent(new CustomEvent('userLoggedIn', {
-                detail: { user: this.currentUser }
-            }));
-            console.log('[AUTH_DEBUG] userLoggedIn event dispatched successfully');
-        } catch (error) {
-            console.error('[AUTH_DEBUG] Error dispatching userLoggedIn event:', error);
-        }
-        
-        // Initialize chat if needed (legacy support)
-        if (window.chatManager) {
-            console.log('[AUTH_DEBUG] Found existing chatManager, calling setCurrentUser');
+        // Force a small delay to ensure DOM updates have processed
+        setTimeout(() => {
+            // Dispatch userLoggedIn event to trigger ChatManager initialization in app.js
+            console.log('[AUTH_DEBUG] Dispatching userLoggedIn event with user:', this.currentUser);
             try {
-                window.chatManager.setCurrentUser(this.currentUser);
-                console.log('[AUTH_DEBUG] chatManager.setCurrentUser called successfully');
+                document.dispatchEvent(new CustomEvent('userLoggedIn', {
+                    detail: { user: this.currentUser }
+                }));
+                console.log('[AUTH_DEBUG] userLoggedIn event dispatched successfully');
             } catch (error) {
-                console.error('[AUTH_DEBUG] Error calling chatManager.setCurrentUser:', error);
+                console.error('[AUTH_DEBUG] Error dispatching userLoggedIn event:', error);
             }
-        } else {
-            console.log('[AUTH_DEBUG] No existing chatManager found, relying on event to initialize it');
-        }
-        
-        console.log('[AUTH_DEBUG] showChatInterface completed');
+            
+            // Initialize chat if needed (legacy support)
+            if (window.chatManager) {
+                console.log('[AUTH_DEBUG] Found existing chatManager, calling setCurrentUser');
+                try {
+                    window.chatManager.setCurrentUser(this.currentUser);
+                    console.log('[AUTH_DEBUG] chatManager.setCurrentUser called successfully');
+                } catch (error) {
+                    console.error('[AUTH_DEBUG] Error calling chatManager.setCurrentUser:', error);
+                }
+            } else {
+                console.log('[AUTH_DEBUG] No existing chatManager found, relying on event to initialize it');
+            }
+            
+            console.log('[AUTH_DEBUG] showChatInterface completed');
+        }, 100);
     }
     
     /**
@@ -416,6 +494,30 @@ class AuthManager {
         if (this.registerError) {
             this.registerError.textContent = '';
             this.registerError.style.display = 'none';
+        }
+    }
+    
+    /**
+     * Update UI with current user information
+     */
+    updateCurrentUserDisplay() {
+        console.log('[AUTH_DEBUG] Updating current user display with:', this.currentUser);
+        
+        // Update username display
+        const usernameDisplay = document.getElementById('username-display');
+        if (usernameDisplay && this.currentUser) {
+            usernameDisplay.textContent = this.currentUser.username || this.currentUser.name;
+            console.log('[AUTH_DEBUG] Updated username display to:', this.currentUser.username || this.currentUser.name);
+        } else {
+            console.warn('[AUTH_DEBUG] Could not update username display:', 
+                          usernameDisplay ? 'currentUser missing' : 'usernameDisplay element not found');
+        }
+        
+        // Update user avatar if available
+        const userAvatar = document.querySelector('.user-avatar img');
+        if (userAvatar && this.currentUser && this.currentUser.avatarUrl) {
+            userAvatar.src = this.currentUser.avatarUrl;
+            console.log('[AUTH_DEBUG] Updated user avatar');
         }
     }
     
