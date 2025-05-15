@@ -357,6 +357,61 @@ class ChatManager {
         console.log('[CHAT_DEBUG] Add friend button clicked');
         // Implementation would go here
     }
+    
+    /**
+     * Handle socket reconnection
+     * Called by app.js when socket reconnects
+     */
+    handleReconnect() {
+        console.log('[CHAT_DEBUG] Socket reconnected, handling reconnection');
+        // Refresh user status
+        if (this.currentUser && this.currentUser.id) {
+            // Update user status to online
+            this.socket.emit('update-status', { status: 'online' });
+            
+            // Add system message about reconnection
+            this.addSystemMessage('Reconnected to server');
+            
+            // Refresh current channel or DM
+            if (this.isDMMode && this.currentDmRecipientId) {
+                // Refresh DM messages
+                this.socket.emit('get-dm-messages', { recipientId: this.currentDmRecipientId });
+            } else {
+                // Refresh channel messages
+                this._displayChannelMessages(this.currentChannel);
+            }
+        }
+    }
+    
+    /**
+     * Add a system message to the current chat
+     * @param {string} message - The system message to display
+     */
+    addSystemMessage(message) {
+        console.log(`[CHAT_DEBUG] Adding system message: ${message}`);
+        
+        if (!this.messagesContainer) {
+            console.error('[CHAT_DEBUG] Cannot add system message: messages container not found');
+            return;
+        }
+        
+        // Create system message element
+        const systemMessageEl = document.createElement('div');
+        systemMessageEl.className = 'system-message';
+        systemMessageEl.innerHTML = `
+            <div class="system-message-content">
+                <i class="bi bi-info-circle-fill me-2"></i>
+                <span>${message}</span>
+                <span class="system-message-time">${new Date().toLocaleTimeString()}</span>
+            </div>
+        `;
+        
+        // Add to messages container
+        this.messagesContainer.appendChild(systemMessageEl);
+        
+        // Scroll to bottom
+        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
 }
 
 // Export the ChatManager class for use in other modules
