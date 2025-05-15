@@ -477,6 +477,70 @@ function updateUserList() {
 io.on("connection", (socket) => {
     console.log('User connected:', socket.id);
     
+    // Add login-user event handler for backward compatibility with client-side code
+    socket.on('login-user', async (data, callback) => {
+        console.log('[AUTH_DEBUG] Received login-user event via socket.io for username:', data.username);
+        
+        try {
+            if (!data || !data.username || !data.password) {
+                console.warn('[AUTH_DEBUG] Login rejected: missing username or password');
+                return callback({
+                    success: false,
+                    message: 'Username and password are required'
+                });
+            }
+            
+            // Attempt to sign in the user
+            console.log('[AUTH_DEBUG] Attempting to sign in user with signInUser function');
+            const user = await signInUser(data.username, data.password);
+            
+            if (!user) {
+                console.warn('[AUTH_DEBUG] Login failed: invalid credentials for user', data.username);
+                return callback({
+                    success: false,
+                    message: 'Invalid username or password'
+                });
+            }
+            
+            console.log('[AUTH_DEBUG] Login successful for user:', data.username);
+            
+            // Create a session token
+            const token = uuidv4();
+            const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
+            
+            // Update user's socket association
+            users[socket.id] = {
+                socketId: socket.id,
+                authenticated: true,
+                username: user.username,
+                id: user.id
+            };
+            
+            console.log('[AUTH_DEBUG] User authenticated and added to users object:', users[socket.id]);
+            
+            // Return success response
+            return callback({
+                success: true,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    avatarUrl: user.user_metadata?.avatar_url
+                },
+                session: {
+                    token,
+                    expires: expires.toISOString()
+                },
+                message: 'Login successful'
+            });
+        } catch (error) {
+            console.error('[AUTH_DEBUG] Login error:', error);
+            return callback({
+                success: false,
+                message: 'An error occurred during login: ' + (error.message || 'Unknown error')
+            });
+        }
+    });
+    
     // Ensure the user's state is properly tracked in our users object
     if (!users[socket.id]) {
         users[socket.id] = {
@@ -2810,9 +2874,10 @@ io.on("connection", (socket) => {
     // Handle keep-alive signals from clients
     socket.on('keep-alive', (data) => {
         // Just log the keep-alive signal, no need to do anything else
-        const username = data.userId ? 
+        // Check if data exists and has userId property
+        const username = data && data.userId ? 
             (users[socket.id]?.username || 'Unknown User') : 
-            'Unauthenticated User';
+            (users[socket.id]?.username || 'Unauthenticated User');
         
         console.log(`Received keep-alive signal from ${username} (${socket.id})`);
     });

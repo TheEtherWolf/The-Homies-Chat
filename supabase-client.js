@@ -193,10 +193,10 @@ async function signInUser(username, password) {
     console.log(`Attempting login for ${username}`);
     const now = new Date().toISOString();
     
-    // First, try direct simple lookup by username only for development
+    // Get user with password for verification
     let { data: user, error } = await serviceSupabase
       .from('users')
-      .select('id, username, email, status, avatar_url')
+      .select('id, username, email, status, avatar_url, password')
       .eq('username', username)
       .maybeSingle();
       
@@ -206,66 +206,74 @@ async function signInUser(username, password) {
       return null;
     }
     
-    // If user exists, we'll update last_seen and status
-    if (user && user.id) {
-      console.log(`Found existing user ${username}, updating status`);
-      
-      // Update user's last_seen time and status
-      try {
-        await serviceSupabase
-          .from('users')
-          .update({ 
-            last_seen: now,
-            status: 'online'
-          })
-          .eq('id', user.id);
-          
-        // Also update the user_status table
-        const { data: existingStatus } = await serviceSupabase
-          .from('user_status')
-          .select('user_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-          
-        if (existingStatus) {
-          // Update existing status
-          await serviceSupabase
-            .from('user_status')
-            .update({ 
-              status: 'online',
-              last_updated: now
-            })
-            .eq('user_id', user.id);
-        } else {
-          // Create new status entry
-          await serviceSupabase
-            .from('user_status')
-            .insert({
-              user_id: user.id,
-              status: 'online',
-              last_updated: now
-            });
-        }
-      } catch (updateError) {
-        console.warn('Error updating user status, continuing anyway:', updateError);
-      }
-      
-      // Return user object in similar format to Supabase Auth
-      return {
-        id: user.id,
-        username: user.username,
-        user_metadata: { 
-          username: user.username,
-          email: user.email,
-          avatar_url: user.avatar_url,
-          status: user.status || 'online'
-        }
-      };
+    // If user doesn't exist, reject login
+    if (!user || !user.id) {
+      console.log(`User ${username} not found, rejecting login attempt`);
+      return null;
     }
     
-    // If we're here, the user doesn't exist yet - let's NOT auto-create accounts for security
-    console.log(`User ${username} not found, rejecting login attempt`);
-    return null; // Return null instead of auto-creating account
+    // For development mode, allow any password for easier testing
+    const isPasswordValid = process.env.NODE_ENV === 'development' || 
+                           (user.password && user.password === password);
+    
+    if (!isPasswordValid) {
+      console.log(`Invalid password for user ${username}, rejecting login attempt`);
+      return null;
+    }
+    
+    console.log(`Authentication successful for user ${username}, updating status`);
+    
+    // Update user's last_seen time and status
+    try {
+      await serviceSupabase
+        .from('users')
+        .update({ 
+          last_seen: now,
+          status: 'online'
+        })
+        .eq('id', user.id);
+        
+      // Also update the user_status table
+      const { data: existingStatus } = await serviceSupabase
+        .from('user_status')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+        
+      if (existingStatus) {
+        // Update existing status
+        await serviceSupabase
+          .from('user_status')
+          .update({ 
+            status: 'online',
+            last_updated: now
+          })
+          .eq('user_id', user.id);
+      } else {
+        // Create new status entry
+        await serviceSupabase
+          .from('user_status')
+          .insert({
+            user_id: user.id,
+            status: 'online',
+            last_updated: now
+          });
+      }
+    } catch (updateError) {
+      console.warn('Error updating user status, continuing anyway:', updateError);
+    }
+    
+    // Return user object in similar format to Supabase Auth (without password)
+    return {
+      id: user.id,
+      username: user.username,
+      user_metadata: { 
+        username: user.username,
+        email: user.email,
+        avatar_url: user.avatar_url,
+        status: user.status || 'online'
+      }
+    };
   } catch (error) {
     console.error('Exception signing in user:', error);
     return null;
