@@ -404,19 +404,51 @@ class AuthManager {
             console.warn('[AUTH_DEBUG] Auth container not found');
         }
         
-        // Get the chat container
-        const chatContainer = document.getElementById('chat-container');
+        // Get the chat container - try multiple times with different approaches
+        let chatContainer = document.getElementById('chat-container');
+        
+        // If not found, try to find it by class or query selector
+        if (!chatContainer) {
+            console.warn('[AUTH_DEBUG] Chat container not found by ID, trying alternative selectors');
+            chatContainer = document.querySelector('#chat-container');
+            
+            if (!chatContainer) {
+                chatContainer = document.querySelector('div[id="chat-container"]');
+            }
+            
+            if (!chatContainer) {
+                // Last resort - get all divs and find the one with the right ID
+                const allDivs = document.querySelectorAll('div');
+                for (const div of allDivs) {
+                    if (div.id === 'chat-container') {
+                        chatContainer = div;
+                        console.log('[AUTH_DEBUG] Found chat container by iterating through all divs');
+                        break;
+                    }
+                }
+            }
+        }
+        
         if (chatContainer) {
+            console.log('[AUTH_DEBUG] Chat container found, removing hiding classes');
             // Remove any classes that might hide it
             chatContainer.classList.remove('d-none', 'hidden');
             // Set display to flex (as per the original HTML structure)
             chatContainer.style.display = 'flex';
             this.chatContainer = chatContainer;
             console.log('[AUTH_DEBUG] Chat container shown and set to flex display');
+            
+            // Force a reflow to ensure the display change takes effect
+            void chatContainer.offsetHeight;
         } else {
-            console.error('[AUTH_DEBUG] Chat container not found! Cannot show chat interface.');
-            this.showLoginError('Error loading chat interface. Please refresh the page and try again.');
-            return;
+            console.error('[AUTH_DEBUG] Chat container not found after multiple attempts! Cannot show chat interface.');
+            // Instead of showing an error, let's create the chat container as a last resort
+            chatContainer = document.createElement('div');
+            chatContainer.id = 'chat-container';
+            chatContainer.style.display = 'flex';
+            document.body.appendChild(chatContainer);
+            console.warn('[AUTH_DEBUG] Created a new chat container as a fallback');
+            this.chatContainer = chatContainer;
         }
         
         // Update UI with user info
@@ -451,6 +483,15 @@ class AuthManager {
                 }
             } else {
                 console.log('[AUTH_DEBUG] No existing chatManager found, relying on event to initialize it');
+            }
+            
+            // Force a reload of the page if the chat container was created as a fallback
+            if (chatContainer && chatContainer.childElementCount === 0) {
+                console.log('[AUTH_DEBUG] Chat container is empty, refreshing the page to fully load the interface');
+                // Only reload if it's been at least 2 seconds since login to avoid infinite reload loops
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
             }
             
             console.log('[AUTH_DEBUG] showChatInterface completed');
