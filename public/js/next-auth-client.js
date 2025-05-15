@@ -3,6 +3,14 @@
  * This provides NextAuth-like functionality for authentication in the browser
  */
 
+// Simple UUID v4 generator function
+function uuidv4() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 // NextAuth client namespace
 window.NextAuth = {
   // Current session data
@@ -41,9 +49,12 @@ window.NextAuth = {
    * @returns {Promise<Object>} Result of sign in attempt
    */
   async signIn(credentials, options = {}) {
+    console.log('[NEXTAUTH_DEBUG] Attempting sign in with credentials:', { ...credentials, password: '***' });
+    
     try {
       // First try the REST API endpoint
       try {
+        console.log('[NEXTAUTH_DEBUG] Trying REST API endpoint for login');
         const response = await fetch('/api/auth/signin', {
           method: 'POST',
           headers: {
@@ -52,43 +63,78 @@ window.NextAuth = {
           body: JSON.stringify(credentials)
         });
         
-        const result = await response.json();
+        console.log('[NEXTAUTH_DEBUG] REST API response status:', response.status);
         
-        if (result.ok) {
+        const result = await response.json();
+        console.log('[NEXTAUTH_DEBUG] REST API login response:', result);
+        
+        if (result.ok === true) {
+          console.log('[NEXTAUTH_DEBUG] REST API login successful, storing session');
           this._storeToken(result.session.token);
           this._session = result.session;
-          return result;
+          return {
+            success: true,
+            user: result.user, // Use user directly from the response
+            message: 'Login successful'
+          };
+        } else {
+          console.warn('[NEXTAUTH_DEBUG] REST API login failed:', result.error || 'Unknown error');
         }
       } catch (restError) {
-        console.warn('REST signin failed, trying socket:', restError);
+        console.warn('[NEXTAUTH_DEBUG] REST signin failed, trying socket:', restError);
         // REST API failed, fall back to socket
       }
       
       // Fall back to socket.io for backward compatibility
+      console.log('[NEXTAUTH_DEBUG] Falling back to socket.io for login');
       return new Promise((resolve) => {
         if (!window.socket) {
+          console.error('[NEXTAUTH_DEBUG] No socket connection available');
           return resolve({ 
             success: false, 
             message: 'No socket connection available' 
           });
         }
         
+        console.log('[NEXTAUTH_DEBUG] Emitting login-user event to socket');
         window.socket.emit('login-user', credentials, (result) => {
-          if (result.success && result.session) {
-            this._storeToken(result.session.token);
+          console.log('[NEXTAUTH_DEBUG] Received login response from socket:', result);
+          
+          if (result && result.success) {
+            console.log('[NEXTAUTH_DEBUG] Socket login successful, storing user data');
+            
+            // Create a session object even if one wasn't returned
+            const sessionData = result.session || {
+              token: uuidv4(), // Generate a token if none was provided
+              expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours from now
+            };
+            
+            this._storeToken(sessionData.token);
             this._session = {
               user: result.user,
-              expires: result.session.expires
+              expires: sessionData.expires
             };
+            
+            // Return a standardized success response
+            resolve({
+              success: true,
+              user: result.user,
+              message: 'Login successful'
+            });
+          } else {
+            console.error('[NEXTAUTH_DEBUG] Socket login failed:', result ? result.message : 'No response');
+            resolve(result || { 
+              success: false, 
+              message: 'Login failed with no response from server' 
+            });
           }
-          resolve(result);
         });
       });
     } catch (error) {
-      console.error('NextAuth sign in error:', error);
+      console.error('[NEXTAUTH_DEBUG] NextAuth sign in error:', error);
       return { 
         success: false, 
-        message: 'An error occurred during sign in' 
+        message: 'An error occurred during sign in: ' + (error.message || 'Unknown error')
       };
     }
   },

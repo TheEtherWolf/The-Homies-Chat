@@ -104,22 +104,39 @@ function requireAuth(req, res, next) {
 
 // Sign in route
 nextAuthRouter.post('/api/auth/signin', async (req, res) => {
+  console.log('[NEXTAUTH_DEBUG] Received sign-in request');
+  
   try {
     const { username, password, callbackUrl } = req.body;
+    console.log('[NEXTAUTH_DEBUG] Sign-in attempt for username:', username);
     
     if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
+      console.warn('[NEXTAUTH_DEBUG] Sign-in rejected: missing username or password');
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'Username and password are required',
+        message: 'Username and password are required'
+      });
     }
     
     // Attempt to sign in the user
+    console.log('[NEXTAUTH_DEBUG] Attempting to sign in user with signInUser function');
     const user = await signInUser(username, password);
     
     if (!user) {
-      return res.status(401).json({ error: 'Invalid username or password' });
+      console.warn('[NEXTAUTH_DEBUG] Sign-in failed: invalid credentials for user', username);
+      return res.status(401).json({ 
+        ok: false, 
+        error: 'Invalid username or password',
+        message: 'Invalid username or password'
+      });
     }
+    
+    console.log('[NEXTAUTH_DEBUG] Sign-in successful for user:', username);
     
     // Create session
     const session = createSession(user);
+    console.log('[NEXTAUTH_DEBUG] Created session with token:', session.token.substring(0, 8) + '...');
     
     // Set cookie
     res.cookie('next_auth_session_token', session.token, {
@@ -128,17 +145,30 @@ nextAuthRouter.post('/api/auth/signin', async (req, res) => {
       sameSite: 'lax',
       maxAge: TOKEN_EXPIRATION
     });
+    console.log('[NEXTAUTH_DEBUG] Set session cookie with expiration:', new Date(Date.now() + TOKEN_EXPIRATION).toISOString());
     
-    // Return session info
-    return res.json({
+    // Return session info with explicit success flag for client
+    console.log('[NEXTAUTH_DEBUG] Returning successful sign-in response');
+    return res.status(200).json({
       ok: true,
+      success: true, // Add explicit success flag for client
       status: 'success',
-      session,
+      session: {
+        ...session,
+        user: user // Ensure user is included in session
+      },
+      user: user, // Include user directly for easier client-side access
+      message: 'Login successful', // Add message for client
       callbackUrl: callbackUrl || '/'
     });
   } catch (error) {
-    console.error('Sign in error:', error);
-    return res.status(500).json({ error: 'An error occurred during sign in' });
+    console.error('[NEXTAUTH_DEBUG] Sign-in error:', error);
+    return res.status(500).json({ 
+      ok: false, 
+      success: false,
+      error: 'An error occurred during sign in',
+      message: error.message || 'An error occurred during sign in'
+    });
   }
 });
 
