@@ -138,11 +138,15 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('user', JSON.stringify(user));
         sessionStorage.setItem('user', JSON.stringify(user));
         
-        // If AuthManager exists, use it to show the chat interface
-        if (window.authManager && typeof window.authManager.showChatInterface === 'function') {
-            console.log('[DIRECT_LOGIN] Using AuthManager to show chat interface');
-            window.authManager.currentUser = user;
-            window.authManager.showChatInterface();
+        // If ChatManager exists, use it to initialize the chat interface
+        if (window.chatManager && typeof window.chatManager.initialize === 'function') {
+            console.log('[DIRECT_LOGIN] Using ChatManager to initialize chat interface');
+            window.chatManager.initialize(user);
+            return;
+        } else if (typeof ChatManager === 'function' && window.socket) {
+            console.log('[DIRECT_LOGIN] Creating new ChatManager instance');
+            window.chatManager = new ChatManager(window.socket);
+            window.chatManager.initialize(user);
             return;
         }
         

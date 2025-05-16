@@ -87,7 +87,7 @@ function initializeApp() {
     console.log('[APP_DEBUG] initializeApp finished.');
 }
 
-// Event listener for AuthManager to trigger ChatManager initialization
+// Event listener for userLoggedIn event to trigger ChatManager initialization
 document.addEventListener('userLoggedIn', (event) => {
     console.log('[APP_DEBUG] userLoggedIn event received in app.js with data:', event.detail);
     
@@ -100,30 +100,31 @@ document.addEventListener('userLoggedIn', (event) => {
             const storedUser = localStorage.getItem('user');
             if (storedUser) {
                 user = JSON.parse(storedUser);
-                console.log('[APP_DEBUG] Retrieved user from localStorage:', user);
+                console.log('[APP_DEBUG] Found user in localStorage:', user);
             }
-        } catch (e) {
-            console.error('[APP_DEBUG] Error retrieving user from localStorage:', e);
+        } catch (error) {
+            console.error('[APP_DEBUG] Error parsing user from localStorage:', error);
         }
     }
     
-    if (!user || !user.username) {
-        console.error('[APP_DEBUG] userLoggedIn event fired without valid user data!');
+    if (!user) {
+        console.error('[APP_DEBUG] No user data available, cannot initialize ChatManager');
         return;
     }
     
-    console.log('[APP_DEBUG] User authenticated:', user);
+    // Check if ChatManager is already initialized
+    if (chatManager && chatManager.isInitialized) {
+        console.log('[APP_DEBUG] ChatManager already initialized when userLoggedIn event received.');
+        return;
+    }
     
+    // Initialize ChatManager with user data
+    initializeChatManager(user);
+
     // Store user in localStorage for persistence if not already there
     if (!localStorage.getItem('user')) {
         localStorage.setItem('user', JSON.stringify(user));
-        console.log('[APP_DEBUG] User data stored in localStorage');
-    }
-    
-    // If managers aren't initialized yet, make sure they are
-    if (!window.authManager) {
-        console.log('[APP_DEBUG] Creating new AuthManager instance');
-        window.authManager = new AuthManager();
+        console.log('[APP_DEBUG] User stored in localStorage');
     }
     
     // Check if ChatManager class is available

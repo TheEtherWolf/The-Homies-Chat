@@ -1,6 +1,7 @@
 /**
  * Login Handler for The Homies Chat
  * Provides a reliable login experience with clear error handling
+ * Relies solely on NextAuthSimplified for authentication and ChatManager for chat functionality
  */
 
 class LoginHandler {
@@ -275,20 +276,24 @@ class LoginHandler {
             
             // Add it to the document
             document.body.appendChild(this.chatContainer);
-            
-            // Force a reload to ensure everything is initialized properly
-            console.log('[LOGIN] Reloading page to initialize chat interface');
-            window.location.href = '/index.html?loggedIn=true';
-            return;
         }
         
-        // Dispatch userLoggedIn event
+        // Initialize ChatManager with the user data
+        this.initializeChatManager(user);
+        
+        // Dispatch userLoggedIn event for any other components that need it
         const userLoggedInEvent = new CustomEvent('userLoggedIn', {
             detail: { user }
         });
         document.dispatchEvent(userLoggedInEvent);
         console.log('[LOGIN] Dispatched userLoggedIn event');
-        
+    }
+    
+    /**
+     * Initialize the ChatManager with user data
+     * @param {Object} user - User data
+     */
+    initializeChatManager(user) {
         // If ChatManager exists, initialize it
         if (window.chatManager && typeof window.chatManager.initialize === 'function') {
             console.log('[LOGIN] Initializing existing ChatManager');
@@ -297,6 +302,8 @@ class LoginHandler {
             console.log('[LOGIN] Creating new ChatManager instance');
             window.chatManager = new ChatManager(window.socket);
             window.chatManager.initialize(user);
+        } else {
+            console.error('[LOGIN] ChatManager not available');
         }
     }
     
