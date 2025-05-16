@@ -81,10 +81,29 @@ document.addEventListener('DOMContentLoaded', () => {
                                     detail: { user: user }
                                 }));
                                 
-                                // Force a reload to ensure everything is initialized properly
-                                setTimeout(() => {
-                                    window.location.reload();
-                                }, 500);
+                                // Initialize the chat interface directly instead of reloading
+                                console.log('[LOGIN_FIX] Initializing chat interface directly');
+                                
+                                // If ChatManager exists, initialize it
+                                if (window.chatManager && typeof window.chatManager.initialize === 'function') {
+                                    console.log('[LOGIN_FIX] Using existing ChatManager');
+                                    window.chatManager.initialize(user);
+                                } else if (typeof ChatManager === 'function') {
+                                    console.log('[LOGIN_FIX] Creating new ChatManager instance');
+                                    // If app.js hasn't created chatManager yet, we can initialize it
+                                    if (window.socket) {
+                                        const newChatManager = new ChatManager(window.socket);
+                                        newChatManager.initialize(user);
+                                    }
+                                }
+                                
+                                // Update any user display elements
+                                const userDisplayElements = document.querySelectorAll('.user-display, .current-user');
+                                userDisplayElements.forEach(el => {
+                                    if (el) el.textContent = user.username || user.name;
+                                });
+                                
+                                console.log('[LOGIN_FIX] Chat interface initialization complete');
                             } else {
                                 console.error('[LOGIN_FIX] Chat container not found!');
                                 showLoginError('Error loading chat interface. Please try again.');
