@@ -398,6 +398,7 @@ class AuthManager {
         // Get the auth container (parent container for login/register forms)
         const authContainer = document.getElementById('auth-container');
         if (authContainer) {
+            authContainer.classList.add('d-none');
             authContainer.style.display = 'none';
             console.log('[AUTH_DEBUG] Auth container hidden');
         } else {
@@ -435,20 +436,81 @@ class AuthManager {
             chatContainer.classList.remove('d-none', 'hidden');
             // Set display to flex (as per the original HTML structure)
             chatContainer.style.display = 'flex';
+            
+            // Force visibility with !important to override any other styles
+            chatContainer.style.cssText = 'display: flex !important; visibility: visible !important; opacity: 1 !important; z-index: 999 !important;';
+            
+            // Ensure the container has the correct position and dimensions
+            chatContainer.style.position = 'absolute';
+            chatContainer.style.top = '0';
+            chatContainer.style.left = '0';
+            chatContainer.style.width = '100%';
+            chatContainer.style.height = '100%';
+            
             this.chatContainer = chatContainer;
-            console.log('[AUTH_DEBUG] Chat container shown and set to flex display');
+            console.log('[AUTH_DEBUG] Chat container shown and set to flex display with forced visibility');
             
             // Force a reflow to ensure the display change takes effect
             void chatContainer.offsetHeight;
+            
+            // Add a class to the body to indicate we're in chat mode
+            document.body.classList.add('in-chat-mode');
         } else {
             console.error('[AUTH_DEBUG] Chat container not found after multiple attempts! Cannot show chat interface.');
             // Instead of showing an error, let's create the chat container as a last resort
             chatContainer = document.createElement('div');
             chatContainer.id = 'chat-container';
-            chatContainer.style.display = 'flex';
+            chatContainer.style.cssText = 'display: flex !important; visibility: visible !important; opacity: 1 !important; z-index: 999 !important; position: absolute; top: 0; left: 0; width: 100%; height: 100%;';
             document.body.appendChild(chatContainer);
             console.warn('[AUTH_DEBUG] Created a new chat container as a fallback');
             this.chatContainer = chatContainer;
+            
+            // We need to add the basic structure to the chat container
+            chatContainer.innerHTML = `
+                <div id="left-sidebar">
+                    <div class="app-logo">
+                        <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1747233979883" alt="The Homies Chat" class="app-icon">
+                        <span>The Homies Chat</span>
+                    </div>
+                    <div class="main-nav">
+                        <button class="nav-button active" id="home-button" title="Home">
+                            <i class="bi bi-house-fill"></i>
+                            <span>Home</span>
+                        </button>
+                    </div>
+                    <div id="channels-section">
+                        <div class="section-header">
+                            <span>CHANNELS</span>
+                        </div>
+                        <div id="channels-list" class="list-container">
+                            <div class="list-item active" data-channel="general">
+                                <i class="bi bi-hash"></i>
+                                <span>general</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="main-content">
+                    <div id="chat-header">
+                        <div class="channel-info">
+                            <i class="bi bi-hash"></i>
+                            <h2 id="chat-title">general</h2>
+                        </div>
+                    </div>
+                    <div id="messages-container" class="flex-grow-1 overflow-auto p-3"></div>
+                    <div id="message-input-container" class="p-3 border-top">
+                        <div class="input-group">
+                            <input type="text" id="message-input" class="form-control" placeholder="Type a message...">
+                            <button id="send-button" class="btn btn-primary">
+                                <i class="bi bi-send"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add a class to the body to indicate we're in chat mode
+            document.body.classList.add('in-chat-mode');
         }
         
         // Update UI with user info
