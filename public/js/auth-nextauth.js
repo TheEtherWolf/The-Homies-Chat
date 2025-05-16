@@ -424,25 +424,101 @@ class AuthManager {
             console.warn('[AUTH_DEBUG] Auth container not found');
         }
         
-        // Get the chat container
+        // Get the chat container - try multiple selectors to ensure we find it
         let chatContainer = document.getElementById('chat-container');
         
-        if (chatContainer) {
-            console.log('[AUTH_DEBUG] Chat container found, removing hiding classes');
-            // Remove any classes that might hide it
-            chatContainer.classList.remove('d-none', 'hidden');
-            // Set display to flex (as per the original HTML structure)
-            chatContainer.style.display = 'flex';
-            this.chatContainer = chatContainer;
-            console.log('[AUTH_DEBUG] Chat container shown and set to flex display');
-            
-            // Force a reflow to ensure the display change takes effect
-            void chatContainer.offsetHeight;
-        } else {
-            console.error('[AUTH_DEBUG] Chat container not found! Cannot show chat interface.');
-            this.showLoginError('Error loading chat interface. Please try again.');
-            return;
+        if (!chatContainer) {
+            // Try to find it by query selector
+            chatContainer = document.querySelector('#chat-container');
+            console.log('[AUTH_DEBUG] Trying to find chat container with querySelector: ', !!chatContainer);
         }
+        
+        if (!chatContainer) {
+            // If still not found, create it
+            console.log('[AUTH_DEBUG] Chat container not found, creating it');
+            chatContainer = document.createElement('div');
+            chatContainer.id = 'chat-container';
+            
+            // Add the basic structure from index.html
+            chatContainer.innerHTML = `
+                <!-- Left Sidebar -->
+                <div id="left-sidebar">
+                    <!-- App Logo -->
+                    <div class="app-logo">
+                        <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1747233979883" alt="The Homies Chat" class="app-icon">
+                        <span>The Homies Chat</span>
+                    </div>
+                    
+                    <!-- Main Navigation -->
+                    <div class="main-nav">
+                        <button class="nav-button active" id="home-button" title="Home">
+                            <i class="bi bi-house-fill"></i>
+                            <span>Home</span>
+                        </button>
+                        <button class="nav-button" id="dm-button" title="Direct Messages">
+                            <i class="bi bi-chat-fill"></i>
+                            <span>DMs</span>
+                        </button>
+                    </div>
+                    
+                    <!-- Channels Section -->
+                    <div id="channels-section">
+                        <div class="section-header">
+                            <span>CHANNELS</span>
+                            <button id="add-channel-btn" class="btn-icon" title="Add Channel">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                        <div id="channels-list" class="list-container">
+                            <div class="list-item active" data-channel="general">
+                                <i class="bi bi-hash"></i>
+                                <span>general</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Main Content Area -->
+                <div id="main-content">
+                    <div id="chat-header">
+                        <div class="channel-info">
+                            <i class="bi bi-hash"></i>
+                            <h2 id="chat-title">general</h2>
+                        </div>
+                    </div>
+                    <div id="messages-container" class="flex-grow-1 overflow-auto p-3"></div>
+                    <div id="message-input-container" class="p-3 border-top">
+                        <div class="input-group">
+                            <input type="text" id="message-input" class="form-control" placeholder="Type a message...">
+                            <button id="send-button" class="btn btn-primary">
+                                <i class="bi bi-send"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add it to the container
+            document.querySelector('.container-fluid').appendChild(chatContainer);
+        }
+        
+        // Now we should have a chat container, either found or created
+        console.log('[AUTH_DEBUG] Chat container found/created, removing hiding classes');
+        // Remove any classes that might hide it
+        chatContainer.classList.remove('d-none', 'hidden');
+        // Set display to flex (as per the original HTML structure)
+        chatContainer.style.display = 'flex';
+        this.chatContainer = chatContainer;
+        
+        // Add any necessary CSS
+        chatContainer.style.height = '100vh';
+        chatContainer.style.width = '100%';
+        chatContainer.style.position = 'relative';
+        
+        console.log('[AUTH_DEBUG] Chat container shown and set to flex display');
+        
+        // Force a reflow to ensure the display change takes effect
+        void chatContainer.offsetHeight;
         
         // Update UI with user info
         this.updateCurrentUserDisplay();
@@ -476,12 +552,6 @@ class AuthManager {
                 }
             } else {
                 console.log('[AUTH_DEBUG] No existing chatManager found, relying on event to initialize it');
-            }
-            
-            // Check if the chat container is empty - log but don't reload
-            if (chatContainer && chatContainer.childElementCount === 0) {
-                console.log('[AUTH_DEBUG] Chat container is empty, but continuing without reload');
-                // No reload - just continue with the current page
             }
             
             console.log('[AUTH_DEBUG] showChatInterface completed');
