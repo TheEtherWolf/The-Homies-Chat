@@ -1,6 +1,7 @@
 /**
  * Direct Login Fix for The Homies Chat
  * This script provides a simple, direct approach to handling login
+ * while working alongside the existing auth-nextauth.js
  */
 
 // Wait for the document to be fully loaded
@@ -12,7 +13,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (loginForm) {
         console.log('[DIRECT_LOGIN] Found login form, adding submit handler');
         
-        // Replace the existing submit handler with our own
+        // Store the original handler if it exists
+        const originalSubmitHandler = loginForm.onsubmit;
+        
+        // Add our own submit handler
         loginForm.onsubmit = async function(event) {
             event.preventDefault();
             
@@ -38,7 +42,24 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 console.log('[DIRECT_LOGIN] Attempting login for user:', username);
                 
-                // Make a direct fetch request to the server
+                // Use NextAuth for login if available, otherwise fallback to direct fetch
+                try {
+                    if (window.NextAuth && typeof window.NextAuth.signIn === 'function') {
+                        console.log('[DIRECT_LOGIN] Using NextAuth for login');
+                        const authResponse = await window.NextAuth.signIn({ username, password });
+                        console.log('[DIRECT_LOGIN] NextAuth login response:', authResponse);
+                        
+                        if (authResponse && (authResponse.ok === true || authResponse.user)) {
+                            handleSuccessfulLogin(authResponse.user || { username, id: 'user-' + Date.now(), name: username });
+                            return;
+                        }
+                    }
+                } catch (nextAuthError) {
+                    console.warn('[DIRECT_LOGIN] NextAuth login failed, falling back to direct API call:', nextAuthError);
+                }
+                
+                // Fallback to direct API call
+                console.log('[DIRECT_LOGIN] Falling back to direct API call');
                 const response = await fetch('/api/auth/signin', {
                     method: 'POST',
                     headers: {
@@ -60,27 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         name: username
                     };
                     
-                    localStorage.setItem('user', JSON.stringify(user));
-                    sessionStorage.setItem('user', JSON.stringify(user));
-                    
-                    // Hide auth container
-                    const authContainer = document.getElementById('auth-container');
-                    if (authContainer) {
-                        authContainer.style.display = 'none';
-                    }
-                    
-                    // Show chat container
-                    const chatContainer = document.getElementById('chat-container');
-                    if (chatContainer) {
-                        chatContainer.classList.remove('d-none', 'hidden');
-                        chatContainer.style.display = 'flex';
-                        
-                        // Force a reload to ensure everything is initialized properly
-                        window.location.href = '/index.html?loggedIn=true';
-                    } else {
-                        console.error('[DIRECT_LOGIN] Chat container not found');
-                        showError('Error loading chat interface');
-                    }
+                    handleSuccessfulLogin(user);
                 } else {
                     console.error('[DIRECT_LOGIN] Login failed:', result.error);
                     showError(result.error || 'Login failed. Please check your credentials.');
@@ -130,6 +131,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Helper functions
+    function handleSuccessfulLogin(user) {
+        console.log('[DIRECT_LOGIN] Handling successful login for user:', user);
+        
+        // Store user data
+        localStorage.setItem('user', JSON.stringify(user));
+        sessionStorage.setItem('user', JSON.stringify(user));
+        
+        // If AuthManager exists, use it to show the chat interface
+        if (window.authManager && typeof window.authManager.showChatInterface === 'function') {
+            console.log('[DIRECT_LOGIN] Using AuthManager to show chat interface');
+            window.authManager.currentUser = user;
+            window.authManager.showChatInterface();
+            return;
+        }
+        
+        // Otherwise handle it directly
+        console.log('[DIRECT_LOGIN] Showing chat interface directly');
+        
+        // Hide auth container
+        const authContainer = document.getElementById('auth-container');
+        if (authContainer) {
+            authContainer.style.display = 'none';
+        }
+        
+        // Show chat container
+        const chatContainer = document.getElementById('chat-container');
+        if (chatContainer) {
+            chatContainer.classList.remove('d-none', 'hidden');
+            chatContainer.style.display = 'flex';
+            
+            // Dispatch event for other components
+            document.dispatchEvent(new CustomEvent('userLoggedIn', {
+                detail: { user: user }
+            }));
+            
+            console.log('[DIRECT_LOGIN] Chat interface shown successfully');
+        } else {
+            console.error('[DIRECT_LOGIN] Chat container not found');
+            showError('Error loading chat interface');
+            
+            // Force a reload as a last resort
+            setTimeout(() => {
+                window.location.href = '/index.html?loggedIn=true';
+            }, 500);
+        }
+    }
+    
     function showError(message) {
         const loginError = document.getElementById('login-error');
         if (loginError) {
