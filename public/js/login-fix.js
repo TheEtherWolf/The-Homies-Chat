@@ -47,11 +47,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         const response = await window.NextAuth.signIn({ username, password });
                         console.log('[LOGIN_FIX] NextAuth login response:', response);
                         
-                        if (response.ok === true) {
+                        // Check for successful login - the server returns different formats
+                        // so we need to check multiple properties
+                        if (response && (response.ok === true || response.user || response.session)) {
                             console.log('[LOGIN_FIX] Login successful, showing chat interface');
                             
                             // Store user in session storage and local storage
-                            const user = response.user || { username, id: response.userId || 'unknown' };
+                            const user = response.user || { 
+                                username, 
+                                id: response.userId || response.session?.userId || 'unknown',
+                                name: username
+                            };
+                            
+                            console.log('[LOGIN_FIX] Storing user data:', user);
                             sessionStorage.setItem('user', JSON.stringify(user));
                             localStorage.setItem('user', JSON.stringify(user));
                             
@@ -68,15 +76,22 @@ document.addEventListener('DOMContentLoaded', () => {
                                 chatContainer.style.display = 'flex';
                                 console.log('[LOGIN_FIX] Chat container displayed');
                                 
+                                // Dispatch userLoggedIn event to trigger ChatManager initialization
+                                document.dispatchEvent(new CustomEvent('userLoggedIn', {
+                                    detail: { user: user }
+                                }));
+                                
                                 // Force a reload to ensure everything is initialized properly
-                                window.location.reload();
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 500);
                             } else {
                                 console.error('[LOGIN_FIX] Chat container not found!');
                                 showLoginError('Error loading chat interface. Please try again.');
                             }
                         } else {
-                            console.error('[LOGIN_FIX] Login failed:', response.error);
-                            showLoginError(response.error || 'Login failed. Please check your credentials.');
+                            console.error('[LOGIN_FIX] Login failed:', response?.error || 'Unknown error');
+                            showLoginError(response?.error || 'Login failed. Please check your credentials.');
                             
                             // Re-enable login button
                             if (loginBtn) {
