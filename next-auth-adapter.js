@@ -102,6 +102,30 @@ function requireAuth(req, res, next) {
 
 // API Routes
 
+// Verify session route
+nextAuthRouter.post('/api/auth/verify-session', (req, res) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({ ok: false, error: 'Token is required' });
+    }
+    
+    // Get session by token
+    const session = getSession(token);
+    
+    if (!session) {
+      return res.status(401).json({ ok: false, error: 'Invalid or expired session' });
+    }
+    
+    // Session is valid
+    return res.status(200).json({ ok: true, session: { user: session.user, expires: session.expires } });
+  } catch (error) {
+    console.error('Error verifying session:', error);
+    return res.status(500).json({ ok: false, error: 'Internal server error' });
+  }
+});
+
 // Sign in route
 nextAuthRouter.post('/api/auth/signin', async (req, res) => {
   console.log('[NEXTAUTH_DEBUG] Received sign-in request');

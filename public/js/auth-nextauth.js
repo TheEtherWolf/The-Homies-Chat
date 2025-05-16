@@ -79,32 +79,52 @@ class AuthManager {
         try {
             // First check if NextAuth is available
             if (window.NextAuth) {
+                console.log('[AUTH_DEBUG] Checking NextAuth session');
                 const session = await window.NextAuth.getSession();
                 
-                if (session && session.user) {
-                    this.currentUser = session.user;
-                    this.showChatInterface();
-                    return;
+                if (session && session.user && session.token) {
+                    console.log('[AUTH_DEBUG] Valid NextAuth session found');
+                    // Verify the token is still valid with the server
+                    try {
+                        const verifyResponse = await fetch('/api/auth/verify-session', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ token: session.token })
+                        });
+                        
+                        if (verifyResponse.ok) {
+                            console.log('[AUTH_DEBUG] Session verified with server');
+                            this.currentUser = session.user;
+                            this.showChatInterface();
+                            return;
+                        } else {
+                            console.warn('[AUTH_DEBUG] Server rejected session token');
+                            // Clear invalid session
+                            localStorage.removeItem('user');
+                            sessionStorage.removeItem('user');
+                            window.NextAuth.signOut();
+                            this.showLoginForm();
+                            return;
+                        }
+                    } catch (verifyError) {
+                        console.error('[AUTH_DEBUG] Error verifying session:', verifyError);
+                        // If we can't verify, err on the side of caution and show login
+                        this.showLoginForm();
+                        return;
+                    }
+                } else {
+                    console.log('[AUTH_DEBUG] No valid NextAuth session found');
                 }
             }
             
-            // Fall back to local storage for backward compatibility
-            const userData = localStorage.getItem('user');
-            
-            if (userData) {
-                try {
-                    this.currentUser = JSON.parse(userData);
-                    this.showChatInterface();
-                } catch (e) {
-                    console.error('Failed to parse user data:', e);
-                    localStorage.removeItem('user');
-                    this.showLoginForm();
-                }
-            } else {
-                this.showLoginForm();
-            }
+            // Always show login form - we're removing the local storage fallback
+            // for security reasons to prevent bypassing authentication
+            console.log('[AUTH_DEBUG] No valid session found, showing login form');
+            this.showLoginForm();
         } catch (error) {
-            console.error('Error checking login state:', error);
+            console.error('[AUTH_DEBUG] Error checking login state:', error);
             this.showLoginForm();
         }
     }
@@ -398,37 +418,14 @@ class AuthManager {
         // Get the auth container (parent container for login/register forms)
         const authContainer = document.getElementById('auth-container');
         if (authContainer) {
-            authContainer.classList.add('d-none');
             authContainer.style.display = 'none';
             console.log('[AUTH_DEBUG] Auth container hidden');
         } else {
             console.warn('[AUTH_DEBUG] Auth container not found');
         }
         
-        // Get the chat container - try multiple times with different approaches
+        // Get the chat container
         let chatContainer = document.getElementById('chat-container');
-        
-        // If not found, try to find it by class or query selector
-        if (!chatContainer) {
-            console.warn('[AUTH_DEBUG] Chat container not found by ID, trying alternative selectors');
-            chatContainer = document.querySelector('#chat-container');
-            
-            if (!chatContainer) {
-                chatContainer = document.querySelector('div[id="chat-container"]');
-            }
-            
-            if (!chatContainer) {
-                // Last resort - get all divs and find the one with the right ID
-                const allDivs = document.querySelectorAll('div');
-                for (const div of allDivs) {
-                    if (div.id === 'chat-container') {
-                        chatContainer = div;
-                        console.log('[AUTH_DEBUG] Found chat container by iterating through all divs');
-                        break;
-                    }
-                }
-            }
-        }
         
         if (chatContainer) {
             console.log('[AUTH_DEBUG] Chat container found, removing hiding classes');
@@ -436,81 +433,15 @@ class AuthManager {
             chatContainer.classList.remove('d-none', 'hidden');
             // Set display to flex (as per the original HTML structure)
             chatContainer.style.display = 'flex';
-            
-            // Force visibility with !important to override any other styles
-            chatContainer.style.cssText = 'display: flex !important; visibility: visible !important; opacity: 1 !important; z-index: 999 !important;';
-            
-            // Ensure the container has the correct position and dimensions
-            chatContainer.style.position = 'absolute';
-            chatContainer.style.top = '0';
-            chatContainer.style.left = '0';
-            chatContainer.style.width = '100%';
-            chatContainer.style.height = '100%';
-            
             this.chatContainer = chatContainer;
-            console.log('[AUTH_DEBUG] Chat container shown and set to flex display with forced visibility');
+            console.log('[AUTH_DEBUG] Chat container shown and set to flex display');
             
             // Force a reflow to ensure the display change takes effect
             void chatContainer.offsetHeight;
-            
-            // Add a class to the body to indicate we're in chat mode
-            document.body.classList.add('in-chat-mode');
         } else {
-            console.error('[AUTH_DEBUG] Chat container not found after multiple attempts! Cannot show chat interface.');
-            // Instead of showing an error, let's create the chat container as a last resort
-            chatContainer = document.createElement('div');
-            chatContainer.id = 'chat-container';
-            chatContainer.style.cssText = 'display: flex !important; visibility: visible !important; opacity: 1 !important; z-index: 999 !important; position: absolute; top: 0; left: 0; width: 100%; height: 100%;';
-            document.body.appendChild(chatContainer);
-            console.warn('[AUTH_DEBUG] Created a new chat container as a fallback');
-            this.chatContainer = chatContainer;
-            
-            // We need to add the basic structure to the chat container
-            chatContainer.innerHTML = `
-                <div id="left-sidebar">
-                    <div class="app-logo">
-                        <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1747233979883" alt="The Homies Chat" class="app-icon">
-                        <span>The Homies Chat</span>
-                    </div>
-                    <div class="main-nav">
-                        <button class="nav-button active" id="home-button" title="Home">
-                            <i class="bi bi-house-fill"></i>
-                            <span>Home</span>
-                        </button>
-                    </div>
-                    <div id="channels-section">
-                        <div class="section-header">
-                            <span>CHANNELS</span>
-                        </div>
-                        <div id="channels-list" class="list-container">
-                            <div class="list-item active" data-channel="general">
-                                <i class="bi bi-hash"></i>
-                                <span>general</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div id="main-content">
-                    <div id="chat-header">
-                        <div class="channel-info">
-                            <i class="bi bi-hash"></i>
-                            <h2 id="chat-title">general</h2>
-                        </div>
-                    </div>
-                    <div id="messages-container" class="flex-grow-1 overflow-auto p-3"></div>
-                    <div id="message-input-container" class="p-3 border-top">
-                        <div class="input-group">
-                            <input type="text" id="message-input" class="form-control" placeholder="Type a message...">
-                            <button id="send-button" class="btn btn-primary">
-                                <i class="bi bi-send"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            // Add a class to the body to indicate we're in chat mode
-            document.body.classList.add('in-chat-mode');
+            console.error('[AUTH_DEBUG] Chat container not found! Cannot show chat interface.');
+            this.showLoginError('Error loading chat interface. Please try again.');
+            return;
         }
         
         // Update UI with user info
