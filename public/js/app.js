@@ -91,63 +91,94 @@ function initializeApp() {
 document.addEventListener('userLoggedIn', async (event) => {
     console.log('[APP_DEBUG] userLoggedIn event received in app.js with data:', event.detail);
     
-    // Get user data from event or try to get it from NextAuth/localStorage
-    let user = event.detail?.user;
-    
-    if (!user) {
-        console.log('[APP_DEBUG] No user data in event, checking NextAuth');
-        try {
-            // Try to get user from NextAuth first
-            if (window.NextAuthSimplified) {
-                const session = await window.NextAuthSimplified.getSession();
-                if (session?.user) {
-                    user = session.user;
-                    console.log('[APP_DEBUG] Found user in NextAuth session');
+    try {
+        // Get user data from event or try to get it from NextAuth/localStorage
+        let user = event.detail?.user;
+        
+        if (!user) {
+            console.log('[APP_DEBUG] No user data in event, checking NextAuth');
+            try {
+                // Try to get user from NextAuth first
+                if (window.NextAuthSimplified) {
+                    const session = await window.NextAuthSimplified.getSession();
+                    if (session?.user) {
+                        user = session.user;
+                        console.log('[APP_DEBUG] Found user in NextAuth session');
+                    }
                 }
-            }
-            
-            // Fall back to localStorage if NextAuth doesn't have the user
-            if (!user) {
-                console.warn('[APP_DEBUG] No user in NextAuth, trying localStorage');
-                try {
+                
+                // Fall back to localStorage if NextAuth doesn't have the user
+                if (!user) {
+                    console.warn('[APP_DEBUG] No user in NextAuth, checking localStorage');
                     const storedUser = localStorage.getItem('user');
                     if (storedUser) {
-                        user = JSON.parse(storedUser);
-                        console.log('[APP_DEBUG] Found user in localStorage:', user);
+                        try {
+                            user = JSON.parse(storedUser);
+                            console.log('[APP_DEBUG] Found user in localStorage');
+                        } catch (e) {
+                            console.error('[APP_DEBUG] Error parsing stored user:', e);
+                            throw new Error('Invalid user data in localStorage');
+                        }
                     } else {
                         console.warn('[APP_DEBUG] No user data found in localStorage');
                     }
-                } catch (e) {
-                    console.error('[APP_DEBUG] Error parsing stored user:', e);
                 }
+            } catch (e) {
+                console.error('[APP_DEBUG] Error getting user data:', e);
+                showLoginScreen();
+                return;
             }
-        } catch (e) {
-            console.error('[APP_DEBUG] Error getting user data:', e);
+        }
+        
+        if (!user) {
+            console.error('[APP_DEBUG] No valid user data available, showing login screen');
+            showLoginScreen();
             return;
         }
-    }
-    
-    if (!user) {
-        console.error('[APP_DEBUG] No user data available, cannot initialize ChatManager');
-        return;
-    }
-    
-    // Check if ChatManager is already initialized
-    if (chatManager && chatManager.isInitialized) {
-        console.log('[APP_DEBUG] ChatManager already initialized when userLoggedIn event received.');
-        return;
-    }
-    
-    // Initialize ChatManager with user data
-    initializeChatManager(user);
-
-    // Store user in localStorage for persistence if not already there
-    if (!localStorage.getItem('user')) {
+        
+        // Store user in localStorage for persistence
         localStorage.setItem('user', JSON.stringify(user));
-        console.log('[APP_DEBUG] User stored in localStorage');
+        console.log('[APP_DEBUG] User data stored in localStorage');
+        
+        // Initialize ChatManager with user data
+        initializeChatManager(user);
+        
+        // Hide login screen and show chat
+        hideLoginScreen();
+        
+    } catch (error) {
+        console.error('[APP_DEBUG] Error in userLoggedIn handler:', error);
+        showLoginScreen();
     }
+});
+
+/**
+ * Shows the login screen and hides the chat interface
+ */
+function showLoginScreen() {
+    const loginContainer = document.getElementById('login-container');
+    const chatContainer = document.getElementById('chat-container');
     
-    // Check if ChatManager class is available
+    if (loginContainer) loginContainer.style.display = 'block';
+    if (chatContainer) chatContainer.style.display = 'none';
+    
+    console.log('[APP_DEBUG] Showing login screen');
+}
+
+/**
+ * Hides the login screen and shows the chat interface
+ */
+function hideLoginScreen() {
+    const loginContainer = document.getElementById('login-container');
+    const chatContainer = document.getElementById('chat-container');
+    
+    if (loginContainer) loginContainer.style.display = 'none';
+    if (chatContainer) chatContainer.style.display = 'flex';
+    
+    console.log('[APP_DEBUG] Showing chat interface');
+}
+
+// Check if ChatManager class is available
     if (typeof ChatManager === 'undefined') {
         console.log('[APP_DEBUG] ChatManager class is not defined. Trying to use chat.js version.');
         // Try to dynamically load the chat.js script if needed
@@ -199,8 +230,7 @@ function initializeChatManager(user) {
     
     // Check if ChatManager is already initialized
     if (window.chatManager) {
-        console.log('[APP_DEBUG] ChatManager already initialized, updating user');
-        window.chatManager.updateUser(user);
+        console.log('[APP_DEBUG] ChatManager already initialized, skipping re-initialization');
         return;
     }
     
@@ -226,8 +256,13 @@ function initializeChatManager(user) {
         window.chatManager = new ChatManager(user, window.socket);
         
         // Initialize the chat UI
-        window.chatManager.initialize();
-        console.log('[APP_DEBUG] ChatManager initialized successfully');
+        if (typeof window.chatManager.initialize === 'function') {
+            window.chatManager.initialize();
+            console.log('[APP_DEBUG] ChatManager initialized successfully');
+        } else {
+            console.error('[APP_DEBUG] ChatManager.initialize is not a function');
+            return;
+        }
         
         // Show the chat container
         const chatContainer = document.getElementById('chat-container');
@@ -255,11 +290,15 @@ function initializeChatManager(user) {
         }
         
         // Emit an event that chat is ready
-        const chatReadyEvent = new CustomEvent('chatReady', {
-            detail: { user: user }
-        });
-        document.dispatchEvent(chatReadyEvent);
-        console.log('[APP_DEBUG] Dispatched chatReady event');
+        try {
+            const chatReadyEvent = new CustomEvent('chatReady', {
+                detail: { user: user }
+            });
+            document.dispatchEvent(chatReadyEvent);
+            console.log('[APP_DEBUG] Dispatched chatReady event');
+        } catch (eventError) {
+            console.error('[APP_DEBUG] Error dispatching chatReady event:', eventError);
+        }
     } catch (error) {
         console.error('[APP_DEBUG] Error initializing ChatManager:', error);
     }
