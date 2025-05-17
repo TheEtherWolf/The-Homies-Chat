@@ -63,31 +63,62 @@ class LoginHandler {
     async checkLoggedInState() {
         console.log('[LOGIN] Checking logged in state');
         
-        // Try to get user from localStorage
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
+        // Helper function to verify and handle user session
+        const verifyAndHandleUser = async (user, source) => {
+            if (!user) return false;
+            
             try {
-                const user = JSON.parse(storedUser);
-                console.log('[LOGIN] Found stored user:', user);
+                console.log(`[LOGIN] Found user in ${source}:`, user);
                 
-                // Show chat interface for stored user
-                this.showChatInterface(user);
-                return;
+                // If we have a token, verify it first
+                if (user.token && window.NextAuthSimplified) {
+                    console.log(`[LOGIN] Verifying session from ${source}`);
+                    const isValid = await window.NextAuthSimplified.verifySession(user.token);
+                    
+                    if (!isValid) {
+                        console.log(`[LOGIN] Session from ${source} is invalid`);
+                        return false;
+                    }
+                    console.log(`[LOGIN] Session from ${source} is valid`);
+                }
+                
+                // Show chat interface for valid user
+                await this.showChatInterface(user);
+                return true;
+                
             } catch (e) {
-                console.error('[LOGIN] Error parsing stored user:', e);
-                localStorage.removeItem('user');
-                sessionStorage.removeItem('user');
+                console.error(`[LOGIN] Error processing user from ${source}:`, e);
+                // Clean up invalid data
+                if (source === 'localStorage') {
+                    localStorage.removeItem('user');
+                    sessionStorage.removeItem('user');
+                }
+                return false;
             }
+        };
+        
+        // Try to get user from localStorage first
+        try {
+            const storedUser = localStorage.getItem('user');
+            if (storedUser) {
+                const user = JSON.parse(storedUser);
+                const isHandled = await verifyAndHandleUser(user, 'localStorage');
+                if (isHandled) return;
+            }
+        } catch (e) {
+            console.error('[LOGIN] Error parsing stored user:', e);
+            localStorage.removeItem('user');
+            sessionStorage.removeItem('user');
         }
         
         // If NextAuthSimplified is available, try to use it
         if (window.NextAuthSimplified) {
             try {
+                console.log('[LOGIN] Checking NextAuth session');
                 const session = await window.NextAuthSimplified.getSession();
-                if (session && session.user) {
-                    console.log('[LOGIN] Found NextAuth session:', session);
-                    this.showChatInterface(session.user);
-                    return;
+                if (session?.user) {
+                    const isHandled = await verifyAndHandleUser(session.user, 'NextAuth');
+                    if (isHandled) return;
                 }
             } catch (e) {
                 console.error('[LOGIN] Error getting NextAuth session:', e);
@@ -143,8 +174,21 @@ class LoginHandler {
                 if (response && (response.ok === true || response.success === true)) {
                     console.log('[LOGIN] Login successful');
                     
+                    // Verify session before showing chat interface
+                    if (response.user && response.user.token) {
+                        console.log('[LOGIN] Verifying session after login');
+                        const isValid = await window.NextAuthSimplified.verifySession(response.user.token);
+                        
+                        if (!isValid) {
+                            console.error('[LOGIN] Session verification failed after login');
+                            this.showError('Session verification failed. Please try again.');
+                            return;
+                        }
+                        console.log('[LOGIN] Session verified successfully after login');
+                    }
+                    
                     // Show chat interface
-                    this.showChatInterface(response.user);
+                    await this.showChatInterface(response.user);
                 } else {
                     const errorMsg = response && response.message ? response.message : 'Login failed';
                     console.error('[LOGIN] Login failed:', errorMsg);
@@ -248,62 +292,93 @@ class LoginHandler {
      * Show the chat interface
      * @param {Object} user - User data
      */
-    showChatInterface(user) {
+    async showChatInterface(user) {
         console.log('[LOGIN] Showing chat interface for user:', user);
         
-        // Store user data
-        localStorage.setItem('user', JSON.stringify(user));
-        sessionStorage.setItem('user', JSON.stringify(user));
-        
-        // Hide auth container
-        if (this.authContainer) {
-            this.authContainer.style.display = 'none';
-            console.log('[LOGIN] Auth container hidden');
-        }
-        
-        // Show chat container
-        if (this.chatContainer) {
-            this.chatContainer.classList.remove('d-none', 'hidden');
-            this.chatContainer.style.display = 'flex';
-            console.log('[LOGIN] Chat container shown');
-        } else {
-            console.warn('[LOGIN] Chat container not found, creating it');
+        try {
+            // Store user data
+            localStorage.setItem('user', JSON.stringify(user));
+            sessionStorage.setItem('user', JSON.stringify(user));
             
-            // Create chat container if it doesn't exist
-            this.chatContainer = document.createElement('div');
-            this.chatContainer.id = 'chat-container';
-            this.chatContainer.style.display = 'flex';
+            // Hide auth container
+            if (this.authContainer) {
+                this.authContainer.style.display = 'none';
+                console.log('[LOGIN] Auth container hidden');
+            }
             
-            // Add it to the document
-            document.body.appendChild(this.chatContainer);
+            // Show chat container
+            if (this.chatContainer) {
+                this.chatContainer.classList.remove('d-none', 'hidden');
+                this.chatContainer.style.display = 'flex';
+                console.log('[LOGIN] Chat container shown');
+            } else {
+                console.warn('[LOGIN] Chat container not found, creating it');
+                
+                // Create chat container if it doesn't exist
+                this.chatContainer = document.createElement('div');
+                this.chatContainer.id = 'chat-container';
+                this.chatContainer.style.display = 'flex';
+                
+                // Add it to the document
+                document.body.appendChild(this.chatContainer);
+            }
+            
+            // Initialize ChatManager with the user data (wait for it to complete)
+            await this.initializeChatManager(user);
+            
+            // Only dispatch the event if ChatManager was initialized successfully
+            const userLoggedInEvent = new CustomEvent('userLoggedIn', {
+                detail: { user },
+                bubbles: true,
+                cancelable: true
+            });
+            
+            const eventDispatched = document.dispatchEvent(userLoggedInEvent);
+            console.log('[LOGIN] Dispatched userLoggedIn event, default prevented:', !eventDispatched);
+            
+        } catch (error) {
+            console.error('[LOGIN] Error in showChatInterface:', error);
+            this.showError('Failed to initialize chat interface. Please try again.');
+            this.showLoginForm();
         }
-        
-        // Initialize ChatManager with the user data
-        this.initializeChatManager(user);
-        
-        // Dispatch userLoggedIn event for any other components that need it
-        const userLoggedInEvent = new CustomEvent('userLoggedIn', {
-            detail: { user }
-        });
-        document.dispatchEvent(userLoggedInEvent);
-        console.log('[LOGIN] Dispatched userLoggedIn event');
     }
     
     /**
-     * Initialize the ChatManager with user data
+     * Initialize the ChatManager with user data after verifying session
      * @param {Object} user - User data
      */
-    initializeChatManager(user) {
-        // If ChatManager exists, initialize it
-        if (window.chatManager && typeof window.chatManager.initialize === 'function') {
-            console.log('[LOGIN] Initializing existing ChatManager');
-            window.chatManager.initialize(user);
-        } else if (typeof ChatManager === 'function' && window.socket) {
-            console.log('[LOGIN] Creating new ChatManager instance');
-            window.chatManager = new ChatManager(window.socket);
-            window.chatManager.initialize(user);
-        } else {
-            console.error('[LOGIN] ChatManager not available');
+    async initializeChatManager(user) {
+        try {
+            // Verify session first
+            if (window.NextAuthSimplified && user && user.token) {
+                console.log('[LOGIN] Verifying session before initializing ChatManager');
+                const isValid = await window.NextAuthSimplified.verifySession(user.token);
+                
+                if (!isValid) {
+                    console.error('[LOGIN] Session verification failed, cannot initialize ChatManager');
+                    this.showError('Session verification failed. Please log in again.');
+                    this.showLoginForm();
+                    return;
+                }
+                console.log('[LOGIN] Session verified successfully');
+            }
+            
+            // If ChatManager exists, initialize it
+            if (window.chatManager && typeof window.chatManager.initialize === 'function') {
+                console.log('[LOGIN] Initializing existing ChatManager');
+                window.chatManager.initialize(user);
+            } else if (typeof ChatManager === 'function' && window.socket) {
+                console.log('[LOGIN] Creating new ChatManager instance');
+                window.chatManager = new ChatManager(window.socket);
+                window.chatManager.initialize(user);
+            } else {
+                console.error('[LOGIN] ChatManager not available');
+                throw new Error('ChatManager not available');
+            }
+        } catch (error) {
+            console.error('[LOGIN] Error initializing ChatManager:', error);
+            this.showError('Failed to initialize chat. Please refresh and try again.');
+            this.showLoginForm();
         }
     }
     

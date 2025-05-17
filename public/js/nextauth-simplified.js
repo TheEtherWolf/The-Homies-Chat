@@ -84,8 +84,10 @@ window.NextAuthSimplified = {
             const response = await fetch('/api/auth/signin', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
+                credentials: 'include',  // Important for cookies/session
                 body: JSON.stringify(credentials)
             });
             
@@ -102,43 +104,65 @@ window.NextAuthSimplified = {
                 const user = result.user || (result.session && result.session.user) || {
                     username: credentials.username,
                     id: result.userId || 'user-' + Date.now(),
-                    name: credentials.username
+                    name: credentials.username,
+                    email: credentials.email || ''
                 };
                 
-                // Add token if available
-                if (result.session && result.session.token) {
+                // If we have a session token in the response, use it
+                if (result.token) {
+                    user.token = result.token;
+                } else if (result.session?.token) {
                     user.token = result.session.token;
                 }
                 
-                // Store the session
-                this._session = { user };
+                // Generate a session token if not provided by the server
+                if (!user.token) {
+                    const session = createSession(user);
+                    user.token = session.token;
+                    this._session = session;
+                    localStorage.setItem('next_auth_session_token', session.token);
+                } else {
+                    // Create a session object with the token from the server
+                    this._session = {
+                        token: user.token,
+                        user: user,
+                        expires: result.expires ? new Date(result.expires) : new Date(Date.now() + 24 * 60 * 60 * 1000) // Default 24h
+                    };
+                    localStorage.setItem('next_auth_session_token', user.token);
+                }
                 
-                // Store in localStorage and sessionStorage
+                // Store user data in localStorage for persistence
                 localStorage.setItem('user', JSON.stringify(user));
-                sessionStorage.setItem('user', JSON.stringify(user));
                 
                 return {
                     ok: true,
-                    success: true,
                     user: user,
-                    message: 'Login successful'
+                    token: user.token
                 };
             } else {
-                this.log('Sign in failed:', result.error || result.message || 'Unknown error');
+                this.log('Sign in failed:', result.error || 'Unknown error');
+                // Clear any existing session on failed login
+                this._session = null;
+                localStorage.removeItem('next_auth_session_token');
+                localStorage.removeItem('user');
+                
                 return {
                     ok: false,
-                    success: false,
-                    error: result.error || result.message || 'Login failed',
-                    message: result.message || result.error || 'Login failed'
+                    error: result.error || 'Sign in failed',
+                    message: result.message || 'Invalid username or password'
                 };
             }
         } catch (error) {
-            console.error('Sign in error:', error);
+            this.log('Sign in error:', error);
+            // Clear any existing session on error
+            this._session = null;
+            localStorage.removeItem('next_auth_session_token');
+            localStorage.removeItem('user');
+            
             return {
                 ok: false,
-                success: false,
-                error: error.message || 'An error occurred during sign in',
-                message: error.message || 'An error occurred during sign in'
+                error: 'Network error',
+                message: 'Could not connect to the server. Please check your connection.'
             };
         }
     },
@@ -202,15 +226,25 @@ window.NextAuthSimplified = {
             const response = await fetch('/api/auth/verify-session', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
+                credentials: 'include',  // Include cookies for session handling
                 body: JSON.stringify({ token })
             });
             
             const result = await response.json();
             this.log('Verify session response:', result);
             
-            return result.ok === true;
+            if (result.ok && result.user) {
+                // Update the session with the user data
+                this._session = { user: result.user };
+                // Store user in localStorage for persistence
+                localStorage.setItem('user', JSON.stringify(result.user));
+                return true;
+            }
+            
+            return false;
         } catch (error) {
             this.log('Verify session error:', error);
             return false;
@@ -219,12 +253,64 @@ window.NextAuthSimplified = {
     
     /**
      * Get the current session
-     * @returns {Object} Session data or null
+     * @returns {Promise<Object>} Session data or null
      */
-    getSession() {
-        return this._session;
+    async getSession() {
+        // If we have a valid session in memory, verify it's still valid
+        if (this._session?.token) {
+            try {
+                const isValid = await this.verifySession(this._session.token);
+                if (isValid) {
+                    return this._session;
+                }
+            } catch (error) {
+                console.error('Error verifying session:', error);
+            }
+            // If we get here, the session is invalid, clear it
+            this._session = null;
+            localStorage.removeItem('next_auth_session_token');
+        }
+        
+        // Try to get session from localStorage
+        try {
+            const token = localStorage.getItem('next_auth_session_token');
+            if (token) {
+                // Verify the token with the server
+                const isValid = await this.verifySession(token);
+                if (isValid) {
+                    // Get the user data from localStorage if available
+                    const userData = localStorage.getItem('user');
+                    if (userData) {
+                        try {
+                            const user = JSON.parse(userData);
+                            this._session = {
+                                token: token,
+                                user: user,
+                                expires: new Date(Date.now() + 24 * 60 * 60 * 1000) // Default 24h
+                            };
+                            return this._session;
+                        } catch (e) {
+                            console.error('Error parsing user data:', e);
+                        }
+                    }
+                } else {
+                    // Clear invalid token
+                    localStorage.removeItem('next_auth_session_token');
+                    localStorage.removeItem('user');
+                }
+            }
+        } catch (error) {
+            console.error('Error getting session:', error);
+        }
+        
+        // If we get here, no valid session was found
+        return null;
     },
     
+    /**
+     * Get the current user
+     * @returns {Object} User data or null
+     */
     /**
      * Get the current user
      * @returns {Object} User data or null
@@ -235,10 +321,16 @@ window.NextAuthSimplified = {
     
     /**
      * Check if the user is authenticated
-     * @returns {boolean} True if authenticated
+     * @returns {Promise<boolean>} True if authenticated
      */
-    isAuthenticated() {
-        return !!this._session && !!this._session.user;
+    async isAuthenticated() {
+        try {
+            const session = await this.getSession();
+            return !!session && !!session.user;
+        } catch (error) {
+            console.error('Error checking authentication status:', error);
+            return false;
+        }
     }
 };
 
