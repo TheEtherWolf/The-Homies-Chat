@@ -1,6 +1,7 @@
 /**
  * Main application initialization for The Homies App
  * Initializes all modules and sets up Socket.io
+ * Uses NextAuth for authentication and ChatManager for chat functionality
  */
 
 // Socket.io connection - declare as window.socket to ensure global availability
@@ -14,7 +15,7 @@ let videoCallManager;
 let appInitialized = false; 
 
 // Wait for DOM to be fully loaded
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     if (appInitialized) { 
         console.warn('[APP_DEBUG] App already initialized. Skipping DOMContentLoaded handler.');
         return;
@@ -22,7 +23,31 @@ document.addEventListener('DOMContentLoaded', () => {
     appInitialized = true; // Set flag immediately
     console.log('[APP_DEBUG] DOMContentLoaded event fired. Initializing app...');
     
-    initializeApp();
+    // Initialize NextAuth first
+    if (window.NextAuthSimplified) {
+        try {
+            const session = await window.NextAuthSimplified.init();
+            if (session && session.user) {
+                console.log('[APP_DEBUG] User is already authenticated, initializing chat');
+                initializeChatManager(session.user);
+            }
+        } catch (error) {
+            console.error('[APP_DEBUG] Error initializing NextAuth:', error);
+        }
+    } else {
+        console.warn('[APP_DEBUG] NextAuthSimplified not found, falling back to localStorage');
+        // Fallback to localStorage check
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            try {
+                const user = JSON.parse(storedUser);
+                console.log('[APP_DEBUG] Found stored user, initializing chat');
+                initializeChatManager(user);
+            } catch (e) {
+                console.error('[APP_DEBUG] Error parsing stored user:', e);
+            }
+        }
+    }
     
     // Basic socket connection logging
     window.socket.on('connect', () => {
@@ -55,55 +80,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /**
  * Initializes the main application components.
+ * This is now handled directly in the DOMContentLoaded event listener.
  */
 function initializeApp() {
-    console.log('[APP_DEBUG] Inside initializeApp...');
-    
-    // Create ChatManager if it doesn't exist
-    if (!chatManager) {
-        // Check if ChatManager class exists before creating an instance
-        if (typeof ChatManager === 'undefined') {
-            console.error('[APP_DEBUG] ChatManager class is not defined. Make sure chat.js is loaded properly.');
-        } else {
-            // Create ChatManager with socket
-            chatManager = new ChatManager(window.socket); 
-            console.log('[APP_DEBUG] ChatManager created.');
-        }
-    }
-    // VideoCallManager initialization would go here if needed
-
-    // Check if we're already logged in
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-        try {
-            const user = JSON.parse(storedUser);
-            console.log('[APP_DEBUG] Found stored user, initializing chat');
-            initializeChatManager(user);
-        } catch (e) {
-            console.error('[APP_DEBUG] Error parsing stored user:', e);
-        }
-    }
-    
-    console.log('[APP_DEBUG] initializeApp finished.');
+    console.log('[APP_DEBUG] initializeApp is now a no-op. Initialization is handled in DOMContentLoaded.');
+    // This function is kept for backward compatibility but does nothing
 }
 
 // Event listener for userLoggedIn event to trigger ChatManager initialization
-document.addEventListener('userLoggedIn', (event) => {
+document.addEventListener('userLoggedIn', async (event) => {
     console.log('[APP_DEBUG] userLoggedIn event received in app.js with data:', event.detail);
     
-    // Get user data from event or try to get it from localStorage if not present
-    let user = event.detail.user;
+    // Get user data from event or try to get it from NextAuth/localStorage
+    let user = event.detail?.user;
     
     if (!user) {
-        console.warn('[APP_DEBUG] No user data in event, trying localStorage');
+        console.log('[APP_DEBUG] No user data in event, checking NextAuth');
         try {
-            const storedUser = localStorage.getItem('user');
-            if (storedUser) {
-                user = JSON.parse(storedUser);
-                console.log('[APP_DEBUG] Found user in localStorage:', user);
+            // Try to get user from NextAuth first
+            if (window.NextAuthSimplified) {
+                const session = await window.NextAuthSimplified.getSession();
+                if (session?.user) {
+                    user = session.user;
+                    console.log('[APP_DEBUG] Found user in NextAuth session');
+                }
             }
-        } catch (error) {
-            console.error('[APP_DEBUG] Error parsing user from localStorage:', error);
+            
+            // Fall back to localStorage if NextAuth doesn't have the user
+            if (!user) {
+                console.warn('[APP_DEBUG] No user in NextAuth, trying localStorage');
+                try {
+                    const storedUser = localStorage.getItem('user');
+                    if (storedUser) {
+                        user = JSON.parse(storedUser);
+                        console.log('[APP_DEBUG] Found user in localStorage:', user);
+                    } else {
+                        console.warn('[APP_DEBUG] No user data found in localStorage');
+                    }
+                } catch (e) {
+                    console.error('[APP_DEBUG] Error parsing stored user:', e);
+                }
+            }
+        } catch (e) {
+            console.error('[APP_DEBUG] Error getting user data:', e);
+            return;
         }
     }
     
