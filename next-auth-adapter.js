@@ -105,24 +105,79 @@ function requireAuth(req, res, next) {
 // Verify session route
 nextAuthRouter.post('/api/auth/verify-session', (req, res) => {
   try {
-    const { token } = req.body;
+    // Try to get token from Authorization header first, then from body
+    let token = req.headers.authorization;
+    
+    if (token && token.startsWith('Bearer ')) {
+      token = token.substring(7); // Remove 'Bearer ' from the token
+    } else if (req.body && req.body.token) {
+      token = req.body.token;
+    } else {
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'Token is required',
+        message: 'No authentication token provided'
+      });
+    }
     
     if (!token) {
-      return res.status(400).json({ ok: false, error: 'Token is required' });
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'Token is required',
+        message: 'No authentication token provided'
+      });
     }
     
     // Get session by token
     const session = getSession(token);
     
     if (!session) {
-      return res.status(401).json({ ok: false, error: 'Invalid or expired session' });
+      console.log(`[AUTH] Session verification failed for token: ${token.substring(0, 8)}...`);
+      return res.status(401).json({ 
+        ok: false, 
+        error: 'Invalid or expired session',
+        message: 'Your session has expired. Please sign in again.'
+      });
     }
     
-    // Session is valid
-    return res.status(200).json({ ok: true, session: { user: session.user, expires: session.expires } });
+    // Check if session is expired
+    if (new Date() > new Date(session.expires)) {
+      console.log(`[AUTH] Session expired for user: ${session.user?.username || 'unknown'}`);
+      delete sessions[token];
+      return res.status(401).json({ 
+        ok: false, 
+        error: 'Session expired',
+        message: 'Your session has expired. Please sign in again.'
+      });
+    }
+    
+    // Session is valid - update the expiry
+    const newExpiry = new Date(Date.now() + TOKEN_EXPIRATION);
+    session.expires = newExpiry;
+    sessions[token] = session;
+    
+    console.log(`[AUTH] Session verified for user: ${session.user?.username || 'unknown'}`);
+    
+    // Return session info with user data
+    return res.status(200).json({ 
+      ok: true, 
+      success: true,
+      session: { 
+        user: session.user, 
+        expires: session.expires,
+        token: token
+      },
+      user: session.user,
+      message: 'Session verified successfully'
+    });
+    
   } catch (error) {
-    console.error('Error verifying session:', error);
-    return res.status(500).json({ ok: false, error: 'Internal server error' });
+    console.error('[AUTH] Error verifying session:', error);
+    return res.status(500).json({ 
+      ok: false, 
+      error: 'Internal server error',
+      message: 'An error occurred while verifying your session.'
+    });
   }
 });
 
@@ -248,6 +303,33 @@ nextAuthRouter.post('/api/auth/signup', async (req, res) => {
 });
 
 // Sign out route
+// Verify session endpoint
+nextAuthRouter.post('/api/auth/verify-session', (req, res) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({ ok: false, error: 'Token is required' });
+    }
+    
+    const session = getSession(token);
+    
+    if (!session) {
+      return res.status(200).json({ ok: false, error: 'Invalid or expired session' });
+    }
+    
+    // Return session data
+    return res.status(200).json({ 
+      ok: true, 
+      user: session.user 
+    });
+  } catch (error) {
+    console.error('Error verifying session:', error);
+    return res.status(500).json({ ok: false, error: 'Internal server error' });
+  }
+});
+
+// Sign out endpoint
 nextAuthRouter.post('/api/auth/signout', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1] || req.cookies?.next_auth_session_token;
   

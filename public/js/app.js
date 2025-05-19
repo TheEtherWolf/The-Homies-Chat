@@ -178,7 +178,12 @@ function hideLoginScreen() {
     console.log('[APP_DEBUG] Showing chat interface');
 }
 
-// Check if ChatManager class is available
+/**
+ * Checks if ChatManager is available and initializes it
+ * @param {Object} user - The user object to initialize ChatManager with
+ */
+function initializeChatWithUser(user) {
+    // Check if ChatManager class is available
     if (typeof ChatManager === 'undefined') {
         console.log('[APP_DEBUG] ChatManager class is not defined. Trying to use chat.js version.');
         // Try to dynamically load the chat.js script if needed
@@ -194,14 +199,16 @@ function hideLoginScreen() {
             };
             
             script.onerror = () => {
-                console.error('[APP_DEBUG] Failed to load chat-fixed.js');
+                console.error('[APP_DEBUG] Failed to load chat.js');
             };
+            
+            document.head.appendChild(script);
         }
     } else {
         // ChatManager class is available, proceed with initialization
         initializeChatManager(user);
     }
-});
+}
 
 /**
  * Helper function to initialize the ChatManager

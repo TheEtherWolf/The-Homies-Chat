@@ -227,7 +227,8 @@ window.NextAuthSimplified = {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
                 credentials: 'include',  // Include cookies for session handling
                 body: JSON.stringify({ token })
@@ -236,11 +237,17 @@ window.NextAuthSimplified = {
             const result = await response.json();
             this.log('Verify session response:', result);
             
-            if (result.ok && result.user) {
+            if (result.ok && (result.user || result.session?.user)) {
+                const userData = result.user || result.session.user;
                 // Update the session with the user data
-                this._session = { user: result.user };
+                this._session = { 
+                    user: userData,
+                    token: token,
+                    expires: result.session?.expires || new Date(Date.now() + 24 * 60 * 60 * 1000)
+                };
                 // Store user in localStorage for persistence
-                localStorage.setItem('user', JSON.stringify(result.user));
+                localStorage.setItem('user', JSON.stringify(userData));
+                localStorage.setItem('next_auth_session_token', token);
                 return true;
             }
             

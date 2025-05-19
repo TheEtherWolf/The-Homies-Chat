@@ -97,8 +97,77 @@ console.log(`Serving static files from: ${staticPath}`);
 // Add extension download routes
 app.use(extensionDownload.router);
 
-// Add NextAuth routes
+// Add NextAuth routes before other middleware to ensure proper handling
 app.use(nextAuthRouter);
+
+// Add middleware to verify session for protected routes
+app.use((req, res, next) => {
+  // Skip session check for public routes
+  const publicRoutes = [
+    '/',
+    '/index.html',
+    '/login',
+    '/api/auth/signin',
+    '/api/auth/signup',
+    '/api/auth/verify-session',
+    '/api/auth/csrf',
+    '/api/auth/callback/credentials',
+    '/api/auth/session',
+    '/api/auth/providers',
+    '/api/auth/_log',
+    '/favicon.ico'
+  ];
+
+  // Check if the current path is a public route
+  const isPublicRoute = publicRoutes.some(route => {
+    // Handle exact matches
+    if (req.path === route) return true;
+    // Handle wildcard routes (e.g., /public/*)
+    if (route.endsWith('*') && req.path.startsWith(route.slice(0, -1))) return true;
+    return false;
+  });
+
+  // Skip session check for public routes
+  if (isPublicRoute) {
+    return next();
+  }
+
+  // For API routes, check the Authorization header
+  let token;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.substring(7);
+  } else if (req.cookies && req.cookies.next_auth_session_token) {
+    token = req.cookies.next_auth_session_token;
+  } else if (req.query && req.query.token) {
+    token = req.query.token;
+  }
+
+  // If no token is found, return 401
+  if (!token) {
+    return res.status(401).json({ 
+      ok: false, 
+      error: 'No authentication token provided',
+      message: 'Please sign in to continue'
+    });
+  }
+
+  // Verify the token
+  const session = getSession(token);
+  if (!session) {
+    return res.status(401).json({ 
+      ok: false, 
+      error: 'Invalid or expired session',
+      message: 'Your session has expired. Please sign in again.'
+    });
+  }
+
+  // Attach user to request object
+  req.user = session.user;
+  req.session = session;
+
+  // Continue to the next middleware/route handler
+  next();
+});
 
 // Serve the index.html for root path with fallback options
 app.get('/', (req, res) => {
