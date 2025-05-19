@@ -247,29 +247,53 @@ class LoginHandler {
     /**
      * Show error message
      * @param {string} message - The error message to display
-
-    const email = this.loginForm.querySelector('input[name="email"]').value.trim();
-    const password = this.loginForm.querySelector('input[name="password"]').value;
-
-    if (!email) {
-        this.showError('Please enter your email address');
-        return;
-    }
-
-    if (!password) {
-        this.showError('Please enter your password');
-        return;
-    }
-
-    this.setLoading(true);
-
-    try {
-        if (!window.NextAuth || !window.NextAuth.signIn) {
-            throw new Error('Authentication service not available. Please refresh the page.');
      */
-    hideError() {
+    showError(message) {
         if (this.loginError) {
-            this.loginError.style.display = 'none';
+            this.loginError.textContent = message;
+            this.loginError.style.display = 'block';
+            
+            // Auto-hide error after 5 seconds
+            setTimeout(() => {
+                if (this.loginError) {
+                    this.loginError.style.display = 'none';
+                }
+            }, 5000);
+        }
+    }
+    
+    /**
+     * Show the login form
+     */
+    showLoginForm() {
+        if (this.authContainer) {
+            this.authContainer.style.display = 'flex';
+        }
+        if (this.chatContainer) {
+            this.chatContainer.style.display = 'none';
+        }
+    }
+    
+    /**
+     * Show the chat interface
+     * @param {object} user - The authenticated user object
+     */
+    async showChatInterface(user) {
+        if (!user) return;
+        
+        this.log('Showing chat interface for user:', user);
+        
+        if (this.authContainer) {
+            this.authContainer.style.display = 'none';
+        }
+        
+        if (this.chatContainer) {
+            this.chatContainer.style.display = 'flex';
+        }
+        
+        // Initialize chat interface here if needed
+        if (window.chatManager) {
+            await window.chatManager.init(user);
         }
     }
 }

@@ -155,13 +155,8 @@ window.NextAuthSimplified = {
             this.log('Sign out successful');
             return { ok: true };
         } catch (error) {
-            console.error('Sign out error:', error);
-            return {
-                ok: false,
-                success: false,
-                error: error.message || 'An error occurred during sign out',
-                message: error.message || 'An error occurred during sign out'
-            };
+            this.log('Sign out error:', error);
+            throw error;
         }
     },
     
@@ -198,30 +193,6 @@ window.NextAuthSimplified = {
         }
     },
     
-     * Sign in with credentials
-     * @param {Object} credentials - Username and password
-     * @returns {Promise<Object>} Result of sign in attempt
-     */
-    async signIn(credentials) {
-        this.log('Attempting sign in for user:', credentials.username);
-        
-        try {
-            // Make the API request
-            const response = await fetch('/api/auth/signin', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                credentials: 'include',
-                body: JSON.stringify(credentials)
-            });
-            
-            this.log('Sign in response status:', response.status);
-            
-            // Parse the response
-            const result = await response.json();
-            this.log('Sign in response:', result);
     /**
      * Get the current session
      * @returns {Promise<Object|null>} The current session or null if not authenticated
@@ -244,97 +215,6 @@ window.NextAuthSimplified = {
 
 // Initialize NextAuth when the page loads
 window.NextAuth = window.NextAuth || window.NextAuthSimplified;
-
-// Add getSession method if it doesn't exist
-if (!window.NextAuth.getSession) {
-    window.NextAuth.getSession = async () => {
-        try {
-            const storedUser = localStorage.getItem('user');
-            if (storedUser) {
-                return { user: JSON.parse(storedUser) };
-            }
-            return null;
-        } catch (error) {
-            console.error('Error getting session:', error);
-            return null;
-        }
-    };
-}
-
-// Initialize NextAuth
-(async function() {
-    try {
-        const session = await window.NextAuthSimplified.init();
-        console.log('[NEXTAUTH_SIMPLE] Initialized', session);
-        
-        // Dispatch custom event when auth state changes
-        const event = new CustomEvent('auth-state-changed', { 
-            detail: { session } 
-        });
-        document.dispatchEvent(event);
-    } catch (error) {
-        console.error('[NEXTAUTH_SIMPLE] Initialization error:', error);
-    }
-})();
-            const userData = result.user || result.session.user;
-            const sessionData = {
-                user: userData,
-                token: token,
-                expires: new Date((result.session && result.session.expires) || Date.now() + 24 * 60 * 60 * 1000)
-            };
-
-            // Update the session
-            this._session = sessionData;
-
-            // Store in localStorage for persistence
-            localStorage.setItem('user', JSON.stringify(userData));
-            localStorage.setItem('next_auth_session_token', token);
-
-            this.log(`Session verified for user: ${userData.username || userData.email || 'unknown'}`);
-            return true;
-                } else {
-                    // Clear invalid token
-                    localStorage.removeItem('next_auth_session_token');
-                    localStorage.removeItem('user');
-                }
-            }
-        } catch (error) {
-            console.error('Error getting session:', error);
-        }
-        
-        // If we get here, no valid session was found
-        return null;
-    },
-    
-    /**
-     * Get the current user
-     * @returns {Object} User data or null
-     */
-    /**
-     * Get the current user
-     * @returns {Object} User data or null
-     */
-    getUser() {
-        return this._session ? this._session.user : null;
-    },
-    
-    /**
-     * Check if the user is authenticated
-     * @returns {Promise<boolean>} True if authenticated
-     */
-    async isAuthenticated() {
-        try {
-            const session = await this.getSession();
-            return !!session && !!session.user;
-        } catch (error) {
-            console.error('Error checking authentication status:', error);
-            return false;
-        }
-    }
-};
-
-// Initialize NextAuth when the page loads
-window.NextAuth = window.NextAuth || {};
 
 // Add getSession method if it doesn't exist
 if (!window.NextAuth.getSession) {
