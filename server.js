@@ -9,8 +9,8 @@ const { v4: uuidv4, validate: isValidUUID } = require('uuid');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
-// Import NextAuth adapter
-const { nextAuthRouter, requireAuth, getSession } = require('./next-auth-adapter');
+// Import authentication routes
+const { router: authRouter, auth } = require('./auth-routes');
 
 // Import storage and email verification modules
 const storage = require('./mega-storage');
@@ -51,20 +51,18 @@ process.env.ALLOW_DEV_AUTH = 'false';
 
 console.log(`Running in ${process.env.NODE_ENV} mode with dev auth DISABLED`);
 
+// Initialize Express app with JSON and URL-encoded body parsing
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cors({
+    origin: process.env.CORS_ORIGIN || '*',
+    credentials: true
+}));
+app.use(cookieParser());
 
-// Middleware
-app.use(cors({ origin: '*', credentials: true }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(cookieParser()); // Add cookie parser for NextAuth sessions
+// Use authentication routes
+app.use('/api/auth', authRouter);
 
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -544,6 +542,32 @@ function updateUserList() {
 
 // When a user connects, send stored messages
 io.on("connection", (socket) => {
+    // Get user ID from the authenticated socket
+    const userId = socket.userId;
+    
+    // Store the user's socket ID
+    if (userId) {
+        if (!users[userId]) {
+            users[userId] = { sockets: new Set() };
+        }
+        users[userId].sockets.add(socket.id);
+        
+        // Update user status to online
+        updateUserStatus(userId, 'online');
+    }
+    
+    // Handle disconnection
+    socket.on('disconnect', () => {
+        if (userId && users[userId]) {
+            users[userId].sockets.delete(socket.id);
+            
+            // If no more sockets for this user, update status to offline
+            if (users[userId].sockets.size === 0) {
+                updateUserStatus(userId, 'offline');
+                delete users[userId];
+            }
+        }
+    });
     console.log('User connected:', socket.id);
     
     // Add login-user event handler for backward compatibility with client-side code
