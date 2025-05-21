@@ -4,14 +4,15 @@
   "description": "A real-time chat application with video calling features",
   "main": "server.js",
   "scripts": {
-    "start": "next start -p $PORT",
+    "start": "node server.js",
     "dev": "next dev",
     "build": "next build",
+    "glitch": "next build && next start -p $PORT",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate && next build"
   },
   "engines": {
     "node": ">=16.14.2"
