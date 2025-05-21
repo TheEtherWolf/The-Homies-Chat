@@ -6,9 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "next dev",
-    "build": "next build",
-    "glitch": "next start -p $PORT",
-    "postinstall": "prisma generate && next build",
+    "build": "echo 'Building app...' && npx prisma generate",
+    "postinstall": "npx prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:deploy": "prisma migrate deploy",
