@@ -11,6 +11,7 @@ require('dotenv').config();
 
 // Import authentication routes
 const { router: authRouter, auth } = require('./auth-routes');
+const newAuthRoutes = require('./routes/auth');
 
 // Import storage and email verification modules
 const storage = require('./mega-storage');
@@ -76,6 +77,9 @@ app.use(cookieParser());
 
 // Use authentication routes
 app.use('/api/auth', authRouter);
+
+// Use new NextAuth-compatible auth routes
+app.use('/api/auth', newAuthRoutes);
 
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, 'public')));

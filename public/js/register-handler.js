@@ -194,19 +194,32 @@ class RegisterHandler {
         this.setLoading(true);
         
         try {
-            if (!window.NextAuth || !window.NextAuth.signUp) {
-                throw new Error('Authentication service not available. Please refresh the page.');
+            // Sign up using direct API call
+            const response = await fetch('/api/auth/signup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify(formData)
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Registration failed. Please try again.');
             }
             
-            // Sign up using NextAuth
-            const result = await window.NextAuth.signUp(formData);
+            const result = await response.json();
             
-            if (!result.ok || !result.user) {
+            if (!result.success || !result.user) {
                 throw new Error('Registration failed. Please try again.');
             }
             
             // If we get here, registration was successful
             this.log('Registration successful:', result.user);
+            
+            // Store user in localStorage
+            localStorage.setItem('user', JSON.stringify(result.user));
             
             // Redirect to chat page
             window.location.href = '/chat.html';

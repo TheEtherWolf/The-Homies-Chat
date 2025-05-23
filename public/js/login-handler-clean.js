@@ -210,25 +210,40 @@ class LoginHandler {
             return;
         }
         
+        this.log('Attempting login with username:', username);
+        
         this.setLoading(true);
         
         try {
-            if (!window.NextAuth || !window.NextAuth.signIn) {
-                throw new Error('Authentication service not available. Please refresh the page.');
-            }
-            
-            // Sign in using NextAuth
-            const result = await window.NextAuth.signIn({
-                username,
-                password
+            // Sign in using direct API call
+            const response = await fetch('/api/auth/signin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    username,
+                    password
+                })
             });
             
-            if (!result.ok || !result.user) {
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Login failed. Please check your credentials and try again.');
+            }
+            
+            const result = await response.json();
+            
+            if (!result.success || !result.user) {
                 throw new Error('Login failed. Please check your credentials and try again.');
             }
             
             // If we get here, login was successful
             this.log('Login successful:', result.user);
+            
+            // Store user in localStorage
+            localStorage.setItem('user', JSON.stringify(result.user));
             
             // Show chat interface
             await this.showChatInterface(result.user);

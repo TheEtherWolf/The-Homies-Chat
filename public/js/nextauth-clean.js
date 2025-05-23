@@ -46,13 +46,12 @@ window.NextAuthSimplified = {
                             }
                         } catch (verifyError) {
                             this.log('Error verifying session:', verifyError);
-                            // Continue with stored user even if verification fails
                             // This allows offline login with previously stored credentials
                             this._session = { user };
                             return { user };
                         }
                     } else {
-                        // No token but we have user data
+                        // No token, but we have user data
                         this._session = { user };
                         return { user };
                     }
@@ -63,11 +62,58 @@ window.NextAuthSimplified = {
                 }
             }
             
+            // Try to get session from server
+            const session = await this.getSession();
+            if (session) {
+                this.log('Found server session:', session);
+                this._session = session;
+                return session;
+            }
+            
             this.log('No valid session found');
             return null;
         } catch (error) {
-            console.error('NextAuth init error:', error);
+            this.log('Error initializing NextAuth:', error);
             return null;
+        } finally {
+            this.log('Initialized', this._session);
+            
+            // Dispatch auth state change event
+            const event = new CustomEvent('auth-state-changed', { 
+                detail: { session: this._session } 
+            });
+            document.dispatchEvent(event);
+        }
+    },
+    
+    /**
+     * Get the current session from the server
+     * @returns {Promise<Object>} Session data if available
+     */
+    async getSession() {
+        try {
+            const response = await fetch('/api/auth/session', {
+                credentials: 'include'
+            });
+            
+            if (!response.ok) {
+                this.log('Session fetch failed with status:', response.status);
+                return null;
+            }
+            
+            // Parse the response
+            const result = await response.json();
+            this.log('Session response:', result);
+            
+            if (response.ok) {
+                this.log('Session fetch successful');
+                return result;
+            } else {
+                throw new Error(result.error || 'Session fetch failed');
+            }
+        } catch (error) {
+            this.log('Error fetching session:', error);
+            throw error;
         }
     },
     
@@ -245,24 +291,163 @@ window.NextAuthSimplified = {
         this.log('Verifying session token');
         
         try {
-            const response = await fetch('/api/auth/session', {
+            
+            // Get session data
+            const sessionResponse = await fetch('/api/auth/session', {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json'
                 },
                 credentials: 'include'
             });
             
-            if (!response.ok) {
-                this.log('Session verification failed:', response.status);
-                return false;
+            const sessionData = await sessionResponse.json();
+            const user = sessionData.user || result.user;
+            
+            if (user) {
+                // Store user data in localStorage
+                localStorage.setItem('user', JSON.stringify(user));
+                this._session = { user };
+                
+                // Dispatch custom event for auth state change
+                const event = new CustomEvent('auth-state-changed', { 
+                    detail: { session: this._session } 
+                });
+                document.dispatchEvent(event);
             }
             
-            const data = await response.json();
-            return data.valid === true;
-        } catch (error) {
-            this.log('Error verifying session:', error);
+            return { ok: true, user };
+        } else {
+            throw new Error(result.error || 'Authentication failed');
+        }
+    } catch (error) {
+        this.log('Sign in error:', error);
+        throw error;
+    }
+},
+    
+/**
+ * Sign up with credentials
+ * @param {Object} credentials - Username, email, password, and confirmPassword
+ * @returns {Promise<Object>} Result of sign up attempt
+ */
+async signUp(credentials) {
+    this.log('Attempting sign up for user:', credentials.username);
+    
+    try {
+        // Make the API request to our custom signup endpoint
+        const response = await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify(credentials)
+        });
+        
+        this.log('Sign up response status:', response.status);
+        
+        // Parse the response
+        const result = await response.json();
+        this.log('Sign up response:', result);
+        
+        if (response.ok) {
+            this.log('Sign up successful');
+            
+            // Get session data
+            const sessionResponse = await fetch('/api/auth/session', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                credentials: 'include'
+            });
+            
+            const sessionData = await sessionResponse.json();
+            const user = sessionData.user || result.user;
+            
+            if (user) {
+                // Store user data in localStorage
+                localStorage.setItem('user', JSON.stringify(user));
+                this._session = { user };
+                
+                // Dispatch custom event for auth state change
+                const event = new CustomEvent('auth-state-changed', { 
+                    detail: { session: this._session } 
+                });
+                document.dispatchEvent(event);
+            }
+            
+            return { ok: true, user };
+        } else {
+            throw new Error(result.error || 'Registration failed');
+        }
+    } catch (error) {
+        this.log('Sign up error:', error);
+        throw error;
+    }
+},
+    
+/**
+ * Sign out the current user
+ * @returns {Promise<Object>} Result of sign out attempt
+ */
+async signOut() {
+    this.log('Signing out user');
+    
+    try {
+        // Clear local session data
+        localStorage.removeItem('user');
+        sessionStorage.removeItem('user');
+        this._session = null;
+        
+        // Notify server if available
+        try {
+            await fetch('/api/auth/signout', {
+                method: 'POST',
+                credentials: 'include'
+            });
+        } catch (serverError) {
+            this.log('Server signout failed, continuing with local signout:', serverError);
+        }
+        
+        // Dispatch auth state change event
+        const event = new CustomEvent('auth-state-changed', { 
+            detail: { session: null } 
+        });
+        document.dispatchEvent(event);
+        
+        this.log('Sign out successful');
+        return { ok: true };
+    } catch (error) {
+        this.log('Sign out error:', error);
+        throw error;
+    }
+},
+    
+/**
+ * Verify if a session token is valid
+ * @param {string} token - Session token to verify
+ * @returns {Promise<boolean>} True if session is valid
+ */
+async verifySession(token) {
+    if (!token) return false;
+    
+    this.log('Verifying session token');
+    
+    try {
+        const response = await fetch('/api/auth/session', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            },
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            this.log('Session verification failed:', response.status);
             return false;
         }
     },
