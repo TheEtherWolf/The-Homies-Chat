@@ -128,6 +128,12 @@ router.post('/signin', async (req, res) => {
             .or(`username.eq.${username},email.eq.${username}`);
             
         console.log('Login attempt for:', username, 'Found users:', users?.length);
+        
+        // Debug password info (don't log actual passwords in production)
+        if (users && users.length > 0) {
+            console.log('Password from request:', password);
+            console.log('Stored password hash:', users[0].password);
+        }
 
         if (findError) {
             console.error('Error finding user:', findError);
@@ -141,8 +147,15 @@ router.post('/signin', async (req, res) => {
         const user = users[0];
 
         // Check password
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
+        try {
+            const isMatch = await bcrypt.compare(password, user.password);
+            console.log('Password comparison result:', isMatch);
+            
+            if (!isMatch) {
+                return res.status(400).json({ message: 'Invalid credentials' });
+            }
+        } catch (bcryptError) {
+            console.error('Error comparing passwords:', bcryptError);
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 

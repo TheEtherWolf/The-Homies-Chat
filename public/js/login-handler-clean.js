@@ -76,25 +76,23 @@ class LoginHandler {
     }
     
     /**
-     * Initialize NextAuth
+     * Initialize Auth client
      */
     async initNextAuth() {
         try {
-            if (!window.NextAuth) {
-                throw new Error('NextAuth client not loaded');
+            this.log('Loading Auth client...');
+            
+            if (!window.AuthClient) {
+                throw new Error('Auth client not loaded');
             }
             
-            // Initialize with required configuration
-            await window.NextAuth.init({
-                baseUrl: window.location.origin,
-                basePath: '/api/auth',
-                csrfToken: document.querySelector('meta[name="csrf-token"]')?.content
-            });
+            // Initialize Auth client
+            window.NextAuth = window.AuthClient;
             
-            this.log('NextAuth initialized');
+            this.log('Auth client loaded');
             return true;
         } catch (error) {
-            console.error('Error initializing NextAuth:', error);
+            console.error('Error initializing Auth client:', error);
             this.showError('Failed to initialize authentication. Please try again.');
             return false;
         }
