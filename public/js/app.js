@@ -287,35 +287,46 @@ function initializeChatManager(user) {
         return;
     }
     
-    // Make sure socket is available
-    if (!window.socket) {
-        console.error('[APP_DEBUG] Socket not available, attempting to initialize it');
-        try {
-            // Try to initialize socket if not already done
-            initializeSocket();
-            
-            if (!window.socket) {
-                console.error('[APP_DEBUG] Failed to initialize socket, cannot proceed with ChatManager');
-                return;
-            }
-        } catch (socketError) {
-            console.error('[APP_DEBUG] Error initializing socket:', socketError);
-            return;
-        }
-    }
-    
     try {
-        console.log('[APP_DEBUG] Creating new ChatManager instance');
-        window.chatManager = new ChatManager(user, window.socket);
-        
-        // Initialize the chat UI
-        if (typeof window.chatManager.initialize === 'function') {
-            window.chatManager.initialize();
-            console.log('[APP_DEBUG] ChatManager initialized successfully');
-        } else {
-            console.error('[APP_DEBUG] ChatManager.initialize is not a function');
+        // Check if ChatManager class is available
+        if (typeof ChatManager === 'undefined') {
+            console.log('[APP_DEBUG] ChatManager class not found, loading chat.js');
+            // Dynamically load the chat.js script
+            const script = document.createElement('script');
+            script.src = 'js/chat.js';
+            script.onload = function() {
+                console.log('[APP_DEBUG] chat.js loaded successfully, initializing ChatManager');
+                // Create new ChatManager instance after script is loaded
+                try {
+                    const chatManager = new ChatManager(window.socket, user);
+                    window.chatManager = chatManager;
+                    
+                    // Initialize ChatManager
+                    chatManager.initialize(user);
+                    
+                    // Show chat interface
+                    document.getElementById('auth-container')?.classList.add('d-none');
+                    document.getElementById('chat-container')?.classList.remove('d-none');
+                    
+                    console.log('[APP_DEBUG] ChatManager initialized successfully');
+                } catch (initError) {
+                    console.error('[APP_DEBUG] Error initializing ChatManager after loading script:', initError);
+                }
+            };
+            script.onerror = function() {
+                console.error('[APP_DEBUG] Failed to load chat.js');
+            };
+            document.head.appendChild(script);
             return;
         }
+        
+        // Create new ChatManager instance
+        console.log('[APP_DEBUG] Creating new ChatManager instance');
+        const chatManager = new ChatManager(window.socket, user);
+        window.chatManager = chatManager;
+        
+        // Initialize ChatManager
+        chatManager.initialize(user);
         
         // Show the chat container
         const chatContainer = document.getElementById('chat-container');
@@ -354,12 +365,12 @@ function initializeChatManager(user) {
         }
     } catch (error) {
         console.error('[APP_DEBUG] Error initializing ChatManager:', error);
-    }
-    
-    // Force socket reconnection if needed
-    if (window.socket && !window.socket.connected) {
-        console.log('[APP_DEBUG] Forcing socket reconnection...');
-        window.socket.connect();
+        
+        // Force socket reconnection if needed
+        if (window.socket && !window.socket.connected) {
+            console.log('[APP_DEBUG] Forcing socket reconnection...');
+            window.socket.connect();
+        }
     }
 }
 
