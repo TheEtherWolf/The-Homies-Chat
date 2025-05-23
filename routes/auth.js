@@ -148,14 +148,43 @@ router.post('/signin', async (req, res) => {
 
         // Check password
         try {
-            const isMatch = await bcrypt.compare(password, user.password);
-            console.log('Password comparison result:', isMatch);
+            // First check if the password is stored as plaintext (for existing accounts)
+            const isPlaintextMatch = password === user.password;
+            console.log('Plaintext password match:', isPlaintextMatch);
             
-            if (!isMatch) {
-                return res.status(400).json({ message: 'Invalid credentials' });
+            if (isPlaintextMatch) {
+                console.log('Matched using plaintext comparison');
+                // If it's a plaintext match, we should hash it for future security
+                try {
+                    // Hash the password for future security
+                    const salt = await bcrypt.genSalt(10);
+                    const hashedPassword = await bcrypt.hash(password, salt);
+                    
+                    // Update the user's password in Supabase
+                    const { error: updateError } = await supabase
+                        .from('users')
+                        .update({ password: hashedPassword })
+                        .eq('id', user.id);
+                    
+                    if (updateError) {
+                        console.error('Error updating password to hashed version:', updateError);
+                    } else {
+                        console.log('Successfully updated password to hashed version for user:', user.username);
+                    }
+                } catch (hashError) {
+                    console.error('Error hashing password for update:', hashError);
+                }
+            } else {
+                // Try bcrypt comparison for hashed passwords
+                const isMatch = await bcrypt.compare(password, user.password);
+                console.log('Bcrypt password comparison result:', isMatch);
+                
+                if (!isMatch) {
+                    return res.status(400).json({ message: 'Invalid credentials' });
+                }
             }
-        } catch (bcryptError) {
-            console.error('Error comparing passwords:', bcryptError);
+        } catch (passwordError) {
+            console.error('Error comparing passwords:', passwordError);
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
