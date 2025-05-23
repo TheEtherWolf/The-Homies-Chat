@@ -95,10 +95,7 @@ console.log(`Serving static files from: ${staticPath}`);
 // Add extension download routes
 app.use(extensionDownload.router);
 
-// Add NextAuth routes before other middleware to ensure proper handling
-app.use(nextAuthRouter);
-
-// Add middleware to verify session for protected routes
+// Session verification middleware for protected routes
 app.use((req, res, next) => {
   // Skip session check for public routes
   const publicRoutes = [
