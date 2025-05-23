@@ -4,8 +4,33 @@
  * Uses NextAuth for authentication and ChatManager for chat functionality
  */
 
-// Socket.io connection - declare as window.socket to ensure global availability
-window.socket = io(); 
+// Socket.io connection with authentication token if available
+const authToken = localStorage.getItem('auth_token');
+window.socket = io({
+    auth: {
+        token: authToken || ''
+    },
+    query: {
+        token: authToken || ''
+    }
+});
+
+// Log socket connection
+window.socket.on('connect', () => {
+    console.log('[APP_DEBUG] Socket connected with ID:', window.socket.id);
+    
+    // Register session if we have user data
+    const storedUser = localStorage.getItem('user');
+    if (storedUser && authToken) {
+        try {
+            const user = JSON.parse(storedUser);
+            window.socket.emit('register-session', user);
+            console.log('[APP_DEBUG] Session registered with socket on connect');
+        } catch (e) {
+            console.error('[APP_DEBUG] Error registering session on connect:', e);
+        }
+    }
+});
 
 // Global variables for our managers
 let chatManager;
@@ -23,25 +48,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     appInitialized = true; // Set flag immediately
     console.log('[APP_DEBUG] DOMContentLoaded event fired. Initializing app...');
     
-    // Initialize NextAuth first
-    if (window.NextAuthSimplified) {
+    // Initialize Auth client first
+    if (window.AuthClient) {
         try {
-            const session = await window.NextAuthSimplified.init();
+            const session = await window.AuthClient.init();
             if (session && session.user) {
                 console.log('[APP_DEBUG] User is already authenticated, initializing chat');
                 initializeChatManager(session.user);
             }
         } catch (error) {
-            console.error('[APP_DEBUG] Error initializing NextAuth:', error);
+            console.error('[APP_DEBUG] Error initializing Auth client:', error);
         }
     } else {
-        console.warn('[APP_DEBUG] NextAuthSimplified not found, falling back to localStorage');
+        console.warn('[APP_DEBUG] Auth client not found, falling back to localStorage');
         // Fallback to localStorage check
         const storedUser = localStorage.getItem('user');
-        if (storedUser) {
+        const authToken = localStorage.getItem('auth_token');
+        
+        if (storedUser && authToken) {
             try {
                 const user = JSON.parse(storedUser);
-                console.log('[APP_DEBUG] Found stored user, initializing chat');
+                console.log('[APP_DEBUG] Found stored user and token, initializing chat');
+                
+                // Register session with socket
+                if (window.socket) {
+                    window.socket.emit('register-session', user);
+                    console.log('[APP_DEBUG] Session registered with socket');
+                }
+                
                 initializeChatManager(user);
             } catch (e) {
                 console.error('[APP_DEBUG] Error parsing stored user:', e);
@@ -222,11 +256,23 @@ function initializeChatManager(user) {
         // Try to get user from localStorage as a last resort
         try {
             const storedUser = localStorage.getItem('user');
-            if (storedUser) {
+            const authToken = localStorage.getItem('auth_token');
+            
+            if (storedUser && authToken) {
                 user = JSON.parse(storedUser);
+                // Make sure the user has a token
+                if (!user.token) {
+                    user.token = authToken;
+                }
                 console.log('[APP_DEBUG] Retrieved user from localStorage for ChatManager:', user);
+                
+                // Register session with socket if not already done
+                if (window.socket) {
+                    window.socket.emit('register-session', user);
+                    console.log('[APP_DEBUG] Session registered with socket from initializeChatManager');
+                }
             } else {
-                console.error('[APP_DEBUG] No user data available in localStorage');
+                console.error('[APP_DEBUG] No user data or auth token available in localStorage');
                 return;
             }
         } catch (e) {

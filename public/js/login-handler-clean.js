@@ -240,14 +240,33 @@ class LoginHandler {
             // If we get here, login was successful
             this.log('Login successful:', result.user);
             
-            // Store user in localStorage
+            // Store user and token in localStorage
             localStorage.setItem('user', JSON.stringify(result.user));
+            localStorage.setItem('auth_token', result.token);
+            
+            // Register the session with socket
+            try {
+                if (window.socket) {
+                    window.socket.emit('register-session', result.user);
+                    this.log('Session registered with socket');
+                }
+            } catch (socketError) {
+                this.log('Error registering session with socket:', socketError);
+            }
             
             // Show chat interface
             await this.showChatInterface(result.user);
             
-            // Redirect to chat page
-            window.location.href = '/chat.html';
+            // Show the chat interface instead of redirecting
+            document.getElementById('auth-container').classList.add('d-none');
+            document.getElementById('chat-container').classList.remove('d-none');
+            
+            // Initialize the chat interface
+            if (window.initializeChat && typeof window.initializeChat === 'function') {
+                window.initializeChat(result.user);
+            } else {
+                this.log('Chat initialization function not found');
+            }
         } catch (error) {
             console.error('Login error:', error);
             this.showError(error.message || 'Login failed. Please check your credentials and try again.');

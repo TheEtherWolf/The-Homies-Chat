@@ -222,10 +222,12 @@ router.post('/signin', async (req, res) => {
 
         res.json({ 
             success: true,
+            token: token, // Include the token in the response
             user: { 
                 id: user.id, 
                 username: user.username, 
-                email: user.email 
+                email: user.email,
+                token: token // Also include token in the user object for client-side storage
             } 
         });
     } catch (error) {
