@@ -53,6 +53,19 @@ console.log(`Running in ${process.env.NODE_ENV} mode with dev auth DISABLED`);
 
 // Initialize Express app with JSON and URL-encoded body parsing
 const app = express();
+
+// Create HTTP server
+const server = http.createServer(app);
+
+// Initialize Socket.IO with CORS configuration
+const io = socketIo(server, {
+    cors: {
+        origin: process.env.CORS_ORIGIN || '*',
+        methods: ["GET", "POST"],
+        credentials: true
+    }
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
@@ -1431,20 +1444,6 @@ io.on("connection", (socket) => {
         // Find the target socket by username in the users map
         const targetSocketId = Object.keys(users).find(id => users[id] && users[id].username === target);
         
-        if (targetSocketId) {
-            console.log(`Found target socket: ${targetSocketId}`);
-            io.to(targetSocketId).emit('call-offer', {
-                offer, 
-                caller,
-                sender: sender || caller // Ensure sender is always present
-            });
-        } else {
-            console.log(`Target user ${target} not found`);
-            socket.emit('call-error', {
-                message: `User ${target} is not available.`,
-                code: 'USER_NOT_FOUND'
-            });
-        }
     });
     
     socket.on('call-answer', ({answer, caller, callee, sender}) => {
@@ -3029,9 +3028,18 @@ app.post('/api/upload-profile-picture', async (req, res) => {
     }
 });
 
-server.listen(process.env.PORT || 3000, () => {
-    console.log('Server listening on port 3000');
-});
+// Start the server after initializing storage
+initializeStorage()
+    .then(() => {
+        const PORT = process.env.PORT || 3000;
+        server.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+        });
+    })
+    .catch(err => {
+        console.error('Failed to initialize storage:', err);
+        process.exit(1);
+    });
 
 // Utility function to resolve username by user ID (with DB fallback)
 async function resolveUsernameById(userId) {
