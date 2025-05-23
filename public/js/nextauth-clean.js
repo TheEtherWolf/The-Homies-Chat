@@ -77,18 +77,21 @@ window.NextAuthSimplified = {
      * @returns {Promise<Object>} Result of sign in attempt
      */
     async signIn(credentials) {
-        this.log('Attempting sign in for user:', credentials.email);
+        this.log('Attempting sign in for user:', credentials.username);
         
         try {
-            // Make the API request
-            const response = await fetch('/api/auth/signin', {
+            // Make the API request to NextAuth endpoint
+            const response = await fetch('/api/auth/callback/credentials', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
                 credentials: 'include',
-                body: JSON.stringify(credentials)
+                body: JSON.stringify({
+                    ...credentials,
+                    action: 'signin'
+                })
             });
             
             this.log('Sign in response status:', response.status);
@@ -97,12 +100,23 @@ window.NextAuthSimplified = {
             const result = await response.json();
             this.log('Sign in response:', result);
             
-            if (result.ok === true || result.success === true) {
+            if (response.ok) {
                 this.log('Sign in successful');
                 
-                // Store user data in localStorage
-                const user = result.user || (result.session && result.session.user);
+                // Get session data
+                const sessionResponse = await fetch('/api/auth/session', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'include'
+                });
+                
+                const sessionData = await sessionResponse.json();
+                const user = sessionData.user || result.user;
+                
                 if (user) {
+                    // Store user data in localStorage
                     localStorage.setItem('user', JSON.stringify(user));
                     this._session = { user };
                     
@@ -119,6 +133,72 @@ window.NextAuthSimplified = {
             }
         } catch (error) {
             this.log('Sign in error:', error);
+            throw error;
+        }
+    },
+    
+    /**
+     * Sign up with credentials
+     * @param {Object} credentials - Username, email, password, and confirmPassword
+     * @returns {Promise<Object>} Result of sign up attempt
+     */
+    async signUp(credentials) {
+        this.log('Attempting sign up for user:', credentials.username);
+        
+        try {
+            // Make the API request to NextAuth endpoint
+            const response = await fetch('/api/auth/callback/credentials', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    ...credentials,
+                    action: 'signup'
+                })
+            });
+            
+            this.log('Sign up response status:', response.status);
+            
+            // Parse the response
+            const result = await response.json();
+            this.log('Sign up response:', result);
+            
+            if (response.ok) {
+                this.log('Sign up successful');
+                
+                // Get session data
+                const sessionResponse = await fetch('/api/auth/session', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'include'
+                });
+                
+                const sessionData = await sessionResponse.json();
+                const user = sessionData.user || result.user;
+                
+                if (user) {
+                    // Store user data in localStorage
+                    localStorage.setItem('user', JSON.stringify(user));
+                    this._session = { user };
+                    
+                    // Dispatch custom event for auth state change
+                    const event = new CustomEvent('auth-state-changed', { 
+                        detail: { session: this._session } 
+                    });
+                    document.dispatchEvent(event);
+                }
+                
+                return { ok: true, user };
+            } else {
+                throw new Error(result.error || 'Registration failed');
+            }
+        } catch (error) {
+            this.log('Sign up error:', error);
             throw error;
         }
     },

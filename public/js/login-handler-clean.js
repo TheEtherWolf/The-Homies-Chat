@@ -197,11 +197,11 @@ class LoginHandler {
         
         if (!this.loginForm) return;
         
-        const email = this.loginForm.querySelector('input[name="email"]').value.trim();
+        const username = this.loginForm.querySelector('input[name="username"]').value.trim();
         const password = this.loginForm.querySelector('input[name="password"]').value;
         
-        if (!email) {
-            this.showError('Please enter your email address');
+        if (!username) {
+            this.showError('Please enter your username');
             return;
         }
         
@@ -218,24 +218,23 @@ class LoginHandler {
             }
             
             // Sign in using NextAuth
-            const { error, url } = await window.NextAuth.signIn('credentials', {
-                email,
-                password,
-                redirect: false
+            const result = await window.NextAuth.signIn({
+                username,
+                password
             });
             
-            if (error) {
-                throw new Error(error);
+            if (!result.ok || !result.user) {
+                throw new Error('Login failed. Please check your credentials and try again.');
             }
             
             // If we get here, login was successful
-            const session = await window.NextAuth.getSession();
-            if (session && session.user) {
-                // Show chat interface
-                await this.showChatInterface(session.user);
-            } else {
-                throw new Error('Failed to get user data after login');
-            }
+            this.log('Login successful:', result.user);
+            
+            // Show chat interface
+            await this.showChatInterface(result.user);
+            
+            // Redirect to chat page
+            window.location.href = '/chat.html';
         } catch (error) {
             console.error('Login error:', error);
             this.showError(error.message || 'Login failed. Please check your credentials and try again.');

@@ -106,8 +106,13 @@
                                 <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
                                 <input type="password" class="form-control" id="register-confirm-password" placeholder="Confirm your password" required>
                             </div>
+                            <div id="password-match-error" class="text-danger small mt-1" style="display: none;">Passwords do not match</div>
                         </div>
-                        <button type="submit" class="btn btn-primary mb-3">Create Account</button>
+                        <div id="register-error" class="alert alert-danger mb-3" style="display: none;"></div>
+                        <button type="submit" id="register-btn" class="btn btn-primary mb-3">
+                            <span id="register-btn-text">Create Account</span>
+                            <span id="register-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        </button>
                         <div class="text-center">
                             <a href="#" id="show-login">Already have an account? Sign in</a>
                         </div>
@@ -1422,6 +1427,7 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="js/nextauth-clean.js"></script>
     <script src="js/login-handler-clean.js"></script>
+    <script src="js/register-handler.js"></script>
     <script src="js/chat-manager.js"></script>
     <script src="js/emoji-picker.js"></script>
     <script src="js/main.js"></script>
