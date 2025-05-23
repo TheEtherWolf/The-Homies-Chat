@@ -80,18 +80,15 @@ window.NextAuthSimplified = {
         this.log('Attempting sign in for user:', credentials.username);
         
         try {
-            // Make the API request to NextAuth endpoint
-            const response = await fetch('/api/auth/callback/credentials', {
+            // Make the API request to our custom signin endpoint
+            const response = await fetch('/api/auth/signin', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
                 credentials: 'include',
-                body: JSON.stringify({
-                    ...credentials,
-                    action: 'signin'
-                })
+                body: JSON.stringify(credentials)
             });
             
             this.log('Sign in response status:', response.status);
@@ -146,18 +143,15 @@ window.NextAuthSimplified = {
         this.log('Attempting sign up for user:', credentials.username);
         
         try {
-            // Make the API request to NextAuth endpoint
-            const response = await fetch('/api/auth/callback/credentials', {
+            // Make the API request to our custom signup endpoint
+            const response = await fetch('/api/auth/signup', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
                 credentials: 'include',
-                body: JSON.stringify({
-                    ...credentials,
-                    action: 'signup'
-                })
+                body: JSON.stringify(credentials)
             });
             
             this.log('Sign up response status:', response.status);

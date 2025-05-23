@@ -31,6 +31,8 @@ export default async function handler(req, res) {
       .from('users')
       .select('*')
       .or(`username.eq.${username},email.eq.${username}`);
+      
+    console.log('Login attempt for:', username, 'Found users:', users?.length);
 
     if (findError) {
       console.error('Error finding user:', findError);
