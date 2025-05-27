@@ -150,6 +150,12 @@ class ChatManager {
         }
     }
     
+    // Alias for initialize to maintain compatibility with login handler
+    init(user) {
+        console.log('[CHAT_DEBUG] init method called, forwarding to initialize');
+        return this.initialize(user);
+    }
+    
     // Initialize chat manager with user data
     initialize(user) {
         console.log('[CHAT_DEBUG] ChatManager initialize called with user:', user);
