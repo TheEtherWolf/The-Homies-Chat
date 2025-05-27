@@ -39,6 +39,21 @@ let videoCallManager;
 // Flag to prevent multiple initializations if DOMContentLoaded fires unexpectedly
 let appInitialized = false; 
 
+// Global function to initialize chat for login handler compatibility
+window.initializeChat = function(user) {
+    console.log('[APP_DEBUG] Global initializeChat function called with user:', user);
+    if (window.chatManager) {
+        // If chatManager already exists, just initialize it with the user
+        window.chatManager.initialize(user);
+    } else {
+        // Otherwise, create a new ChatManager and initialize it
+        console.log('[APP_DEBUG] Creating new ChatManager instance from global initializeChat');
+        const chatManager = new ChatManager(window.socket, user);
+        window.chatManager = chatManager;
+        chatManager.initialize(user);
+    }
+};
+
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', async () => {
     if (appInitialized) { 
