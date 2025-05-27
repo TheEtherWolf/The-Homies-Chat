@@ -626,14 +626,16 @@ class ChatManager {
                     return;
                 }
                 
+                // Validate file size (max 5MB)
+                if (file.size > 5 * 1024 * 1024) {
+                    alert('File size should not exceed 5MB');
+                    return;
+                }
+                
                 // Continue with the upload process
-        return;
-    }
-    
-    // Continue with the upload process
-    this._uploadProfilePicture(file);
-    this._uploadProfilePicture(compressedImage);
-});
+                this._uploadProfilePicture(file);
+            });
+        }
 
 // Save settings button click handler
 document.getElementById('save-settings')?.addEventListener('click', () => {
