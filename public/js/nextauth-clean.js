@@ -450,7 +450,14 @@ async verifySession(token) {
             this.log('Session verification failed:', response.status);
             return false;
         }
-    },
+        
+        const data = await response.json();
+        return !!data.user;
+    } catch (error) {
+        this.log('Session verification error:', error);
+        return false;
+    }
+},
     
     /**
      * Get the current session
