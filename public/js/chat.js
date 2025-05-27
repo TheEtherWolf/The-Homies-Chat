@@ -183,7 +183,7 @@ class ChatManager {
                 }
             }
         }
-        
+    }
     
     // Update UI with user info
     _updateUserUI() {
