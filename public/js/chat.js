@@ -664,8 +664,9 @@ this.messageInput?.addEventListener('keypress', (event) => {
 document.getElementById('add-friend-btn')?.addEventListener('click', () => {
     this._handleAddFriendClick();
 });
+    } // End of _setupUIEventListeners method
 
-// Handle DM button click
+    // Handle DM button click
 _handleDMButtonClick() {
     console.log('[CHAT_DEBUG] Handling DM button click');
     
