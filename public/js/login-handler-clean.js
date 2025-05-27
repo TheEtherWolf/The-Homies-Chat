@@ -319,7 +319,7 @@ class LoginHandler {
         }
         
         if (this.chatContainer) {
-            this.chatContainer.style.display = 'flex';
+            this.chatContainer.style.display = 'grid';
         }
         
         // Initialize chat interface here if needed

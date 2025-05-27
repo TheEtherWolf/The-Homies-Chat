@@ -55,6 +55,18 @@ body {
   overflow: hidden;
 }
 
+/* Chat Container Layout */
+#chat-container {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-areas: "sidebar content";
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--dark-color);
+  position: relative;
+}
+
 /* Left Sidebar */
 #left-sidebar {
   grid-area: sidebar;

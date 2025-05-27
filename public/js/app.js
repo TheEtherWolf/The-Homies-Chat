@@ -348,7 +348,7 @@ function initializeChatManager(user) {
         if (chatContainer) {
             // Remove d-none class if it exists
             chatContainer.classList.remove('d-none');
-            chatContainer.style.display = 'block';
+            chatContainer.style.display = 'grid';
             console.log('[APP_DEBUG] Chat container shown');
         } else {
             console.warn('[APP_DEBUG] Chat container element not found');
