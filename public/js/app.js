@@ -348,8 +348,21 @@ function initializeChatManager(user) {
         if (chatContainer) {
             // Remove d-none class if it exists
             chatContainer.classList.remove('d-none');
+            
+            // Force grid display
             chatContainer.style.display = 'grid';
-            console.log('[APP_DEBUG] Chat container shown');
+            chatContainer.style.gridTemplateColumns = '280px 1fr';
+            chatContainer.style.gridTemplateAreas = '"sidebar content"';
+            chatContainer.style.height = '100vh';
+            chatContainer.style.width = '100%';
+            
+            // Hide auth container to make sure it doesn't overlap
+            const authContainer = document.getElementById('auth-container');
+            if (authContainer) {
+                authContainer.style.display = 'none';
+            }
+            
+            console.log('[APP_DEBUG] Chat container shown with enhanced styling');
         } else {
             console.warn('[APP_DEBUG] Chat container element not found');
         }

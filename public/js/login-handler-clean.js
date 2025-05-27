@@ -319,7 +319,22 @@ class LoginHandler {
         }
         
         if (this.chatContainer) {
+            // Force grid display with proper styling
             this.chatContainer.style.display = 'grid';
+            this.chatContainer.style.gridTemplateColumns = '280px 1fr';
+            this.chatContainer.style.gridTemplateAreas = '"sidebar content"';
+            this.chatContainer.style.height = '100vh';
+            this.chatContainer.style.width = '100%';
+            this.chatContainer.style.overflow = 'hidden';
+            
+            // Ensure main content is visible
+            const mainContent = document.getElementById('main-content');
+            if (mainContent) {
+                mainContent.style.display = 'flex';
+                mainContent.style.flexDirection = 'column';
+                mainContent.style.height = '100vh';
+                mainContent.style.overflow = 'hidden';
+            }
         }
         
         // Initialize chat interface here if needed

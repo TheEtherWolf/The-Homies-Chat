@@ -57,14 +57,15 @@ body {
 
 /* Chat Container Layout */
 #chat-container {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  grid-template-areas: "sidebar content";
-  height: 100vh;
-  width: 100%;
-  overflow: hidden;
-  background-color: var(--dark-color);
-  position: relative;
+  display: grid !important;
+  grid-template-columns: 280px 1fr !important;
+  grid-template-areas: "sidebar content" !important;
+  height: 100vh !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  background-color: var(--dark-color) !important;
+  position: relative !important;
+  z-index: 1 !important;
 }
 
 /* Left Sidebar */
@@ -78,6 +79,95 @@ body {
   overflow: hidden;
   position: relative;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+/* User Profile Area */
+.user-profile-area {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid var(--border-color);
+}
+
+/* User Avatar */
+.user-avatar {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  margin-right: 10px;
+}
+
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* User Status */
+.user-status {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--sidebar-color);
+}
+
+.user-status.online {
+  background-color: var(--success-color);
+}
+
+.user-status.away {
+  background-color: var(--warning-color);
+}
+
+.user-status.dnd {
+  background-color: var(--danger-color);
+}
+
+.user-status.offline {
+  background-color: var(--text-muted);
+}
+
+/* User Details */
+.user-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* User Controls */
+.user-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.user-control-button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  transition: var(--transition);
+  padding: 5px;
+  border-radius: 50%;
+}
+
+.user-control-button:hover {
+  color: var(--text-light);
+  background-color: var(--hover-color);
 }
 
 /* App Logo */
