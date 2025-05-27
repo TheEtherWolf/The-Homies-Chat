@@ -89,6 +89,103 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Main Content Area */
+#main-content {
+  grid-area: content;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--dark-secondary);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Chat Header */
+#chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background-color: var(--dark-secondary);
+  border-bottom: 1px solid var(--border-color);
+  height: 60px;
+  min-height: 60px;
+  z-index: 10;
+}
+
+/* Messages Container */
+#messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--secondary-color) transparent;
+}
+
+/* Message Input Area */
+#message-input-area {
+  padding: 15px 20px;
+  background-color: var(--dark-secondary);
+  border-top: 1px solid var(--border-color);
+  min-height: 70px;
+}
+
+/* Message Input Container */
+.message-input-container {
+  display: flex;
+  align-items: center;
+  background-color: var(--input-bg);
+  border-radius: var(--border-radius-md);
+  padding: 10px 15px;
+  position: relative;
+}
+
+/* Input Wrapper */
+.input-wrapper {
+  flex: 1;
+}
+
+/* Message Input */
+#message-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  font-size: 16px;
+  resize: none;
+  outline: none;
+  padding: 5px 0;
+  max-height: 150px;
+}
+
+/* Message Controls */
+.message-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 10px;
+}
+
+/* Message Control Button */
+.message-control-button, #send-button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  transition: var(--transition);
+  padding: 5px;
+  border-radius: 50%;
+}
+
+.message-control-button:hover, #send-button:hover {
+  color: var(--text-light);
+  background-color: var(--hover-color);
+}
+
 /* Main Navigation */
 .main-nav {
   padding: 16px;
