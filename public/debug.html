@@ -217,11 +217,221 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
-    <!-- Application scripts -->
+    <!-- Authentication scripts -->
     <script>
-        // Simple debug script
+        // Check for existing authentication or perform login
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Debug mode active');
+            console.log('Debug mode active - checking authentication');
+            
+            // Display loading message while we check auth
+            const body = document.body;
+            const loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'loading-overlay';
+            loadingOverlay.style.position = 'fixed';
+            loadingOverlay.style.top = '0';
+            loadingOverlay.style.left = '0';
+            loadingOverlay.style.width = '100%';
+            loadingOverlay.style.height = '100%';
+            loadingOverlay.style.backgroundColor = 'rgba(0,0,0,0.8)';
+            loadingOverlay.style.display = 'flex';
+            loadingOverlay.style.justifyContent = 'center';
+            loadingOverlay.style.alignItems = 'center';
+            loadingOverlay.style.zIndex = '9999';
+            loadingOverlay.style.flexDirection = 'column';
+            loadingOverlay.innerHTML = `
+                <h2 style="color: white; margin-bottom: 20px;">Initializing Debug Mode...</h2>
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p id="loading-message" style="color: white; margin-top: 20px;">Checking authentication...</p>
+            `;
+            body.appendChild(loadingOverlay);
+            
+            // Function to update loading message
+            function updateLoadingMessage(message) {
+                document.getElementById('loading-message').textContent = message;
+            }
+            
+            // Check for existing auth in localStorage
+            const storedUser = localStorage.getItem('user');
+            const authToken = localStorage.getItem('auth_token');
+            
+            if (storedUser && authToken) {
+                try {
+                    const user = JSON.parse(storedUser);
+                    console.log('Found stored authentication', user.username);
+                    updateLoadingMessage(`Found stored authentication for ${user.username}`);
+                    
+                    // Create socket connection with auth
+                    window.socket = io({
+                        auth: {
+                            token: authToken,
+                            userData: user
+                        },
+                        query: {
+                            token: authToken,
+                            userId: user.id || '',
+                            username: user.username || ''
+                        }
+                    });
+                    
+                    // Listen for socket connection
+                    window.socket.on('connect', function() {
+                        console.log('Socket connected, registering session');
+                        updateLoadingMessage('Socket connected, initializing interface...');
+                        
+                        // Register session
+                        window.socket.emit('register-session', user);
+                        
+                        // Show the chat interface
+                        setTimeout(() => {
+                            initDebugInterface(user);
+                            loadingOverlay.remove();
+                        }, 1000);
+                    });
+                    
+                    // Handle connection error
+                    window.socket.on('connect_error', function(error) {
+                        console.error('Socket connection error:', error);
+                        updateLoadingMessage('Connection error, falling back to debug mode...');
+                        
+                        // Show interface anyway after delay
+                        setTimeout(() => {
+                            initDebugInterface(user);
+                            loadingOverlay.remove();
+                        }, 2000);
+                    });
+                } catch (e) {
+                    console.error('Error parsing stored user:', e);
+                    showLoginForm();
+                }
+            } else {
+                // No stored authentication, show login form
+                updateLoadingMessage('No stored authentication, please log in');
+                setTimeout(() => {
+                    showLoginForm();
+                }, 1000);
+            }
+            
+            // Function to show login form
+            function showLoginForm() {
+                loadingOverlay.remove();
+                
+                // Create login form overlay
+                const loginOverlay = document.createElement('div');
+                loginOverlay.id = 'login-overlay';
+                loginOverlay.style.position = 'fixed';
+                loginOverlay.style.top = '0';
+                loginOverlay.style.left = '0';
+                loginOverlay.style.width = '100%';
+                loginOverlay.style.height = '100%';
+                loginOverlay.style.backgroundColor = 'rgba(0,0,0,0.8)';
+                loginOverlay.style.display = 'flex';
+                loginOverlay.style.justifyContent = 'center';
+                loginOverlay.style.alignItems = 'center';
+                loginOverlay.style.zIndex = '9999';
+                
+                loginOverlay.innerHTML = `
+                    <div class="card" style="width: 400px;">
+                        <div class="card-header bg-primary text-white text-center">
+                            <h4>Debug Mode Login</h4>
+                        </div>
+                        <div class="card-body">
+                            <form id="debug-login-form">
+                                <div class="mb-3">
+                                    <label for="username" class="form-label">Username</label>
+                                    <input type="text" class="form-control" id="username" value="Etherwolf">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="password" class="form-label">Password</label>
+                                    <input type="password" class="form-control" id="password" value="password">
+                                </div>
+                                <div id="login-error" class="alert alert-danger d-none"></div>
+                                <button type="submit" class="btn btn-primary w-100">Login</button>
+                            </form>
+                        </div>
+                    </div>
+                `;
+                
+                body.appendChild(loginOverlay);
+                
+                // Set up login form submission
+                document.getElementById('debug-login-form').addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const username = document.getElementById('username').value;
+                    const password = document.getElementById('password').value;
+                    
+                    if (!username || !password) {
+                        showLoginError('Username and password are required');
+                        return;
+                    }
+                    
+                    // Show loading message
+                    document.querySelector('#debug-login-form button').innerHTML = `
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        Logging in...
+                    `;
+                    
+                    // Attempt login
+                    fetch('/api/auth/signin', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ username, password }),
+                        credentials: 'include'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.ok && data.user) {
+                            // Store authentication
+                            localStorage.setItem('user', JSON.stringify(data.user));
+                            localStorage.setItem('auth_token', data.token || '');
+                            
+                            // Create socket connection
+                            window.socket = io({
+                                auth: {
+                                    token: data.token || '',
+                                    userData: data.user
+                                },
+                                query: {
+                                    token: data.token || '',
+                                    userId: data.user.id || '',
+                                    username: data.user.username || ''
+                                }
+                            });
+                            
+                            // Register session
+                            window.socket.emit('register-session', data.user);
+                            
+                            // Remove login overlay and show interface
+                            loginOverlay.remove();
+                            initDebugInterface(data.user);
+                        } else {
+                            showLoginError(data.error || 'Login failed');
+                            document.querySelector('#debug-login-form button').textContent = 'Login';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Login error:', error);
+                        showLoginError('An error occurred during login');
+                        document.querySelector('#debug-login-form button').textContent = 'Login';
+                    });
+                });
+                
+                // Helper to show login errors
+                function showLoginError(message) {
+                    const errorElement = document.getElementById('login-error');
+                    errorElement.textContent = message;
+                    errorElement.classList.remove('d-none');
+                }
+            }
+        });
+        
+        // Function to initialize the debug interface
+        function initDebugInterface(user) {
+            console.log('Initializing debug interface for user:', user.username);
             
             // Make sure chat container is visible
             const chatContainer = document.getElementById('chat-container');
@@ -229,6 +439,12 @@
                 chatContainer.style.display = 'grid';
                 chatContainer.style.opacity = '1';
                 chatContainer.style.visibility = 'visible';
+            }
+            
+            // Update user display
+            const currentUserEl = document.getElementById('current-user');
+            if (currentUserEl && user.username) {
+                currentUserEl.textContent = user.username;
             }
             
             // Setup basic click handlers
@@ -266,7 +482,7 @@
                             </div>
                             <div class="message-content">
                                 <div class="message-header">
-                                    <span class="message-author">Etherwolf</span>
+                                    <span class="message-author">${user.username}</span>
                                     <span class="message-timestamp">Just now</span>
                                 </div>
                                 <div class="message-text">
@@ -280,6 +496,19 @@
                         
                         // Scroll to bottom
                         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        
+                        // If socket is connected, send message
+                        if (window.socket && window.socket.connected) {
+                            const activeChannel = document.querySelector('#channels-list .list-item.active');
+                            const channelName = activeChannel ? activeChannel.getAttribute('data-channel') : 'general';
+                            
+                            window.socket.emit('message', {
+                                content: messageText,
+                                channel: '#' + channelName,
+                                sender: user.username,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
                     }
                 });
                 
@@ -291,7 +520,17 @@
                     }
                 });
             }
-        });
+            
+            // Set up logout button
+            const logoutBtn = document.getElementById('logout-btn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', function() {
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('auth_token');
+                    window.location.reload();
+                });
+            }
+        }
     </script>
 </body>
 </html>
