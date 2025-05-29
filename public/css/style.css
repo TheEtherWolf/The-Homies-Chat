@@ -66,6 +66,9 @@ body {
   background-color: var(--dark-color) !important;
   position: relative !important;
   z-index: 1 !important;
+  /* Make sure it's visible */
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 /* Left Sidebar */
@@ -79,6 +82,10 @@ body {
   overflow: hidden;
   position: relative;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+  /* Make sure it's visible and interactive */
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 2 !important;
 }
 
 /* User Profile Area */
@@ -188,6 +195,10 @@ body {
   background-color: var(--dark-secondary);
   overflow: hidden;
   position: relative;
+  /* Make sure it's visible and interactive */
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 1 !important;
 }
 
 /* Chat Header */

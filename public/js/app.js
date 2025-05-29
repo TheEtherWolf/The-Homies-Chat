@@ -240,12 +240,36 @@ function showLoginScreen() {
  */
 function hideLoginScreen() {
     const loginContainer = document.getElementById('login-container');
+    const authContainer = document.getElementById('auth-container');
     const chatContainer = document.getElementById('chat-container');
     
+    // Hide all authentication containers
     if (loginContainer) loginContainer.style.display = 'none';
-    if (chatContainer) chatContainer.style.display = 'flex';
+    if (authContainer) authContainer.style.display = 'none';
     
-    console.log('[APP_DEBUG] Showing chat interface');
+    // Show chat container with proper grid display
+    if (chatContainer) {
+        chatContainer.classList.remove('d-none');
+        chatContainer.style.display = 'grid';
+        chatContainer.style.opacity = '1';
+        chatContainer.style.pointerEvents = 'auto';
+        
+        // Ensure main content and sidebar are visible
+        const mainContent = document.getElementById('main-content');
+        const leftSidebar = document.getElementById('left-sidebar');
+        
+        if (mainContent) {
+            mainContent.style.opacity = '1';
+            mainContent.style.pointerEvents = 'auto';
+        }
+        
+        if (leftSidebar) {
+            leftSidebar.style.opacity = '1';
+            leftSidebar.style.pointerEvents = 'auto';
+        }
+    }
+    
+    console.log('[APP_DEBUG] Showing chat interface with grid layout');
 }
 
 /**
@@ -370,12 +394,34 @@ function initializeChatManager(user) {
             // Remove d-none class if it exists
             chatContainer.classList.remove('d-none');
             
-            // Force grid display
+            // Force grid display with explicit styling
             chatContainer.style.display = 'grid';
             chatContainer.style.gridTemplateColumns = '280px 1fr';
             chatContainer.style.gridTemplateAreas = '"sidebar content"';
             chatContainer.style.height = '100vh';
             chatContainer.style.width = '100%';
+            chatContainer.style.opacity = '1';
+            chatContainer.style.pointerEvents = 'auto';
+            chatContainer.style.zIndex = '1';
+            chatContainer.style.position = 'relative';
+            
+            // Make sure sidebar and main content are visible and interactive
+            const leftSidebar = document.getElementById('left-sidebar');
+            const mainContent = document.getElementById('main-content');
+            
+            if (leftSidebar) {
+                leftSidebar.style.opacity = '1';
+                leftSidebar.style.pointerEvents = 'auto';
+                leftSidebar.style.zIndex = '2';
+                leftSidebar.style.display = 'flex';
+            }
+            
+            if (mainContent) {
+                mainContent.style.opacity = '1';
+                mainContent.style.pointerEvents = 'auto';
+                mainContent.style.zIndex = '1';
+                mainContent.style.display = 'flex';
+            }
             
             // Hide auth container to make sure it doesn't overlap
             const authContainer = document.getElementById('auth-container');
