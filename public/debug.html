@@ -322,6 +322,14 @@
             if (storedUser && authToken) {
                 try {
                     const user = JSON.parse(storedUser);
+                    
+                    // Clear stored authentication if this is a fresh debug session
+                    if (window.location.href.includes('?clear=true')) {
+                        localStorage.removeItem('user');
+                        localStorage.removeItem('auth_token');
+                        throw new Error('Clearing stored authentication');
+                    }
+                    
                     console.log('Found stored authentication', user.username);
                     updateLoadingMessage(`Found stored authentication for ${user.username}`);
                     
@@ -403,11 +411,16 @@
                             <form id="debug-login-form">
                                 <div class="mb-3">
                                     <label for="username" class="form-label">Username</label>
-                                    <input type="text" class="form-control" id="username" value="Etherwolf">
+                                    <input type="text" class="form-control" id="username" placeholder="Enter your username">
                                 </div>
                                 <div class="mb-3">
                                     <label for="password" class="form-label">Password</label>
-                                    <input type="password" class="form-control" id="password" value="password">
+                                    <input type="password" class="form-control" id="password" placeholder="Enter your password">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="avatar-url" class="form-label">Avatar URL (optional)</label>
+                                    <input type="text" class="form-control" id="avatar-url" placeholder="URL to your avatar image">
+                                    <div class="form-text">Leave blank to use default avatar</div>
                                 </div>
                                 <div id="login-error" class="alert alert-danger d-none"></div>
                                 <button type="submit" class="btn btn-primary w-100">Login</button>
@@ -436,6 +449,8 @@
                         Logging in...
                     `;
                     
+                    const avatarUrl = document.getElementById('avatar-url').value.trim();
+                    
                     // Attempt login
                     fetch('/api/auth/signin', {
                         method: 'POST',
@@ -448,6 +463,12 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.ok && data.user) {
+                            // Add avatar URL if provided
+                            if (avatarUrl) {
+                                data.user.avatarUrl = avatarUrl;
+                                data.user.avatar_url = avatarUrl;
+                            }
+                            
                             // Store authentication
                             localStorage.setItem('user', JSON.stringify(data.user));
                             localStorage.setItem('auth_token', data.token || '');
@@ -620,11 +641,35 @@
             
             // Set up socket message listeners
             if (window.socket) {
+                // Clean up any existing listeners to prevent duplicates
+                window.socket.off('message');
+                window.socket.off('message-history');
+                
                 window.socket.on('message', function(message) {
+                    console.log('Received new message:', message);
                     addMessageToUI(message);
+                    
+                    // Add to local storage for backup
+                    try {
+                        const activeChannel = document.querySelector('#channels-list .list-item.active');
+                        const channelName = activeChannel ? activeChannel.getAttribute('data-channel') : 'general';
+                        const key = 'messages_' + channelName;
+                        const storedMessages = JSON.parse(localStorage.getItem(key) || '[]');
+                        storedMessages.push(message);
+                        localStorage.setItem(key, JSON.stringify(storedMessages));
+                    } catch (e) {
+                        console.error('Error updating local storage with new message:', e);
+                    }
                 });
                 
                 window.socket.on('message-history', function(messages) {
+                    console.log('Received message history:', messages ? messages.length : 0, 'messages');
+                    displayMessageHistory(messages);
+                });
+                
+                // Handle supabase messages separately if available
+                window.socket.on('supabase-messages', function(messages) {
+                    console.log('Received Supabase messages:', messages ? messages.length : 0, 'messages');
                     displayMessageHistory(messages);
                 });
             }
@@ -635,23 +680,67 @@
             const messagesContainer = document.getElementById('messages-container');
             if (!messagesContainer) return;
             
-            // Clear existing messages except the system message
-            const systemMessages = Array.from(messagesContainer.querySelectorAll('.system-message, .date-separator'));
+            // Clear existing messages except the welcome message
+            const welcomeMessage = messagesContainer.querySelector('.system-message:first-of-type');
+            const dateSeparator = messagesContainer.querySelector('.date-separator:first-of-type');
             messagesContainer.innerHTML = '';
-            systemMessages.forEach(msg => messagesContainer.appendChild(msg));
             
-            // Add loading indicator
+            if (dateSeparator) messagesContainer.appendChild(dateSeparator.cloneNode(true));
+            if (welcomeMessage) messagesContainer.appendChild(welcomeMessage.cloneNode(true));
+            
+            // Add loading indicator with ID so we can remove it later
+            const loadingId = 'loading-message-' + Date.now();
             const loadingMsg = document.createElement('div');
+            loadingMsg.id = loadingId;
             loadingMsg.className = 'system-message';
             loadingMsg.textContent = 'Loading messages...';
             messagesContainer.appendChild(loadingMsg);
             
             // Request message history from server
             if (window.socket && window.socket.connected) {
+                console.log('Requesting message history for channel:', channel);
                 window.socket.emit('get-message-history', { channel: '#' + channel });
+                
+                // Set timeout to remove loading message if no response
+                setTimeout(() => {
+                    const loadingElement = document.getElementById(loadingId);
+                    if (loadingElement) {
+                        // Try to load from local storage if available
+                        const localMessages = getLocalMessages(channel);
+                        if (localMessages && localMessages.length > 0) {
+                            loadingElement.textContent = 'Loaded messages from local storage';
+                            setTimeout(() => loadingElement.remove(), 1000);
+                            displayMessageHistory(localMessages);
+                        } else {
+                            loadingElement.textContent = 'No messages available for this channel';
+                            setTimeout(() => loadingElement.remove(), 2000);
+                        }
+                    }
+                }, 5000);
             } else {
-                // If socket not connected, show error
-                loadingMsg.textContent = 'Cannot load messages: Socket disconnected';
+                // If socket not connected, try local storage
+                const localMessages = getLocalMessages(channel);
+                if (localMessages && localMessages.length > 0) {
+                    loadingMsg.textContent = 'Loaded messages from local storage';
+                    setTimeout(() => loadingMsg.remove(), 1000);
+                    displayMessageHistory(localMessages);
+                } else {
+                    // If socket not connected, show error
+                    loadingMsg.textContent = 'Cannot load messages: Socket disconnected';
+                    setTimeout(() => loadingMsg.remove(), 3000);
+                }
+            }
+        }
+        
+        // Function to get messages from local storage
+        function getLocalMessages(channel) {
+            try {
+                const key = 'messages_' + channel;
+                const storedMessages = localStorage.getItem(key);
+                return storedMessages ? JSON.parse(storedMessages) : [];
+            } catch (e) {
+                console.error('Error reading local messages:', e);
+                return [];
             }
         }
         
@@ -660,10 +749,9 @@
             const messagesContainer = document.getElementById('messages-container');
             if (!messagesContainer) return;
             
-            // Clear existing messages except the system welcome message
-            const systemMessages = Array.from(messagesContainer.querySelectorAll('.system-message:first-of-type, .date-separator'));
-            messagesContainer.innerHTML = '';
-            systemMessages.forEach(msg => messagesContainer.appendChild(msg));
+            // Remove loading message if present
+            const loadingMessages = messagesContainer.querySelectorAll('[id^="loading-message-"]');
+            loadingMessages.forEach(msg => msg.remove());
             
             // Check if we have messages
             if (!messages || messages.length === 0) {
@@ -672,6 +760,15 @@
                 noMessagesEl.textContent = 'No messages in this channel yet. Start the conversation!';
                 messagesContainer.appendChild(noMessagesEl);
                 return;
+            }
+            
+            // Save to local storage for backup
+            try {
+                const activeChannel = document.querySelector('#channels-list .list-item.active');
+                const channelName = activeChannel ? activeChannel.getAttribute('data-channel') : 'general';
+                localStorage.setItem('messages_' + channelName, JSON.stringify(messages));
+            } catch (e) {
+                console.error('Error saving messages to local storage:', e);
             }
             
             // Sort messages by timestamp
@@ -699,6 +796,13 @@
             // Create message element
             const messageEl = document.createElement('div');
             messageEl.className = 'message';
+            messageEl.dataset.messageId = message.id || Date.now() + Math.random().toString(36).substring(2, 9);
+            
+            // Check if message already exists to avoid duplicates
+            const existingMessage = messagesContainer.querySelector(`[data-message-id="${messageEl.dataset.messageId}"]`);
+            if (existingMessage) {
+                return; // Skip if already displayed
+            }
             
             // Check if this is the current user's message
             const storedUser = localStorage.getItem('user');
@@ -707,7 +811,12 @@
                 currentUser = JSON.parse(storedUser);
             } catch (e) {}
             
-            if (currentUser && (message.sender === currentUser.username || message.sender_id === currentUser.id)) {
+            const isOwnMessage = currentUser && 
+                (message.sender === currentUser.username || 
+                 message.sender_id === currentUser.id || 
+                 message.sender_id === currentUser.userId);
+                 
+            if (isOwnMessage) {
                 messageEl.classList.add('own-message');
             }
             
@@ -715,10 +824,20 @@
             const timestamp = message.timestamp || message.created_at || new Date().toISOString();
             const formattedTime = formatTimestamp(timestamp);
             
+            // Get avatar URL - try to use the user's avatar if available
+            let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+            
+            // For own messages, use the current user's avatar
+            if (isOwnMessage && currentUser) {
+                avatarUrl = currentUser.avatarUrl || 
+                           currentUser.avatar_url || 
+                           'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+            }
+            
             // Set message content
             messageEl.innerHTML = `
                 <div class="message-avatar">
-                    <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911" alt="${message.sender || 'User'}">
+                    <img src="${avatarUrl}" alt="${message.sender || 'User'}">
                 </div>
                 <div class="message-content">
                     <div class="message-header">
