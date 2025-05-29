@@ -6,13 +6,34 @@
 
 // Socket.io connection with authentication token if available
 const authToken = localStorage.getItem('auth_token');
+
+// Get user data from session storage or localStorage for more reliable authentication
+let userData = null;
+try {
+    const sessionUser = sessionStorage.getItem('user');
+    const localUser = localStorage.getItem('user');
+    userData = sessionUser ? JSON.parse(sessionUser) : (localUser ? JSON.parse(localUser) : null);
+    console.log('[APP_DEBUG] Using stored user data for socket auth:', userData ? userData.username : 'none');
+} catch(e) {
+    console.error('[APP_DEBUG] Error parsing stored user data:', e);
+}
+
+// Create socket connection with all available auth data
 window.socket = io({
     auth: {
-        token: authToken || ''
+        token: authToken || '',
+        userData: userData
     },
     query: {
-        token: authToken || ''
-    }
+        token: authToken || '',
+        userId: userData?.id || '',
+        username: userData?.username || ''
+    },
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000
 });
 
 // Log socket connection

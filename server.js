@@ -118,6 +118,8 @@ app.use((req, res, next) => {
   const publicRoutes = [
     '/',
     '/index.html',
+    '/assets/favicon.ico',
+    '/pattern.png',
     '/login',
     '/api/auth/signin',
     '/api/auth/signup',

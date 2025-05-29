@@ -29,60 +29,22 @@ window.NextAuthSimplified = {
             if (storedUser) {
                 try {
                     const user = JSON.parse(storedUser);
-                    this.log('Found stored user:', user);
-                    
-                    // Verify the session with the server if possible
-                    if (user.token) {
-                        try {
-                            const isValid = await this.verifySession(user.token);
-                            if (isValid) {
-                                this._session = { user };
-                                this.log('Session verified successfully');
-                                return { user };
-                            } else {
-                                this.log('Stored session is invalid, clearing');
-                                localStorage.removeItem('user');
-                                sessionStorage.removeItem('user');
-                            }
-                        } catch (verifyError) {
-                            this.log('Error verifying session:', verifyError);
-                            // This allows offline login with previously stored credentials
-                            this._session = { user };
-                            return { user };
-                        }
-                    } else {
-                        // No token, but we have user data
-                        this._session = { user };
-                        return { user };
-                    }
-                } catch (parseError) {
-                    this.log('Error parsing stored user:', parseError);
+                    this._session = { user };
+                    this.log('Found stored user in localStorage', user.username);
+                    return this._session;
+                } catch (e) {
+                    this.log('Failed to parse stored user', e);
+                    // Clear invalid session data
                     localStorage.removeItem('user');
-                    sessionStorage.removeItem('user');
                 }
             }
             
-            // Try to get session from server
+            // No valid session in localStorage, try to fetch from server
             const session = await this.getSession();
-            if (session) {
-                this.log('Found server session:', session);
-                this._session = session;
-                return session;
-            }
-            
-            this.log('No valid session found');
-            return null;
+            return session;
         } catch (error) {
-            this.log('Error initializing NextAuth:', error);
+            this.log('Error initializing NextAuth', error);
             return null;
-        } finally {
-            this.log('Initialized', this._session);
-            
-            // Dispatch auth state change event
-            const event = new CustomEvent('auth-state-changed', { 
-                detail: { session: this._session } 
-            });
-            document.dispatchEvent(event);
         }
     },
     
@@ -96,24 +58,20 @@ window.NextAuthSimplified = {
                 credentials: 'include'
             });
             
-            if (!response.ok) {
-                this.log('Session fetch failed with status:', response.status);
-                return null;
-            }
+            const data = await response.json();
+            this.log('Session response:', data);
             
-            // Parse the response
-            const result = await response.json();
-            this.log('Session response:', result);
-            
-            if (response.ok) {
+            if (data && data.user) {
+                this._session = { user: data.user };
+                localStorage.setItem('user', JSON.stringify(data.user));
                 this.log('Session fetch successful');
-                return result;
-            } else {
-                throw new Error(result.error || 'Session fetch failed');
+                return this._session;
             }
+            
+            return null;
         } catch (error) {
-            this.log('Error fetching session:', error);
-            throw error;
+            this.log('Error getting session', error);
+            return null;
         }
     },
     
@@ -125,33 +83,32 @@ window.NextAuthSimplified = {
     async signIn(credentials) {
         this.log('Attempting sign in for user:', credentials.username);
         
+        if (!credentials.username || !credentials.password) {
+            return { ok: false, error: 'Username and password are required' };
+        }
+        
         try {
             // Make the API request to our custom signin endpoint
             const response = await fetch('/api/auth/signin', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Content-Type': 'application/json'
                 },
-                credentials: 'include',
-                body: JSON.stringify(credentials)
+                body: JSON.stringify(credentials),
+                credentials: 'include'
             });
             
-            this.log('Sign in response status:', response.status);
-            
-            // Parse the response
             const result = await response.json();
-            this.log('Sign in response:', result);
+            this.log('Sign in result:', result);
             
-            if (response.ok) {
-                this.log('Sign in successful');
+            if (result.ok && result.user) {
+                // Store auth token if provided
+                if (result.token) {
+                    localStorage.setItem('auth_token', result.token);
+                }
                 
-                // Get session data
+                // Get full session data
                 const sessionResponse = await fetch('/api/auth/session', {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json'
-                    },
                     credentials: 'include'
                 });
                 
@@ -193,47 +150,18 @@ window.NextAuthSimplified = {
             const response = await fetch('/api/auth/signup', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Content-Type': 'application/json'
                 },
-                credentials: 'include',
-                body: JSON.stringify(credentials)
+                body: JSON.stringify(credentials),
+                credentials: 'include'
             });
             
-            this.log('Sign up response status:', response.status);
-            
-            // Parse the response
             const result = await response.json();
-            this.log('Sign up response:', result);
+            this.log('Sign up result:', result);
             
-            if (response.ok) {
-                this.log('Sign up successful');
-                
-                // Get session data
-                const sessionResponse = await fetch('/api/auth/session', {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json'
-                    },
-                    credentials: 'include'
-                });
-                
-                const sessionData = await sessionResponse.json();
-                const user = sessionData.user || result.user;
-                
-                if (user) {
-                    // Store user data in localStorage
-                    localStorage.setItem('user', JSON.stringify(user));
-                    this._session = { user };
-                    
-                    // Dispatch custom event for auth state change
-                    const event = new CustomEvent('auth-state-changed', { 
-                        detail: { session: this._session } 
-                    });
-                    document.dispatchEvent(event);
-                }
-                
-                return { ok: true, user };
+            if (result.ok) {
+                // Return success but don't automatically sign in
+                return { ok: true, message: result.message || 'Registration successful' };
             } else {
                 throw new Error(result.error || 'Registration failed');
             }
@@ -251,32 +179,32 @@ window.NextAuthSimplified = {
         this.log('Signing out user');
         
         try {
-            // Clear local session data
+            // Make the API request to our custom signout endpoint
+            const response = await fetch('/api/auth/signout', {
+                method: 'POST',
+                credentials: 'include'
+            });
+            
+            // Clear local storage regardless of server response
             localStorage.removeItem('user');
+            localStorage.removeItem('auth_token');
             sessionStorage.removeItem('user');
             this._session = null;
             
-            // Notify server if available
-            try {
-                await fetch('/api/auth/signout', {
-                    method: 'POST',
-                    credentials: 'include'
-                });
-            } catch (serverError) {
-                this.log('Server signout failed, continuing with local signout:', serverError);
-            }
-            
-            // Dispatch auth state change event
+            // Dispatch custom event for auth state change
             const event = new CustomEvent('auth-state-changed', { 
                 detail: { session: null } 
             });
             document.dispatchEvent(event);
             
-            this.log('Sign out successful');
-            return { ok: true };
+            const result = await response.json();
+            this.log('Sign out result:', result);
+            
+            return { ok: true, message: 'Signed out successfully' };
         } catch (error) {
             this.log('Sign out error:', error);
-            throw error;
+            // Still return success even if API call fails, as we've cleared local data
+            return { ok: true, message: 'Signed out locally' };
         }
     },
     
@@ -286,195 +214,29 @@ window.NextAuthSimplified = {
      * @returns {Promise<boolean>} True if session is valid
      */
     async verifySession(token) {
-        if (!token) return false;
-        
         this.log('Verifying session token');
         
-        try {
-            
-            // Get session data
-            const sessionResponse = await fetch('/api/auth/session', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                },
-                credentials: 'include'
-            });
-            
-            const sessionData = await sessionResponse.json();
-            const user = sessionData.user || result.user;
-            
-            if (user) {
-                // Store user data in localStorage
-                localStorage.setItem('user', JSON.stringify(user));
-                this._session = { user };
-                
-                // Dispatch custom event for auth state change
-                const event = new CustomEvent('auth-state-changed', { 
-                    detail: { session: this._session } 
-                });
-                document.dispatchEvent(event);
-            }
-            
-            return { ok: true, user };
-        } else {
-            throw new Error(result.error || 'Authentication failed');
-        }
-    } catch (error) {
-        this.log('Sign in error:', error);
-        throw error;
-    }
-},
-    
-/**
- * Sign up with credentials
- * @param {Object} credentials - Username, email, password, and confirmPassword
- * @returns {Promise<Object>} Result of sign up attempt
- */
-async signUp(credentials) {
-    this.log('Attempting sign up for user:', credentials.username);
-    
-    try {
-        // Make the API request to our custom signup endpoint
-        const response = await fetch('/api/auth/signup', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            credentials: 'include',
-            body: JSON.stringify(credentials)
-        });
-        
-        this.log('Sign up response status:', response.status);
-        
-        // Parse the response
-        const result = await response.json();
-        this.log('Sign up response:', result);
-        
-        if (response.ok) {
-            this.log('Sign up successful');
-            
-            // Get session data
-            const sessionResponse = await fetch('/api/auth/session', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                },
-                credentials: 'include'
-            });
-            
-            const sessionData = await sessionResponse.json();
-            const user = sessionData.user || result.user;
-            
-            if (user) {
-                // Store user data in localStorage
-                localStorage.setItem('user', JSON.stringify(user));
-                this._session = { user };
-                
-                // Dispatch custom event for auth state change
-                const event = new CustomEvent('auth-state-changed', { 
-                    detail: { session: this._session } 
-                });
-                document.dispatchEvent(event);
-            }
-            
-            return { ok: true, user };
-        } else {
-            throw new Error(result.error || 'Registration failed');
-        }
-    } catch (error) {
-        this.log('Sign up error:', error);
-        throw error;
-    }
-},
-    
-/**
- * Sign out the current user
- * @returns {Promise<Object>} Result of sign out attempt
- */
-async signOut() {
-    this.log('Signing out user');
-    
-    try {
-        // Clear local session data
-        localStorage.removeItem('user');
-        sessionStorage.removeItem('user');
-        this._session = null;
-        
-        // Notify server if available
-        try {
-            await fetch('/api/auth/signout', {
-                method: 'POST',
-                credentials: 'include'
-            });
-        } catch (serverError) {
-            this.log('Server signout failed, continuing with local signout:', serverError);
-        }
-        
-        // Dispatch auth state change event
-        const event = new CustomEvent('auth-state-changed', { 
-            detail: { session: null } 
-        });
-        document.dispatchEvent(event);
-        
-        this.log('Sign out successful');
-        return { ok: true };
-    } catch (error) {
-        this.log('Sign out error:', error);
-        throw error;
-    }
-},
-    
-/**
- * Verify if a session token is valid
- * @param {string} token - Session token to verify
- * @returns {Promise<boolean>} True if session is valid
- */
-async verifySession(token) {
-    if (!token) return false;
-    
-    this.log('Verifying session token');
-    
-    try {
-        const response = await fetch('/api/auth/session', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
-            },
-            credentials: 'include'
-        });
-        
-        if (!response.ok) {
-            this.log('Session verification failed:', response.status);
+        if (!token) {
             return false;
         }
         
-        const data = await response.json();
-        return !!data.user;
-    } catch (error) {
-        this.log('Session verification error:', error);
-        return false;
-    }
-},
-    
-    /**
-     * Get the current session
-     * @returns {Promise<Object|null>} The current session or null if not authenticated
-     */
-    async getSession() {
         try {
-            const storedUser = localStorage.getItem('user');
-            if (storedUser) {
-                const user = JSON.parse(storedUser);
-                this._session = { user };
-                return this._session;
-            }
-            return null;
+            const response = await fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ token }),
+                credentials: 'include'
+            });
+            
+            const result = await response.json();
+            this.log('Verify session result:', result);
+            
+            return result.valid === true;
         } catch (error) {
-            console.error('Error getting session:', error);
-            return null;
+            this.log('Verify session error:', error);
+            return false;
         }
     }
 };
@@ -482,34 +244,23 @@ async verifySession(token) {
 // Initialize NextAuth when the page loads
 window.NextAuth = window.NextAuth || window.NextAuthSimplified;
 
-// Add getSession method if it doesn't exist
-if (!window.NextAuth.getSession) {
-    window.NextAuth.getSession = async () => {
-        try {
-            const storedUser = localStorage.getItem('user');
-            if (storedUser) {
-                return { user: JSON.parse(storedUser) };
-            }
-            return null;
-        } catch (error) {
-            console.error('Error getting session:', error);
-            return null;
-        }
-    };
-}
+// Helper function to get the current session
+window.getSession = async function() {
+    if (!window.NextAuth) return null;
+    
+    try {
+        return await window.NextAuth.getSession();
+    } catch (e) {
+        console.error('Error getting session:', e);
+        return null;
+    }
+};
 
 // Initialize NextAuth
 (async function() {
     try {
-        const session = await window.NextAuthSimplified.init();
-        console.log('[NEXTAUTH_SIMPLE] Initialized', session);
-        
-        // Dispatch custom event when auth state changes
-        const event = new CustomEvent('auth-state-changed', { 
-            detail: { session } 
-        });
-        document.dispatchEvent(event);
-    } catch (error) {
-        console.error('[NEXTAUTH_SIMPLE] Initialization error:', error);
+        await window.NextAuthSimplified.init();
+    } catch (e) {
+        console.error('Error initializing NextAuth:', e);
     }
 })();
