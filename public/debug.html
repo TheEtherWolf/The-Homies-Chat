@@ -256,7 +256,7 @@
                 <div id="message-input-area">
                     <div class="message-input-container">
                         <div class="input-wrapper">
-                            <textarea id="message-input" placeholder="Message #general" rows="1"></textarea>
+                            <textarea id="message-input" placeholder="Message #general" rows="3" style="min-height: 80px; padding: 10px;"></textarea>
                         </div>
                         <div class="message-controls">
                             <button class="message-control-button" id="emoji-button" title="Add Emoji">
@@ -696,39 +696,132 @@
             loadingMsg.textContent = 'Loading messages...';
             messagesContainer.appendChild(loadingMsg);
             
-            // Request message history from server
-            if (window.socket && window.socket.connected) {
-                console.log('Requesting message history for channel:', channel);
-                window.socket.emit('get-message-history', { channel: '#' + channel });
-                
-                // Set timeout to remove loading message if no response
-                setTimeout(() => {
+            // Try to fetch messages directly from Supabase REST API first
+            fetchSupabaseMessages(channel)
+                .then(supabaseMessages => {
                     const loadingElement = document.getElementById(loadingId);
                     if (loadingElement) {
-                        // Try to load from local storage if available
+                        if (supabaseMessages && supabaseMessages.length > 0) {
+                            loadingElement.textContent = 'Loaded messages from Supabase';
+                            setTimeout(() => loadingElement.remove(), 1000);
+                            displayMessageHistory(supabaseMessages);
+                            return true; // Successfully loaded from Supabase
+                        }
+                    }
+                    return false; // Couldn't load from Supabase
+                })
+                .catch(error => {
+                    console.error('Error fetching from Supabase:', error);
+                    return false; // Error loading from Supabase
+                })
+                .then(loadedFromSupabase => {
+                    // If we didn't load from Supabase, try socket.io
+                    if (!loadedFromSupabase && window.socket && window.socket.connected) {
+                        console.log('Requesting message history from socket for channel:', channel);
+                        window.socket.emit('get-message-history', { channel: '#' + channel });
+                        
+                        // Set timeout to remove loading message if no response
+                        setTimeout(() => {
+                            const loadingElement = document.getElementById(loadingId);
+                            if (loadingElement) {
+                                // Try to load from local storage if available
+                                const localMessages = getLocalMessages(channel);
+                                if (localMessages && localMessages.length > 0) {
+                                    loadingElement.textContent = 'Loaded messages from local storage';
+                                    setTimeout(() => loadingElement.remove(), 1000);
+                                    displayMessageHistory(localMessages);
+                                } else {
+                                    loadingElement.textContent = 'No messages available for this channel';
+                                    setTimeout(() => loadingElement.remove(), 2000);
+                                }
+                            }
+                        }, 5000);
+                    } else if (!loadedFromSupabase) {
+                        // If socket not connected and Supabase failed, try local storage
                         const localMessages = getLocalMessages(channel);
-                        if (localMessages && localMessages.length > 0) {
+                        const loadingElement = document.getElementById(loadingId);
+                        
+                        if (localMessages && localMessages.length > 0 && loadingElement) {
                             loadingElement.textContent = 'Loaded messages from local storage';
                             setTimeout(() => loadingElement.remove(), 1000);
                             displayMessageHistory(localMessages);
-                        } else {
-                            loadingElement.textContent = 'No messages available for this channel';
-                            setTimeout(() => loadingElement.remove(), 2000);
+                        } else if (loadingElement) {
+                            loadingElement.textContent = 'Cannot load messages: All methods failed';
+                            setTimeout(() => loadingElement.remove(), 3000);
                         }
                     }
-                }, 5000);
-            } else {
-                // If socket not connected, try local storage
-                const localMessages = getLocalMessages(channel);
-                if (localMessages && localMessages.length > 0) {
-                    loadingMsg.textContent = 'Loaded messages from local storage';
-                    setTimeout(() => loadingMsg.remove(), 1000);
-                    displayMessageHistory(localMessages);
-                } else {
-                    // If socket not connected, show error
-                    loadingMsg.textContent = 'Cannot load messages: Socket disconnected';
-                    setTimeout(() => loadingMsg.remove(), 3000);
+                });
+        }
+        
+        // Function to fetch messages directly from Supabase
+        async function fetchSupabaseMessages(channel) {
+            console.log('Attempting to fetch messages directly from Supabase for channel:', channel);
+            
+            try {
+                // Get auth token from local storage
+                const authToken = localStorage.getItem('auth_token');
+                if (!authToken) {
+                    console.error('No auth token available for Supabase request');
+                    return [];
                 }
+                
+                // Fetch messages from the server's message endpoint
+                const response = await fetch(`/api/messages?channel=${encodeURIComponent('#' + channel)}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch messages: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Supabase messages received:', data);
+                
+                // Try direct supabase fetch as fallback
+                if (!data || !data.length) {
+                    return await fetchDirectSupabaseMessages(channel, authToken);
+                }
+                
+                return data;
+            } catch (error) {
+                console.error('Error fetching messages from Supabase:', error);
+                return [];
+            }
+        }
+        
+        // Fallback direct Supabase fetch
+        async function fetchDirectSupabaseMessages(channel, authToken) {
+            console.log('Attempting direct Supabase fetch for channel:', channel);
+            
+            try {
+                // Try to get the Supabase URL and anon key from the page
+                const supabaseUrl = window.SUPABASE_URL || 'https://xjgufysdlxwauocezfut.supabase.co';
+                const supabaseAnonKey = window.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqZ3VmeXNkbHh3YXVvY2V6ZnV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDk5OTc5MzcsImV4cCI6MjAyNTU3MzkzN30.6tORnBIq_D0IvBo11ZtJcxJ48QKv5qwZJJIEerIgcps';
+                
+                const response = await fetch(`${supabaseUrl}/rest/v1/messages?channel=eq.${encodeURIComponent('#' + channel)}&order=created_at.asc.nullslast`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': supabaseAnonKey,
+                        'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Direct Supabase fetch failed: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Direct Supabase messages received:', data);
+                return data;
+                
+            } catch (error) {
+                console.error('Error in direct Supabase fetch:', error);
+                return [];
             }
         }
         
