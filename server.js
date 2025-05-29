@@ -120,6 +120,7 @@ app.use((req, res, next) => {
     '/index.html',
     '/assets/favicon.ico',
     '/pattern.png',
+    '/js/main.js',
     '/login',
     '/api/auth/signin',
     '/api/auth/signup',
