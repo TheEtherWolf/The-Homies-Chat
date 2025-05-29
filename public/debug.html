@@ -256,7 +256,7 @@
                 <div id="message-input-area">
                     <div class="message-input-container">
                         <div class="input-wrapper">
-                            <textarea id="message-input" placeholder="Message #general" rows="3" style="min-height: 80px; padding: 10px;"></textarea>
+                            <textarea id="message-input" placeholder="Message #general" rows="5" style="min-height: 120px; padding: 15px; font-size: 16px;"></textarea>
                         </div>
                         <div class="message-controls">
                             <button class="message-control-button" id="emoji-button" title="Add Emoji">
@@ -767,54 +767,34 @@
             console.log('Attempting to fetch messages directly from Supabase for channel:', channel);
             
             try {
-                // Get auth token from local storage
-                const authToken = localStorage.getItem('auth_token');
-                if (!authToken) {
-                    console.error('No auth token available for Supabase request');
-                    return [];
-                }
-                
-                // Fetch messages from the server's message endpoint
-                const response = await fetch(`/api/messages?channel=${encodeURIComponent('#' + channel)}`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch messages: ${response.status} ${response.statusText}`);
-                }
-                
-                const data = await response.json();
-                console.log('Supabase messages received:', data);
-                
-                // Try direct supabase fetch as fallback
-                if (!data || !data.length) {
-                    return await fetchDirectSupabaseMessages(channel, authToken);
-                }
-                
-                return data;
+                // Skip the server-side API and go directly to Supabase to avoid the 500 error
+                return await fetchDirectSupabaseMessages(channel);
             } catch (error) {
                 console.error('Error fetching messages from Supabase:', error);
                 return [];
             }
         }
         
-        // Fallback direct Supabase fetch
-        async function fetchDirectSupabaseMessages(channel, authToken) {
+        // Direct Supabase fetch function
+        async function fetchDirectSupabaseMessages(channel) {
             console.log('Attempting direct Supabase fetch for channel:', channel);
             
             try {
+                // Get auth token from local storage (optional)
+                const authToken = localStorage.getItem('auth_token');
+                
                 // Use the globally defined Supabase credentials
                 const supabaseUrl = window.SUPABASE_URL;
                 let apiKey = window.SUPABASE_SERVICE_KEY || window.SUPABASE_KEY || window.SUPABASE_ANON_KEY;
                 
                 console.log('Using Supabase URL:', supabaseUrl);
                 
+                // Make sure channel has the # prefix
+                const formattedChannel = channel.startsWith('#') ? channel : '#' + channel;
+                console.log('Fetching messages for channel:', formattedChannel);
+                
                 // First, try with the service key for admin access
-                const response = await fetch(`${supabaseUrl}/rest/v1/messages?channel=eq.${encodeURIComponent('#' + channel)}&order=created_at.asc.nullslast&limit=100`, {
+                const response = await fetch(`${supabaseUrl}/rest/v1/messages?channel=eq.${encodeURIComponent(formattedChannel)}&order=created_at.asc.nullslast&limit=100`, {
                     method: 'GET',
                     headers: {
                         'apikey': apiKey,
@@ -844,6 +824,12 @@
                     }));
                 }
                 
+                // If no data, try without the # prefix
+                if (!data || !data.length) {
+                    console.log('No messages found with # prefix, trying without prefix');
+                    return await fetchSupabaseWithoutPrefix(channel, apiKey);
+                }
+                
                 return data;
                 
             } catch (error) {
@@ -855,25 +841,68 @@
                     const supabaseUrl = window.SUPABASE_URL;
                     let apiKey = window.SUPABASE_SERVICE_KEY || window.SUPABASE_KEY || window.SUPABASE_ANON_KEY;
                     
-                    const response = await fetch(`${supabaseUrl}/rest/v1/messages?select=*&channel=eq.${encodeURIComponent('#' + channel)}`, {
-                        method: 'GET',
-                        headers: {
-                            'apikey': apiKey,
-                            'Authorization': `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
+                    // Try various formats of the channel name
+                    const channelFormats = [
+                        '#' + channel,
+                        channel,
+                        channel.toLowerCase(),
+                        '#' + channel.toLowerCase()
+                    ];
+                    
+                    // Try each format
+                    for (const channelFormat of channelFormats) {
+                        console.log('Trying channel format:', channelFormat);
+                        const response = await fetch(`${supabaseUrl}/rest/v1/messages?select=*&channel=eq.${encodeURIComponent(channelFormat)}`, {
+                            method: 'GET',
+                            headers: {
+                                'apikey': apiKey,
+                                'Authorization': `Bearer ${apiKey}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (!response.ok) continue;
+                        
+                        const data = await response.json();
+                        if (data && data.length) {
+                            console.log('Found messages with channel format:', channelFormat);
+                            return data;
                         }
-                    });
+                    }
                     
-                    if (!response.ok) return [];
-                    
-                    const data = await response.json();
-                    console.log('Alternative endpoint returned:', data.length || 0, 'messages');
-                    return data;
+                    // If we reach here, no format worked
+                    console.log('No messages found with any channel format');
+                    return [];
                     
                 } catch (e) {
                     console.error('Alternative endpoint also failed:', e);
                     return [];
                 }
+            }
+        }
+        
+        // Helper function to try fetching without the # prefix
+        async function fetchSupabaseWithoutPrefix(channel, apiKey) {
+            const supabaseUrl = window.SUPABASE_URL;
+            try {
+                const response = await fetch(`${supabaseUrl}/rest/v1/messages?channel=eq.${encodeURIComponent(channel)}&order=created_at.asc.nullslast&limit=100`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': apiKey,
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=representation'
+                    }
+                });
+                
+                if (!response.ok) return [];
+                
+                const data = await response.json();
+                console.log('Messages found without # prefix:', data.length || 0);
+                return data;
+            } catch (error) {
+                console.error('Error fetching without prefix:', error);
+                return [];
             }
         }
         
