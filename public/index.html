@@ -1423,14 +1423,46 @@
     </div>
 
     <!-- JavaScript -->
+    <!-- Third-party libraries -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Core authentication and utilities -->
     <script src="js/auth-client.js"></script>
+    
+    <!-- Application components in proper dependency order -->
+    <script src="js/emoji-picker.js"></script>
+    <script src="js/chat.js"></script>
     <script src="js/login-handler-clean.js"></script>
     <script src="js/register-handler.js"></script>
-    <script src="js/chat.js"></script>
-    <script src="js/emoji-picker.js"></script>
     <script src="js/main.js"></script>
+    
+    <!-- Initialize the app last -->
     <script src="js/app.js"></script>
+    
+    <!-- Debug script to help detect initialization issues -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM fully loaded');
+        
+        // Check if socket exists
+        if (window.socket) {
+          console.log('Socket instance exists:', window.socket.connected ? 'connected' : 'disconnected');
+        } else {
+          console.error('Socket instance missing! This will break app functionality.');
+        }
+        
+        // Check for critical UI elements
+        if (!document.getElementById('main-content')) {
+          console.error('Main content container not found!');
+        }
+        
+        // Force reconnect if socket exists but isn't connected
+        if (window.socket && !window.socket.connected) {
+          console.log('Attempting to reconnect socket...');
+          window.socket.connect();
+        }
+      });
+    </script>
 </body>
 </html>
