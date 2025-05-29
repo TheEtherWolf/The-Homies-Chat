@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Homies Chat - Debug Mode</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/dm-friends.css">
+    <link rel="stylesheet" href="css/friends.css">
+    <link rel="stylesheet" href="css/app-icon.css">
+    <link rel="icon" href="favicon.png" type="image/png">
+    <style>
+        /* Critical overrides to force visibility */
+        body {
+            overflow: auto !important;
+            background-color: #1a2633 !important;
+        }
+        
+        #chat-container {
+            display: grid !important;
+            grid-template-columns: 280px 1fr !important;
+            grid-template-areas: "sidebar content" !important;
+            height: 100vh !important;
+            width: 100% !important;
+            background-color: #1a2633 !important;
+            position: relative !important;
+            z-index: 10 !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+        }
+        
+        #left-sidebar {
+            grid-area: sidebar !important;
+            display: flex !important;
+            flex-direction: column !important;
+            background-color: #1a2633 !important;
+            height: 100vh !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+            z-index: 20 !important;
+        }
+        
+        #main-content {
+            grid-area: content !important;
+            display: flex !important;
+            flex-direction: column !important;
+            background-color: #121212 !important;
+            height: 100vh !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+            z-index: 20 !important;
+        }
+        
+        /* Hide all auth screens */
+        #auth-container, .login-container, #login-container {
+            display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+            z-index: -1 !important;
+        }
+        
+        /* Make sure elements are clickable */
+        button, a, input, textarea {
+            pointer-events: auto !important;
+            cursor: pointer !important;
+        }
+        
+        /* Force showing chat components */
+        #messages-container, #message-input-area, #chat-header {
+            display: flex !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Main App - Discord Layout -->
+        <div id="chat-container" style="display: grid !important;">
+            
+            <!-- Left Sidebar -->
+            <div id="left-sidebar" style="display: flex !important;">
+                <!-- App Logo -->
+                <div class="app-logo">
+                    <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1747408645553" alt="The Homies Chat" class="app-icon">
+                    <span>The Homies Chat</span>
+                </div>
+                
+                <!-- Main Navigation -->
+                <div class="main-nav">
+                    <button class="nav-button active" id="home-button" title="Home">
+                        <i class="bi bi-house-fill"></i>
+                        <span>Home</span>
+                    </button>
+                    <button class="nav-button" id="dm-button" title="Direct Messages">
+                        <i class="bi bi-chat-fill"></i>
+                        <span>DMs</span>
+                    </button>
+                </div>
+                
+                <!-- Channels Section -->
+                <div id="channels-section">
+                    <div class="section-header">
+                        <span>CHANNELS</span>
+                        <button id="add-channel-btn" class="btn-icon" title="Add Channel">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                    </div>
+                    <div id="channels-list" class="list-container">
+                        <div class="list-item active" data-channel="general">
+                            <i class="bi bi-hash"></i>
+                            <span>general</span>
+                        </div>
+                        <div class="list-item" data-channel="announcements">
+                            <i class="bi bi-hash"></i>
+                            <span>announcements</span>
+                        </div>
+                        <div class="list-item" data-channel="memes">
+                            <i class="bi bi-hash"></i>
+                            <span>memes</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- User Profile Area -->
+                <div class="user-profile-area">
+                    <div class="user-avatar">
+                        <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1744642336378" alt="Your Avatar">
+                        <div class="user-status online"></div>
+                    </div>
+                    <div class="user-details">
+                        <div class="user-name" id="current-user">Etherwolf</div>
+                    </div>
+                    <div class="user-controls">
+                        <button class="user-control-button" id="settings-button" title="Settings">
+                            <i class="bi bi-gear-fill"></i>
+                        </button>
+                        <button class="user-control-button" id="logout-btn" title="Logout">
+                            <i class="bi bi-box-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content Area (Right) -->
+            <div id="main-content" style="display: flex !important;">
+                <!-- Chat Header -->
+                <div id="chat-header">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-hash me-2"></i>
+                        <span class="fw-bold" id="chat-title">general</span>
+                    </div>
+                    <div class="header-controls">
+                        <button class="header-button" id="video-call-button" title="Start Video Call">
+                            <i class="bi bi-camera-video-fill"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Messages Container -->
+                <div id="messages-container">
+                    <!-- Messages will be added here by JS -->
+                    <div class="date-separator">
+                        <span>Today</span>
+                    </div>
+                    <div class="system-message">
+                        Welcome to the beginning of #general
+                    </div>
+                    <!-- Debug message -->
+                    <div class="message">
+                        <div class="message-avatar">
+                            <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911" alt="System">
+                        </div>
+                        <div class="message-content">
+                            <div class="message-header">
+                                <span class="message-author">System</span>
+                                <span class="message-timestamp">Just now</span>
+                            </div>
+                            <div class="message-text">
+                                Debug mode active. This is a special debug version to help fix display issues.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Message Input Area -->
+                <div id="message-input-area">
+                    <div class="message-input-container">
+                        <div class="input-wrapper">
+                            <textarea id="message-input" placeholder="Message #general" rows="1"></textarea>
+                        </div>
+                        <div class="message-controls">
+                            <button class="message-control-button" id="emoji-button" title="Add Emoji">
+                                <i class="bi bi-emoji-smile"></i>
+                            </button>
+                            <button class="message-control-button" id="attach-file-button" title="Attach File">
+                                <i class="bi bi-paperclip"></i>
+                            </button>
+                            <button id="send-button" title="Send Message">
+                                <i class="bi bi-send-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <!-- Third-party libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+    <!-- Application scripts -->
+    <script>
+        // Simple debug script
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Debug mode active');
+            
+            // Make sure chat container is visible
+            const chatContainer = document.getElementById('chat-container');
+            if (chatContainer) {
+                chatContainer.style.display = 'grid';
+                chatContainer.style.opacity = '1';
+                chatContainer.style.visibility = 'visible';
+            }
+            
+            // Setup basic click handlers
+            const channelItems = document.querySelectorAll('#channels-list .list-item');
+            channelItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    // Update active channel UI
+                    channelItems.forEach(chan => chan.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Update chat title
+                    const channelName = this.getAttribute('data-channel');
+                    document.getElementById('chat-title').textContent = channelName;
+                    
+                    // Update message input placeholder
+                    document.getElementById('message-input').placeholder = `Message #${channelName}`;
+                });
+            });
+            
+            // Setup send button
+            const sendButton = document.getElementById('send-button');
+            const messageInput = document.getElementById('message-input');
+            const messagesContainer = document.getElementById('messages-container');
+            
+            if (sendButton && messageInput && messagesContainer) {
+                sendButton.addEventListener('click', function() {
+                    const messageText = messageInput.value.trim();
+                    if (messageText) {
+                        // Create simple message element
+                        const messageEl = document.createElement('div');
+                        messageEl.className = 'message own-message';
+                        messageEl.innerHTML = `
+                            <div class="message-avatar">
+                                <img src="https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911" alt="You">
+                            </div>
+                            <div class="message-content">
+                                <div class="message-header">
+                                    <span class="message-author">Etherwolf</span>
+                                    <span class="message-timestamp">Just now</span>
+                                </div>
+                                <div class="message-text">
+                                    ${messageText}
+                                </div>
+                            </div>
+                        `;
+                        
+                        messagesContainer.appendChild(messageEl);
+                        messageInput.value = '';
+                        
+                        // Scroll to bottom
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    }
+                });
+                
+                // Allow Enter key to send message
+                messageInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendButton.click();
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
