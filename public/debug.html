@@ -279,6 +279,15 @@
     <!-- Third-party libraries -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Supabase Credentials -->
+    <script>
+        // Global Supabase configuration
+        window.SUPABASE_URL = 'https://xjgufysdlxwauocezfut.supabase.co';
+        window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqZ3VmeXNkbHh3YXVvY2V6ZnV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDk5OTc5MzcsImV4cCI6MjAyNTU3MzkzN30.6tORnBIq_D0IvBo11ZtJcxJ48QKv5qwZJJIEerIgcps';
+        window.SUPABASE_SERVICE_KEY = window.SUPABASE_ANON_KEY; // Will be replaced with actual service key if available
+        window.JWT_SECRET = ''; // Will be set if available
+    </script>
 
     <!-- Authentication scripts -->
     <script>
@@ -798,16 +807,20 @@
             console.log('Attempting direct Supabase fetch for channel:', channel);
             
             try {
-                // Try to get the Supabase URL and anon key from the page
-                const supabaseUrl = window.SUPABASE_URL || 'https://xjgufysdlxwauocezfut.supabase.co';
-                const supabaseAnonKey = window.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqZ3VmeXNkbHh3YXVvY2V6ZnV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDk5OTc5MzcsImV4cCI6MjAyNTU3MzkzN30.6tORnBIq_D0IvBo11ZtJcxJ48QKv5qwZJJIEerIgcps';
+                // Use the globally defined Supabase credentials
+                const supabaseUrl = window.SUPABASE_URL;
+                let apiKey = window.SUPABASE_SERVICE_KEY || window.SUPABASE_KEY || window.SUPABASE_ANON_KEY;
                 
-                const response = await fetch(`${supabaseUrl}/rest/v1/messages?channel=eq.${encodeURIComponent('#' + channel)}&order=created_at.asc.nullslast`, {
+                console.log('Using Supabase URL:', supabaseUrl);
+                
+                // First, try with the service key for admin access
+                const response = await fetch(`${supabaseUrl}/rest/v1/messages?channel=eq.${encodeURIComponent('#' + channel)}&order=created_at.asc.nullslast&limit=100`, {
                     method: 'GET',
                     headers: {
-                        'apikey': supabaseAnonKey,
-                        'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
-                        'Content-Type': 'application/json'
+                        'apikey': apiKey,
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=representation'
                     }
                 });
                 
@@ -816,12 +829,51 @@
                 }
                 
                 const data = await response.json();
-                console.log('Direct Supabase messages received:', data);
+                console.log('Direct Supabase messages received:', data.length || 0, 'messages');
+                
+                // If we got data, format it properly
+                if (data && data.length) {
+                    // Format messages for consistent display
+                    return data.map(msg => ({
+                        id: msg.id,
+                        content: msg.content || msg.message,
+                        sender: msg.sender || msg.username || 'User',
+                        sender_id: msg.sender_id || msg.user_id,
+                        timestamp: msg.created_at || msg.timestamp,
+                        channel: msg.channel
+                    }));
+                }
+                
                 return data;
                 
             } catch (error) {
                 console.error('Error in direct Supabase fetch:', error);
-                return [];
+                
+                // Try an alternative endpoint format as last resort
+                try {
+                    console.log('Trying alternative Supabase endpoint format...');
+                    const supabaseUrl = window.SUPABASE_URL;
+                    let apiKey = window.SUPABASE_SERVICE_KEY || window.SUPABASE_KEY || window.SUPABASE_ANON_KEY;
+                    
+                    const response = await fetch(`${supabaseUrl}/rest/v1/messages?select=*&channel=eq.${encodeURIComponent('#' + channel)}`, {
+                        method: 'GET',
+                        headers: {
+                            'apikey': apiKey,
+                            'Authorization': `Bearer ${apiKey}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) return [];
+                    
+                    const data = await response.json();
+                    console.log('Alternative endpoint returned:', data.length || 0, 'messages');
+                    return data;
+                    
+                } catch (e) {
+                    console.error('Alternative endpoint also failed:', e);
+                    return [];
+                }
             }
         }
         
