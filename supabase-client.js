@@ -1005,22 +1005,65 @@ async function uploadFileToSupabase(fileBuffer, fileName, bucket = 'profile-pict
   }
 }
 
+/**
+ * Update a user's avatar URL in Supabase
+ * @param {string} userId - The user's ID
+ * @param {string} avatarUrl - The URL of the user's avatar
+ * @returns {Promise<Object>} Result of the update operation
+ */
+async function updateUserAvatar(userId, avatarUrl) {
+    try {
+        // Use the service client to bypass RLS
+        const client = getSupabaseClient(true);
+        
+        if (!client) {
+            console.error('Supabase client not initialized');
+            return { success: false, error: 'Database connection not available' };
+        }
+        
+        // Validate inputs
+        if (!userId || !avatarUrl) {
+            return { success: false, error: 'Missing required parameters' };
+        }
+        
+        console.log(`Updating avatar for user ${userId} to ${avatarUrl}`);
+        
+        // Update the user's avatar_url
+        const { data, error } = await client
+            .from('users')
+            .update({ avatar_url: avatarUrl })
+            .eq('id', userId);
+            
+        if (error) {
+            console.error('Error updating user avatar:', error);
+            return { success: false, error: error.message };
+        }
+        
+        console.log('Avatar updated successfully');
+        return { success: true, data };
+    } catch (error) {
+        console.error('Exception in updateUserAvatar:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 module.exports = {
-  getSupabaseClient,
-  registerUser,
-  signInUser,
-  signOutUser,
-  getCurrentUser,
-  getAllUsers,
-  loadMessagesFromSupabase,
-  saveMessageToSupabase,
-  saveMessagesToSupabase,
-  getUserIdByUsername,
-  isValidUUID,
-  markMessageAsDeleted,
-  sendFriendRequest,
-  acceptFriendRequest,
-  rejectOrRemoveFriend,
-  getFriendships,
-  uploadFileToSupabase
+    getSupabaseClient,
+    registerUser,
+    signInUser,
+    signOutUser,
+    getCurrentUser,
+    getAllUsers,
+    loadMessagesFromSupabase,
+    saveMessageToSupabase,
+    saveMessagesToSupabase,
+    getUserIdByUsername,
+    isValidUUID,
+    markMessageAsDeleted,
+    sendFriendRequest,
+    acceptFriendRequest,
+    rejectOrRemoveFriend,
+    getFriendships,
+    uploadFileToSupabase,
+    updateUserAvatar
 };

@@ -1624,19 +1624,30 @@ io.on("connection", (socket) => {
     });
 
     // Handle session authentication for users returning after page reload
-    socket.on('register-session', async (userData) => {
-        console.log(`Registering session for user: ${userData.username}`);
         
-        if (!userData || !userData.id || !userData.username) {
-            console.error('Invalid user data for session registration:', userData);
-            socket.emit('auth-error', { message: 'Invalid session data' });
-            return;
-        }
+        // Remove from active users and update list
+        activeUsers.delete(userInfo.username);
+        delete users[socket.id]; // Remove the user entry using socket.id
+        updateUserList();
         
-        try {
-            // First, try to find user by username regardless of ID
-            const { data: existingUser, error: lookupError } = await getSupabaseClient(true)
-                .from('users')
+        // Notify others
+        socket.broadcast.emit('user-left', userInfo.username);
+    } else {
+        console.log(`User disconnected: ${socket.id} (no username associated)`);
+    }
+    
+    // Save messages on disconnect to ensure data is persisted
+    throttledSave(); // Consider calling saveAllMessages directly if critical
+});
+
+// Handle user registration request
+socket.on('register', async (data) => {
+    try {
+        console.log(`Registering user with ${data.email && data.email.includes('@proton') ? 'ProtonMail' : 'email'}: ${data.username} (${data.email})`);
+        
+        // Only use simplified registration in strict development mode
+        if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
+            console.log(`Development mode: Simplified registration for ${data.username}`);
                 .select('id, username')
                 .eq('username', userData.username)
                 .limit(1);
@@ -2976,6 +2987,116 @@ io.on("connection", (socket) => {
             (users[socket.id]?.username || 'Unauthenticated User');
         
         console.log(`Received keep-alive signal from ${username} (${socket.id})`);
+    });
+    
+    // Handle user status updates
+    socket.on('update-status', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            if (callback) callback({ success: false, message: 'Not authenticated' });
+            return;
+        }
+        
+        // Validate status value
+        const validStatuses = ['online', 'idle', 'dnd', 'invisible', 'offline'];
+        if (!data.status || !validStatuses.includes(data.status)) {
+            if (callback) callback({ success: false, message: 'Invalid status value' });
+            return;
+        }
+        
+        try {
+            const userId = users[socket.id].id;
+            const username = users[socket.id].username;
+            const newStatus = data.status;
+            
+            console.log(`Updating status for user ${username} (${userId}) to ${newStatus}`);
+            
+            // Update status in database
+            const { error } = await getSupabaseClient(true)
+                .from('users')
+                .update({ status: newStatus })
+                .eq('id', userId);
+                
+            if (error) {
+                console.error('Error updating user status in database:', error);
+                if (callback) callback({ success: false, message: 'Database error' });
+                return;
+            }
+            
+            // Update status in memory
+            if (!userStatus[userId]) {
+                userStatus[userId] = { status: newStatus, socketId: socket.id };
+            } else {
+                userStatus[userId].status = newStatus;
+            }
+            
+            // Update user object in memory
+            if (users[socket.id]) {
+                users[socket.id].status = newStatus;
+            }
+            
+            // Broadcast status change to all clients
+            socket.broadcast.emit('user-status-change', {
+                userId: userId,
+                username: username,
+                status: newStatus
+            });
+            
+            // Return success
+            if (callback) callback({ success: true, message: 'Status updated successfully' });
+        } catch (error) {
+            console.error('Error updating user status:', error);
+            if (callback) callback({ success: false, message: 'Server error' });
+        }
+    });
+    
+    // Handle avatar URL updates
+    socket.on('update-avatar', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            if (callback) callback({ success: false, message: 'Not authenticated' });
+            return;
+        }
+        
+        // Validate avatar URL
+        if (!data.avatarUrl) {
+            if (callback) callback({ success: false, message: 'Avatar URL is required' });
+            return;
+        }
+        
+        try {
+            const userId = users[socket.id].id;
+            const username = users[socket.id].username;
+            
+            console.log(`Updating avatar for user ${username} (${userId})`);
+            
+            // Update avatar in database using the updateUserAvatar function
+            const result = await updateUserAvatar(userId, data.avatarUrl);
+            
+            if (!result.success) {
+                console.error('Error updating user avatar:', result.error);
+                if (callback) callback({ success: false, message: result.error });
+                return;
+            }
+            
+            // Update user object in memory
+            if (users[socket.id]) {
+                users[socket.id].avatarUrl = data.avatarUrl;
+            }
+            
+            // Broadcast avatar change to all clients
+            socket.broadcast.emit('user-avatar-updated', {
+                userId: userId,
+                username: username,
+                avatarUrl: data.avatarUrl
+            });
+            
+            // Return success
+            if (callback) callback({ success: true, message: 'Avatar updated successfully' });
+        } catch (error) {
+            console.error('Error updating user avatar:', error);
+            if (callback) callback({ success: false, message: 'Server error' });
+        }
     });
 });
 

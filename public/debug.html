@@ -1063,8 +1063,26 @@
                     
                     // Emit status change to server if socket connected
                     if (window.socket && window.socket.connected) {
-                        window.socket.emit('update-status', { status: newStatus });
-                        window.socket.emit('update-avatar', { avatarUrl: newAvatarUrl });
+                        window.socket.emit('update-status', { status: newStatus }, (response) => {
+                            if (response && response.success) {
+                                console.log('Status updated successfully on server');
+                            } else {
+                                console.error('Failed to update status on server:', response?.message || 'Unknown error');
+                            }
+                        });
+                        
+                        // Handle avatar update
+                        if (newAvatarUrl && newAvatarUrl !== user.previousAvatarUrl) {
+                            window.socket.emit('update-avatar', { avatarUrl: newAvatarUrl }, (response) => {
+                                if (response && response.success) {
+                                    console.log('Avatar updated successfully on server');
+                                    user.previousAvatarUrl = newAvatarUrl;
+                                    localStorage.setItem('user', JSON.stringify(user));
+                                } else {
+                                    console.error('Failed to update avatar on server:', response?.message || 'Unknown error');
+                                }
+                            });
+                        }
                     }
                     
                     // Close modal
