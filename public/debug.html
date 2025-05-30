@@ -601,11 +601,18 @@
                             const activeChannel = document.querySelector('#channels-list .list-item.active');
                             const channelName = activeChannel ? activeChannel.getAttribute('data-channel') : 'general';
                             
-                            window.socket.emit('message', {
+                            window.socket.emit('send-message', {
                                 content: messageText,
-                                channel: '#' + channelName,
-                                sender: user.username,
-                                timestamp: new Date().toISOString()
+                                channel: channelName,
+                                timestamp: new Date().toISOString(),
+                                sender_id: user.id || 'debug-user'
+                            }, (response) => {
+                                if (response && !response.success) {
+                                    console.error('Error sending message:', response.message);
+                                    alert('Failed to send message: ' + response.message);
+                                } else {
+                                    console.log('Message sent successfully');
+                                }
                             });
                         }
                     }
@@ -727,7 +734,12 @@
                     // If we didn't load from Supabase, try socket.io
                     if (!loadedFromSupabase && window.socket && window.socket.connected) {
                         console.log('Requesting message history from socket for channel:', channel);
-                        window.socket.emit('get-message-history', { channel: '#' + channel });
+                        window.socket.emit('get-channel-messages', { 
+                                    channel: channel,
+                                    limit: 50,
+                                    offset: 0,
+                                    isInitialLoad: true
+                                });
                         
                         // Set timeout to remove loading message if no response
                         setTimeout(() => {
@@ -789,8 +801,8 @@
                 
                 console.log('Using Supabase URL:', supabaseUrl);
                 
-                // Make sure channel has the # prefix
-                const formattedChannel = channel.startsWith('#') ? channel : '#' + channel;
+                // Normalize channel name (remove # if present)
+                const formattedChannel = channel.startsWith('#') ? channel.substring(1) : channel;
                 console.log('Fetching messages for channel:', formattedChannel);
                 
                 // First, try with the service key for admin access
