@@ -635,11 +635,18 @@
                 });
             }
             
-            // Set up settings button to show a simple message
+            // Set up settings button to show settings modal
             const settingsButton = document.getElementById('settings-button');
             if (settingsButton) {
                 settingsButton.addEventListener('click', function() {
-                    alert('Settings are disabled in debug mode');
+                    // Create settings modal if it doesn't exist
+                    if (!document.getElementById('settings-modal')) {
+                        createSettingsModal(user);
+                    }
+                    
+                    // Show the settings modal
+                    const settingsModal = new bootstrap.Modal(document.getElementById('settings-modal'));
+                    settingsModal.show();
                 });
             }
             
@@ -678,9 +685,31 @@
                     }
                 });
                 
-                window.socket.on('message-history', function(messages) {
-                    console.log('Received message history:', messages ? messages.length : 0, 'messages');
-                    displayMessageHistory(messages);
+                window.socket.on('message-history', function(data) {
+                    console.log('Received message history:', data);
+                    if (data && data.messages) {
+                        console.log(`Received ${data.messages.length} messages for channel ${data.channel}`);
+                        displayMessageHistory(data.messages);
+                    } else if (data && Array.isArray(data)) {
+                        console.log(`Received ${data.length} messages in array format`);
+                        displayMessageHistory(data);
+                    } else {
+                        console.error('Received invalid message history format:', data);
+                    }
+                });
+                
+                // Handle channel-messages event (new format)
+                window.socket.on('channel-messages', function(data) {
+                    console.log('Received channel messages:', data);
+                    if (data && data.messages) {
+                        console.log(`Received ${data.messages.length} messages for channel ${data.channel}`);
+                        displayMessageHistory(data.messages);
+                    } else if (data && Array.isArray(data)) {
+                        console.log(`Received ${data.length} messages in array format`);
+                        displayMessageHistory(data);
+                    } else {
+                        console.error('Received invalid channel messages format:', data);
+                    }
                 });
                 
                 // Handle supabase messages separately if available
@@ -930,6 +959,124 @@
             }
         }
         
+        // Function to create settings modal
+        function createSettingsModal(user) {
+            const modalHtml = `
+            <div class="modal fade" id="settings-modal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content bg-dark text-light">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="settingsModalLabel">User Settings</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3 text-center">
+                                <div class="profile-picture-container position-relative mx-auto" style="width: 100px; height: 100px;">
+                                    <img id="profile-picture-preview" src="${user.avatarUrl || user.avatar_url || 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911'}" alt="Profile Picture" class="rounded-circle w-100 h-100 object-fit-cover">
+                                    <button id="change-profile-picture-btn" class="btn btn-sm btn-primary position-absolute bottom-0 end-0" style="border-radius: 50%; width: 32px; height: 32px; padding: 0;">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                </div>
+                                <input type="file" id="profile-picture-input" accept="image/*" style="display: none;">
+                            </div>
+                            <div class="mb-3">
+                                <label for="username-display" class="form-label">Username</label>
+                                <input type="text" class="form-control bg-secondary text-light" id="username-display" value="${user.username}" readonly>
+                            </div>
+                            <div class="mb-3">
+                                <label for="status-select" class="form-label">Status</label>
+                                <select class="form-select bg-secondary text-light" id="status-select">
+                                    <option value="online" ${user.status === 'online' ? 'selected' : ''}>Online</option>
+                                    <option value="idle" ${user.status === 'idle' ? 'selected' : ''}>Idle</option>
+                                    <option value="dnd" ${user.status === 'dnd' ? 'selected' : ''}>Do Not Disturb</option>
+                                    <option value="invisible" ${user.status === 'invisible' ? 'selected' : ''}>Invisible</option>
+                                </select>
+                            </div>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="notification-sounds" checked>
+                                <label class="form-check-label" for="notification-sounds">Notification Sounds</label>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="save-settings">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+            
+            // Add modal to document
+            const modalContainer = document.createElement('div');
+            modalContainer.innerHTML = modalHtml;
+            document.body.appendChild(modalContainer.firstChild);
+            
+            // Set up profile picture change functionality
+            const profilePictureInput = document.getElementById('profile-picture-input');
+            const changeProfilePictureBtn = document.getElementById('change-profile-picture-btn');
+            const profilePicturePreview = document.getElementById('profile-picture-preview');
+            const saveSettingsBtn = document.getElementById('save-settings');
+            
+            if (changeProfilePictureBtn && profilePictureInput) {
+                changeProfilePictureBtn.addEventListener('click', () => {
+                    profilePictureInput.click();
+                });
+                
+                profilePictureInput.addEventListener('change', (event) => {
+                    const file = event.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            profilePicturePreview.src = e.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            }
+            
+            if (saveSettingsBtn) {
+                saveSettingsBtn.addEventListener('click', () => {
+                    // Get updated status
+                    const newStatus = document.getElementById('status-select').value;
+                    
+                    // Get updated avatar if changed
+                    const newAvatarUrl = profilePicturePreview.src;
+                    
+                    // Update user object
+                    user.status = newStatus;
+                    user.avatarUrl = newAvatarUrl;
+                    user.avatar_url = newAvatarUrl;
+                    
+                    // Save to localStorage
+                    localStorage.setItem('user', JSON.stringify(user));
+                    
+                    // Update UI
+                    const statusIndicator = document.querySelector('.status-indicator');
+                    if (statusIndicator) {
+                        statusIndicator.className = `status-indicator status-${newStatus}`;
+                    }
+                    
+                    // Update all message avatars for this user
+                    document.querySelectorAll('.message.own-message .message-avatar img').forEach(img => {
+                        img.src = newAvatarUrl;
+                    });
+                    
+                    // Emit status change to server if socket connected
+                    if (window.socket && window.socket.connected) {
+                        window.socket.emit('update-status', { status: newStatus });
+                        window.socket.emit('update-avatar', { avatarUrl: newAvatarUrl });
+                    }
+                    
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('settings-modal'));
+                    modal.hide();
+                    
+                    // Show success message
+                    alert('Settings saved successfully!');
+                });
+            }
+        }
+        
         // Function to display message history
         function displayMessageHistory(messages) {
             const messagesContainer = document.getElementById('messages-container');
@@ -1010,6 +1157,53 @@
             const timestamp = message.timestamp || message.created_at || new Date().toISOString();
             const formattedTime = formatTimestamp(timestamp);
             
+            // Get sender username - try different properties
+            let senderName = message.sender || message.username || 'User';
+            
+            // If we have a sender_id but no sender name, try to resolve it
+            if (message.sender_id && (!senderName || senderName === 'User')) {
+                // Log that we're trying to resolve the username
+                console.log(`Trying to resolve username for sender_id: ${message.sender_id}`);
+                
+                // Check if we have this user in local storage
+                const usersCache = JSON.parse(localStorage.getItem('users_cache') || '{}');
+                if (usersCache[message.sender_id]) {
+                    senderName = usersCache[message.sender_id].username;
+                    console.log(`Found username in cache: ${senderName}`);
+                } else {
+                    // If not in cache, we'll display the ID for now and try to fetch it
+                    senderName = `User ${message.sender_id.substring(0, 5)}...`;
+                    
+                    // Request username from server if socket is connected
+                    if (window.socket && window.socket.connected) {
+                        window.socket.emit('get-username', { userId: message.sender_id }, (response) => {
+                            if (response && response.success && response.username) {
+                                // Update the displayed username
+                                const authorSpan = messageEl.querySelector('.message-author');
+                                if (authorSpan) {
+                                    authorSpan.textContent = response.username;
+                                }
+                                
+                                // Cache the username
+                                usersCache[message.sender_id] = { 
+                                    username: response.username,
+                                    avatar_url: response.avatar_url
+                                };
+                                localStorage.setItem('users_cache', JSON.stringify(usersCache));
+                                
+                                // Update avatar if available
+                                if (response.avatar_url) {
+                                    const avatarImg = messageEl.querySelector('.message-avatar img');
+                                    if (avatarImg) {
+                                        avatarImg.src = response.avatar_url;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+            
             // Get avatar URL - try to use the user's avatar if available
             let avatarUrl = 'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
             
@@ -1018,16 +1212,24 @@
                 avatarUrl = currentUser.avatarUrl || 
                            currentUser.avatar_url || 
                            'https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/default%20pic.png?v=1746110048911';
+            } else {
+                // For other users' messages, try to get their avatar
+                const usersCache = JSON.parse(localStorage.getItem('users_cache') || '{}');
+                if (message.sender_id && usersCache[message.sender_id] && usersCache[message.sender_id].avatar_url) {
+                    avatarUrl = usersCache[message.sender_id].avatar_url;
+                } else if (message.avatar_url) {
+                    avatarUrl = message.avatar_url;
+                }
             }
             
             // Set message content
             messageEl.innerHTML = `
                 <div class="message-avatar">
-                    <img src="${avatarUrl}" alt="${message.sender || 'User'}">
+                    <img src="${avatarUrl}" alt="${senderName}">
                 </div>
                 <div class="message-content">
                     <div class="message-header">
-                        <span class="message-author">${message.sender || 'User'}</span>
+                        <span class="message-author">${senderName}</span>
                         <span class="message-timestamp">${formattedTime}</span>
                     </div>
                     <div class="message-text">${message.content}</div>
