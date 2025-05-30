@@ -1585,7 +1585,7 @@ io.on("connection", (socket) => {
             const userData = verifyEmail(data.email, data.code);
             
             if (!userData) {
-                socket.emit('verify-fail', { message: 'Invalid or expired verification code.' });
+                socket.emit('verify-fail', { message: 'Invalid verification code. Please try again.' });
                 return;
             }
             
@@ -1604,40 +1604,30 @@ io.on("connection", (socket) => {
         }
     });
 
-    // Handle resend verification code
-    socket.on('resend-verification', async (data) => {
-        try {
-            const success = await resendVerificationEmail(data.email);
+    // Handle disconnection
+    socket.on('disconnect', () => {
+        console.log(`Socket disconnected: ${socket.id}`);
+        
+        // Get user info before removing from users object
+        const userInfo = users[socket.id];
+        
+        if (userInfo && userInfo.username) {
+            console.log(`User disconnected: ${userInfo.username}`);
             
-            if (success) {
-                socket.emit('verification-sent', {
-                    email: data.email,
-                    message: 'Verification email resent! Please check your inbox and spam folder.'
-                });
-            } else {
-                socket.emit('verify-fail', { message: 'Failed to resend verification email. Please try again later.' });
-            }
-        } catch (error) {
-            console.error('Error resending verification:', error);
-            socket.emit('verify-fail', { message: 'Failed to resend verification. Please try again.' });
+            // Remove from active users and update list
+            activeUsers.delete(userInfo.username);
+            delete users[socket.id]; // Remove the user entry using socket.id
+            updateUserList();
+            
+            // Notify others
+            socket.broadcast.emit('user-left', userInfo.username);
+        } else {
+            console.log(`User disconnected: ${socket.id} (no username associated)`);
         }
+        
+        // Save messages on disconnect to ensure data is persisted
+        throttledSave(); // Consider calling saveAllMessages directly if critical
     });
-
-    // Handle session authentication for users returning after page reload
-        
-        // Remove from active users and update list
-        activeUsers.delete(userInfo.username);
-        delete users[socket.id]; // Remove the user entry using socket.id
-        updateUserList();
-        
-        // Notify others
-        socket.broadcast.emit('user-left', userInfo.username);
-    } else {
-        console.log(`User disconnected: ${socket.id} (no username associated)`);
-    }
-    
-    // Save messages on disconnect to ensure data is persisted
-    throttledSave(); // Consider calling saveAllMessages directly if critical
 });
 
 // Handle user registration request
