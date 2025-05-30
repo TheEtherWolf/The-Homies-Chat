@@ -1638,19 +1638,24 @@ socket.on('register', async (data) => {
         // Only use simplified registration in strict development mode
         if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_AUTH === 'true') {
             console.log(`Development mode: Simplified registration for ${data.username}`);
+            
+            // Look up user by username
+            const { data: existingUser, error: lookupError } = await getSupabaseClient(true)
+                .from('users')
                 .select('id, username')
-                .eq('username', userData.username)
+                .eq('username', data.username)
                 .limit(1);
                 
             if (lookupError) {
                 console.error('Error looking up user by username:', lookupError);
             }
             
-            let userId = userData.id;
+            // Generate a UUID for the user if not provided
+            let userId = data.id || uuidv4();
             
             // If user exists with this username but different ID, use the existing record
             if (existingUser && existingUser.id) {
-                console.log(`User ${userData.username} already exists with ID ${existingUser.id}, using existing ID`);
+                console.log(`User ${data.username} already exists with ID ${existingUser.id}, using existing ID`);
                 userId = existingUser.id;
             } else {
                 // Verify the user ID exists or create if not
@@ -1665,14 +1670,14 @@ socket.on('register', async (data) => {
                 }
                 
                 if (!userById) {
-                    console.log(`Creating new user record for ${userData.username} with ID ${userId}`);
+                    console.log(`Creating new user record for ${data.username} with ID ${userId}`);
                     // Create user record
                     const { error: createError } = await getSupabaseClient(true)
                         .from('users')
                         .insert({
                             id: userId,
-                            username: userData.username,
-                            email: `${userData.username}@homies.app`,
+                            username: data.username,
+                            email: data.email || `${data.username}@homies.app`,
                             password: 'auto-created',
                             created_at: new Date().toISOString(),
                             last_seen: new Date().toISOString(),
@@ -1683,19 +1688,19 @@ socket.on('register', async (data) => {
                     if (createError) {
                         // If username already exists, try to find it and use that ID
                         if (createError.code === '23505') {
-                            console.log(`Username ${userData.username} already exists, finding user ID`);
+                            console.log(`Username ${data.username} already exists, finding user ID`);
                             const { data: existingByUsername } = await getSupabaseClient(true)
                                 .from('users')
                                 .select('id')
-                                .eq('username', userData.username)
+                                .eq('username', data.username)
                                 .maybeSingle();
                                 
                             if (existingByUsername && existingByUsername.id) {
                                 userId = existingByUsername.id;
-                                console.log(`Found existing user ${userData.username} with ID ${userId}`);
+                                console.log(`Found existing user ${data.username} with ID ${userId}`);
                             } else {
                                 // Generate a truly unique username
-                                const uniqueUsername = `${userData.username}_${Date.now().toString(36).substring(4)}`;
+                                const uniqueUsername = `${data.username}_${Date.now().toString(36).substring(4)}`;
                                 
                                 // Try again with unique username
                                 const { error: retryError } = await getSupabaseClient(true)
@@ -1730,7 +1735,7 @@ socket.on('register', async (data) => {
             users[socket.id] = {
                 socketId: socket.id,
                 authenticated: true,
-                username: userData.username,
+                username: data.username,
                 id: userId // Corrected key from userId to id
             };
             
@@ -1755,10 +1760,10 @@ socket.on('register', async (data) => {
             try {
                 const friendships = await getFriendships(userId);
                 if (friendships) {
-                    console.log(`Emitting friend list to ${userData.username} (Found: ${friendships.length})`);
+                    console.log(`Emitting friend list to ${data.username} (Found: ${friendships.length})`);
                     socket.emit('friend-list', friendships);
                 } else {
-                     console.log(`No friendships found or error fetching for ${userData.username}`);
+                     console.log(`No friendships found or error fetching for ${data.username}`);
                      socket.emit('friend-list', []); // Send empty list on error or none found
                 }
             } catch (friendError) {
@@ -1768,7 +1773,7 @@ socket.on('register', async (data) => {
             
             // Return successful authentication with potentially updated ID
             socket.emit('auth-success', { 
-                username: userData.username, 
+                username: data.username, 
                 id: userId,
                 message: 'Session registered successfully' 
             });
@@ -1776,7 +1781,7 @@ socket.on('register', async (data) => {
             // Broadcast to others this user is online
             socket.broadcast.emit('user-status-change', { 
                 userId: userId, 
-                username: userData.username,
+                username: data.username,
                 status: 'online' 
             });
             
