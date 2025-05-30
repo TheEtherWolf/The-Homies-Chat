@@ -327,47 +327,44 @@ class ChatManager {
     _setupUIEventListeners() {
         console.log('[CHAT_DEBUG] Setting up UI event listeners');
         
+        // Channel buttons click handler
+        document.querySelectorAll('.channel-button').forEach(button => {
+            button.addEventListener('click', (event) => {
+                // Get channel name from button
+                const channel = event.currentTarget.getAttribute('data-channel');
+                if (!channel) return;
+                
+                console.log(`[CHAT_DEBUG] Channel button clicked: ${channel}`);
+                
+                // Update active button
+                document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+                event.currentTarget.classList.add('active');
+                
+                // Update current channel
+                this.currentChannel = channel;
+                this.isDMMode = false;
+                
+                // Update chat header
+                if (this.chatTitle) {
+                    this.chatTitle.innerHTML = `<i class="bi bi-hash me-2"></i> ${channel}`;
+                }
+                
+                // Hide friends section and show channels
+                document.getElementById('friends-section')?.classList.add('d-none');
+                document.getElementById('channels-section')?.classList.remove('d-none');
+                
+                // Request and display channel messages
+                this._requestChannelMessages(channel);
+                this._displayChannelMessages(channel);
+            });
+        });
+        
         // DM button click handler
         document.getElementById('dm-button')?.addEventListener('click', () => {
             console.log('[CHAT_DEBUG] DM button clicked');
             this._handleDMButtonClick();
         });
         
-        // Set up friend tabs
-        const friendTabButtons = document.querySelectorAll('.friend-tab-btn');
-        if (friendTabButtons.length > 0) {
-            friendTabButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    // Remove active class from all buttons
-                    friendTabButtons.forEach(btn => btn.classList.remove('active'));
-                    
-                    // Add active class to clicked button
-                    button.classList.add('active');
-                    
-                    // Hide all tab panes
-                    document.querySelectorAll('.friends-tab-pane').forEach(pane => {
-                        pane.classList.remove('active');
-                    });
-                    
-                    // Show the corresponding tab pane
-                    const tabName = button.getAttribute('data-tab');
-                    const tabPane = document.getElementById(`friends-${tabName}`);
-                    if (tabPane) {
-                        tabPane.classList.add('active');
-                    }
-                    
-                    // Load appropriate content based on tab
-                    if (tabName === 'pending') {
-                        this._loadPendingRequests();
-                    } else if (tabName === 'blocked') {
-                        this._loadBlockedUsers();
-                    } else if (tabName === 'all') {
-                        this._loadFriendsList();
-                    }
-                });
-            });
-        }
-            
         // Home button click handler
         document.getElementById('home-button')?.addEventListener('click', () => {
             console.log('[CHAT_DEBUG] Home button clicked');
@@ -588,7 +585,8 @@ class ChatManager {
             this.chatTitle.innerHTML = '<i class="bi bi-hash me-2"></i> general';
         }
         
-        // Display general chat
+        // Request and display general chat messages
+        this._requestChannelMessages('general');
         this._displayChannelMessages('general');
         
         // Settings button click handler
@@ -760,16 +758,13 @@ _showEmptyFriendsState(container, isError = false) {
             <p>No friends yet</p>
             <p class="sub-text">Use a username and friend code to add friends</p>
             <div class="friend-code-section">
-                <p>Your friend code:</p>
-                <div class="friend-code">
-                    <span id="friend-code">${friendCode}</span>
-                    <button class="btn btn-sm btn-outline-primary copy-code-btn" title="Copy friend code">
-                        <i class="bi bi-clipboard"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary regenerate-code-btn" title="Generate new code">
-                        <i class="bi bi-arrow-repeat"></i>
-                    </button>
-                </div>
+                <p>Your friend code: <span id="friend-code">${friendCode}</span></p>
+                <button class="btn btn-sm btn-outline-primary copy-code-btn" title="Copy to clipboard">
+                    <i class="bi bi-clipboard"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-secondary generate-code-btn" title="Generate new code">
+                    <i class="bi bi-arrow-repeat"></i>
+                </button>
             </div>
             <div class="add-friend-section mt-3">
                 <button class="btn btn-primary add-friend-modal-btn">
@@ -1655,639 +1650,88 @@ _showEmptyFriendsState(container, isError = false) {
         });
     }
     
-    // Display channel messages
-    _displayChannelMessages(channel) {
-        console.log(`[CHAT_DEBUG] Displaying messages for channel ${channel}`);
+    // Request channel messages from the server
+    _requestChannelMessages(channel) {
+        console.log(`[CHAT_DEBUG] Requesting messages for channel: ${channel}`);
         
-        // Ensure channel name has hashtag prefix for UI consistency
-        const displayChannel = channel.startsWith('#') ? channel : `#${channel}`;
-        const dataChannel = channel.startsWith('#') ? channel.substring(1) : channel;
+        // Normalize channel name for server (remove # if present)
+        const normalizedChannel = channel.startsWith('#') ? channel.substring(1) : channel;
         
-        // Update chat header
-        if (this.chatTitle) {
-            this.chatTitle.textContent = displayChannel;
-        }
-        
-        // Update message input placeholder
-        if (this.messageInput) {
-            this.messageInput.placeholder = `Message ${displayChannel}`;
-        }
-        
-        // Clear messages container
-        if (this.messagesContainer) {
-            this.messagesContainer.innerHTML = '';
-            
-            // Add lazy load sentinel at the top for infinite scrolling
-            const sentinel = document.createElement('div');
-            sentinel.id = 'lazy-load-sentinel';
-            sentinel.className = 'lazy-load-sentinel';
-            sentinel.style.height = '1px';
-            sentinel.style.width = '100%';
-            this.messagesContainer.appendChild(sentinel);
-            
-            // Add channel header
-            const dateHeader = document.createElement('div');
-            dateHeader.className = 'date-separator';
-            dateHeader.innerHTML = '<span>Today</span>';
-            this.messagesContainer.appendChild(dateHeader);
-            
-            const welcomeMessage = document.createElement('div');
-            welcomeMessage.className = 'system-message';
-            welcomeMessage.textContent = `Welcome to the beginning of ${displayChannel}`;
-            this.messagesContainer.appendChild(welcomeMessage);
-            
-            // Get messages for this channel
-            const messages = this.channelMessages[dataChannel] || [];
-            
-            // Display messages
-            messages.forEach(message => {
-                this._displayMessage(message, false); // Don't scroll for bulk loading
-            });
-            
-            // Scroll to bottom
-            this._scrollToBottom();
-            
-            // Set up lazy loading observer after messages are displayed
-            this._setupLazyLoadingObserver();
-            
-            // Reset lazy loading state for new channel
-            this.hasMoreMessagesToLoad = true; // Always assume there are more messages initially
-            this.isLoadingMoreMessages = false;
-            this.currentMessageOffset = messages.length;
-            this.expectedChunkSize = 15; // The number of messages we expect to load in each chunk
-            
-            // Force a scroll event if we're near the top to trigger loading more messages
-            if (this.messagesContainer.scrollTop < 200) {
-                // Simulate a scroll event after a short delay to allow the UI to render
-                setTimeout(() => {
-                    if (this._boundScrollHandler) {
-                        this._boundScrollHandler();
-                    }
-                }, 500);  // 500ms delay to ensure the UI has rendered
-            }
-        }
-    }
-    
-    // Display a single message
-    _displayMessage(message, scrollToBottom = true) {
-        if (!this.messagesContainer) return;
-        
-        // Skip if message already exists in the DOM
-        if (message.id && document.querySelector(`.message[data-message-id="${message.id}"]`)) {
-            return;
-        }
-        
-        // Check if this message should be grouped with the previous message
-        const shouldGroup = this._shouldGroupWithPreviousMessage(message);
-        
-        // Create message element using the helper method
-        const messageEl = this._createMessageElement(message, scrollToBottom, shouldGroup);
-        
-        // Add to messages container
-        this.messagesContainer.appendChild(messageEl);
-        
-        // Scroll to bottom if requested
-        if (scrollToBottom) {
-            this._scrollToBottom();
-        }
-    }
-    
-    // Determine if a message should be grouped with the previous message
-    _shouldGroupWithPreviousMessage(message) {
-        if (!this.messagesContainer) return false;
-        
-        // Get the last message in the container
-        const lastMessageEl = this.messagesContainer.querySelector('.message:last-child');
-        if (!lastMessageEl) return false;
-        
-        // Get the sender ID of the last message
-        const lastSenderId = lastMessageEl.getAttribute('data-sender-id');
-        
-        // Get the timestamp of the last message
-        const lastTimestampStr = lastMessageEl.getAttribute('data-timestamp');
-        const lastTimestamp = lastTimestampStr ? new Date(lastTimestampStr) : null;
-        
-        // Current message timestamp
-        const currentTimestamp = message.timestamp ? new Date(message.timestamp) : new Date();
-        
-        // Check if the messages are from the same sender
-        const sameSender = lastSenderId === message.senderId;
-        
-        // Check if the messages are within 3 minutes of each other
-        const timeThreshold = 3 * 60 * 1000; // 3 minutes in milliseconds
-        const closeInTime = lastTimestamp && (currentTimestamp - lastTimestamp) < timeThreshold;
-        
-        return sameSender && closeInTime;
-    }
-    
-    // Delete a message
-    _deleteMessage(messageId) {
-        if (!messageId) return;
-        
-        console.log(`[CHAT_DEBUG] Deleting message: ${messageId}`);
-        
-        // Play delete sound
-        this._playDeleteSound();
-        
-        // Send delete request to server
-        this.socket.emit('delete-message', { messageId, userId: this.currentUser.id }, (response) => {
-            console.log('[CHAT_DEBUG] Delete message response:', response);
-            
-            if (!response.success) {
-                console.error('[CHAT_DEBUG] Error deleting message:', response.error);
-                alert('Failed to delete message: ' + (response.error || 'Unknown error'));
-            }
-        });
-    }
-    
-    // Format message content (handle links, emojis, etc.)
-    _formatMessageContent(content) {
-        if (!content) return '';
-        
-        // Convert URLs to links
-        content = content.replace(
-            /(https?:\/\/[^\s]+)/g, 
-            '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-        );
-        
-        // Return formatted content
-        return content;
-    }
-    
-    // Scroll messages container to bottom
-    _scrollToBottom() {
-        if (this.messagesContainer) {
-            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-        }
-    }
-    
-    // Play notification sound for received messages
-    _playNotificationSound() {
-        // Check if notification sounds are enabled
-        const notificationSoundsEnabled = document.getElementById('notification-sounds')?.checked !== false;
-        
-        if (notificationSoundsEnabled) {
-            // Create and play notification sound
-            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/whoosh-blow-flutter-shortwav-14678.mp3?v=1747149171702');
-            audio.volume = 0.5;
-            audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing notification sound:', err));
-        }
-    }
-    
-    // Play sound effect for sent messages
-    _playSentMessageSound() {
-        // Check if notification sounds are enabled
-        const notificationSoundsEnabled = document.getElementById('notification-sounds')?.checked !== false;
-        
-        if (notificationSoundsEnabled) {
-            // Create and play sent message sound
-            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/Send%20message.mp3?v=1747149038729');
-            audio.volume = 0.3; // Slightly quieter than notification sound
-            audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing sent message sound:', err));
-        }
-    }
-    
-    // Play sound effect for copying message
-    _playCopySound() {
-        // Check if notification sounds are enabled
-        const notificationSoundsEnabled = document.getElementById('notification-sounds')?.checked !== false;
-        
-        if (notificationSoundsEnabled) {
-            // Create and play copy sound
-            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/Click%20sound.mp3?v=1747149269183');
-            audio.volume = 0.3;
-            audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing copy sound:', err));
-        }
-    }
-    
-    // Play sound effect for deleting message
-    _playDeleteSound() {
-        // Check if notification sounds are enabled
-        const notificationSoundsEnabled = document.getElementById('notification-sounds')?.checked !== false;
-        
-        if (notificationSoundsEnabled) {
-            // Create and play delete sound
-            const audio = new Audio('https://cdn.glitch.global/2ac452ce-4fe9-49bc-bef8-47241df17d07/11L-Make_a_short%2C_satisf-1747149354209.mp3?v=1747149378426');
-            audio.volume = 0.3;
-            audio.play().catch(err => console.error('[CHAT_DEBUG] Error playing delete sound:', err));
-        }
-    }
-    
-    // Update active users list
-    _updateActiveUsersList(users) {
-        // Update UI with active users
-        console.log('[CHAT_DEBUG] Updating active users list:', users);
-    }
-    
-    // Show friend request notification
-    _showFriendRequestNotification(data) {
-        console.log('[CHAT_DEBUG] Showing friend request notification:', data);
-        
-        // Set friend request data
-        document.getElementById('friend-request-username').textContent = data.senderUsername;
-        
-        // Store the friendship ID for accept/reject actions
-        this.pendingFriendRequestId = data.friendshipId;
-        
-        // Show the modal
-        const friendRequestModal = new bootstrap.Modal(document.getElementById('friend-request-modal'));
-        friendRequestModal.show();
-    }
-    
-    // Add friend to list
-    _addFriendToList(friendship) {
-        console.log('[CHAT_DEBUG] Adding friend to list:', friendship);
-        
-        // Update UI with new friend
-    }
-    
-    // Update user status
-    _updateUserStatus(username, status) {
-        console.log(`[CHAT_DEBUG] Updating status for ${username} to ${status}`);
-        
-        // Update UI with user status
-    }
-    
-    // Perform initial data fetch when socket is connected
-    performInitialDataFetch() {
-        console.log('[CHAT_DEBUG] Performing initial data fetch');
-        
-        if (!this.socket || !this.socket.connected) {
-            console.error('[CHAT_DEBUG] Cannot fetch data: Socket not connected');
-            return;
-        }
-        
-        if (!this.currentUser || !this.currentUser.id) {
-            console.error('[CHAT_DEBUG] Cannot fetch data: User not authenticated');
-            return;
-        }
-        
-        // Fetch active users
-        this.socket.emit('get-active-users');
-        
-        // Fetch message history for current channel with pagination
+        // Request messages from server with pagination
         this.socket.emit('get-channel-messages', { 
-            channel: this.currentChannel,
+            channel: normalizedChannel,
             limit: this.messagesPerPage,
             offset: 0,
             isInitialLoad: true
         });
         
-        // Fetch friend list
-        this.socket.emit('get-friends-list');
-        
-        // Fetch pending friend requests
-        this.socket.emit('get-friend-requests');
-        
-        // Mark as fetched
-        this.needsInitialDataFetch = false;
-        
-        // Set up lazy loading observer after initial fetch
-        this._setupLazyLoadingObserver();
-        
-        console.log('[CHAT_DEBUG] Initial data fetch complete');
+        console.log(`[CHAT_DEBUG] Requested messages for channel: ${normalizedChannel}`);
     }
     
-    // Set up scroll-based lazy loading for older messages
-    _setupLazyLoadingObserver() {
-        console.log('[CHAT_DEBUG] Setting up enhanced scroll-based lazy loading');
+    // Display channel messages
+    _displayChannelMessages(channel) {
+        console.log(`[CHAT_DEBUG] Displaying messages for channel: ${channel}`);
         
-        // Reset the hasMoreMessagesToLoad flag to true when setting up a new observer
-        // This ensures we always try to load messages at least once for a new channel
-        // The server response will determine if there are actually more messages
+        // Clear messages container
+        if (this.messagesContainer) {
+            this.messagesContainer.innerHTML = '';
+        }
+        
+        // Reset lazy loading state
         this.hasMoreMessagesToLoad = true;
-        
-        // Remove any existing event listeners to prevent duplicates
-        if (this.messagesContainer && this._boundScrollHandler) {
-            this.messagesContainer.removeEventListener('scroll', this._boundScrollHandler);
-            this._hasScrollListener = false;
-        }
-        
-        // Disconnect any existing observer if we're switching to scroll-based approach
-        if (this.scrollObserver) {
-            this.scrollObserver.disconnect();
-            this.scrollObserver = null;
-        }
-        
-        // Create a debounced scroll handler for better performance
-        this._boundScrollHandler = this._debounce((e) => {
-            // Only proceed if we have more messages and aren't already loading
-            if (!this.hasMoreMessagesToLoad || this.isLoadingMoreMessages) {
-                return;
-            }
-            
-            // Check if we're within 200px of the top of the container
-            const scrollTop = this.messagesContainer.scrollTop;
-            if (scrollTop <= 200) {
-                console.log('[CHAT_DEBUG] Near top of scroll area, loading more messages');
-                
-                // Save current scroll position before loading
-                const lastScrollHeight = this.messagesContainer.scrollHeight;
-                const lastScrollTop = scrollTop;
-                
-                // Load older messages with the saved position info
-                this._loadOlderMessages(lastScrollHeight, lastScrollTop);
-            }
-        }, 200); // 200ms debounce to prevent excessive calls
-        
-        // Add the scroll event listener
-        if (this.messagesContainer) {
-            this.messagesContainer.addEventListener('scroll', this._boundScrollHandler);
-            this._hasScrollListener = true;
-            console.log('[CHAT_DEBUG] Scroll-based lazy loading initialized');
-        }
-        
-        // Create a sentinel element at the top for visual reference and debugging
-        if (!document.getElementById('lazy-load-sentinel')) {
-            const sentinel = document.createElement('div');
-            sentinel.id = 'lazy-load-sentinel';
-            sentinel.className = 'lazy-load-sentinel';
-            sentinel.style.height = '1px';
-            sentinel.style.width = '100%';
-            
-            // Add sentinel to the top of the messages container
-            if (this.messagesContainer && this.messagesContainer.firstChild) {
-                this.messagesContainer.insertBefore(sentinel, this.messagesContainer.firstChild);
-            } else if (this.messagesContainer) {
-                this.messagesContainer.appendChild(sentinel);
-            }
-        }
-        
-        // Remove any existing beginning indicator when setting up a new observer
-        const beginningIndicator = document.getElementById('beginning-indicator');
-        if (beginningIndicator && beginningIndicator.parentNode) {
-            beginningIndicator.parentNode.remove();
-        }
-    }
-    
-    // Debounce function to limit how often a function can be called
-    _debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
-    }
-    
-    // Load older messages when scrolling up with improved scroll position maintenance
-    _loadOlderMessages(previousScrollHeight = 0, previousScrollTop = 0) {
-        if (this.isLoadingMoreMessages || !this.hasMoreMessagesToLoad) {
-            return;
-        }
-        
-        console.log('[CHAT_DEBUG] Loading older messages');
-        this.isLoadingMoreMessages = true;
-        
-        // Store scroll position data for later use with precise measurements
-        this._previousScrollData = {
-            height: previousScrollHeight || (this.messagesContainer ? this.messagesContainer.scrollHeight : 0),
-            top: previousScrollTop || (this.messagesContainer ? this.messagesContainer.scrollTop : 0)
-        };
-        
-        // Create a measurement node to calculate exact heights
-        const measureNode = document.createElement('div');
-        measureNode.style.position = 'absolute';
-        measureNode.style.visibility = 'hidden';
-        measureNode.style.height = '0px';
-        measureNode.id = 'scroll-measure-node';
-        if (this.messagesContainer && this.messagesContainer.firstChild) {
-            this.messagesContainer.insertBefore(measureNode, this.messagesContainer.firstChild);
-        }
-        
-        // Add loading indicator with smooth animation
-        const loadingIndicator = document.createElement('div');
-        loadingIndicator.id = 'loading-indicator';
-        loadingIndicator.className = 'loading-indicator fade-in';
-        
-        // Create spinner element for better visual feedback
-        const spinner = document.createElement('div');
-        spinner.className = 'loading-spinner';
-        loadingIndicator.appendChild(spinner);
-        
-        // Add loading text
-        const loadingText = document.createElement('span');
-        loadingText.textContent = 'Loading older messages...';
-        loadingIndicator.appendChild(loadingText);
-        
-        // Create a container for the loading indicator to ensure proper positioning
-        const loadingContainer = document.createElement('div');
-        loadingContainer.style.width = '100%';
-        loadingContainer.style.textAlign = 'center';
-        loadingContainer.style.position = 'relative';
-        loadingContainer.style.zIndex = '10';
-        loadingContainer.style.pointerEvents = 'none';
-        loadingContainer.style.marginTop = '5px';
-        loadingContainer.style.marginBottom = '5px';
-        loadingContainer.appendChild(loadingIndicator);
-        
-        // Insert at the top of the container
-        if (this.messagesContainer) {
-            // Insert as the first child with proper positioning
-            if (this.messagesContainer.firstChild) {
-                this.messagesContainer.insertBefore(loadingContainer, this.messagesContainer.firstChild);
-            } else {
-                this.messagesContainer.appendChild(loadingContainer);
-            }
-        }
-        
-        // Calculate the offset for pagination
-        const channel = this.currentChannel.startsWith('#') ? this.currentChannel.substring(1) : this.currentChannel;
-        const offset = this.channelMessages[channel] ? this.channelMessages[channel].length : 0;
-        
-        // Request older messages from the server with consistent chunk size
-        this.socket.emit('get-channel-messages', {
-            channel: channel,
-            limit: this.expectedChunkSize, // Use the class property for consistency
-            offset: offset,
-            isOlderMessages: true
-        });
-    }
-    
-    // Prepend older messages to the messages container with improved scroll position maintenance
-    _prependOlderMessages(channel, messages) {
-        console.log(`[CHAT_DEBUG] Prepending ${messages.length} older messages for channel ${channel}`);
-        
-        if (!this.messagesContainer) {
-            console.error('[CHAT_DEBUG] Messages container not found');
-            return;
-        }
-        
-        // Get the current scroll position before making changes
-        const previousScrollData = this._previousScrollData || {
-            height: this.messagesContainer.scrollHeight,
-            top: this.messagesContainer.scrollTop
-        };
-        
-        // Remove loading indicator with fade-out animation
-        const loadingIndicator = document.getElementById('loading-indicator');
-        if (loadingIndicator && loadingIndicator.parentNode) {
-            // Add fade-out class
-            loadingIndicator.classList.add('fade-out');
-            
-            // Remove after animation completes
-            setTimeout(() => {
-                if (loadingIndicator.parentNode) {
-                    loadingIndicator.parentNode.remove(); // Remove the entire container
-                }
-            }, 300); // Match the CSS animation duration
-        }
-        
-        // If no messages to prepend, reset loading state and return
-        if (!messages || messages.length === 0) {
-            console.log('[CHAT_DEBUG] No older messages to prepend');
-            this.isLoadingMoreMessages = false;
-            
-            // If we've reached the end, mark that there are no more messages
-            if (messages && messages.length === 0) {
-                this.hasMoreMessagesToLoad = false;
-                
-                // Show a "beginning of conversation" indicator
-                this._showBeginningIndicator();
-            }
-            return;
-        }
-        
-        // Only consider it the end when we get exactly 0 messages
-        // Just getting fewer than expected doesn't mean we're at the end
-        if (messages.length === 0) {
-            console.log('[CHAT_DEBUG] Received 0 messages, definitely at the end of conversation');
-            this.hasMoreMessagesToLoad = false;
-            this._showBeginningIndicator();
-        } else if (messages.length < this.expectedChunkSize) {
-            // If we got fewer than expected but not zero, log it but don't mark as end
-            console.log(`[CHAT_DEBUG] Received ${messages.length} messages, which is less than expected ${this.expectedChunkSize}, but still have more to load.`);
-            // Keep hasMoreMessagesToLoad as true to allow more loading
-        }
-        
-        // Get reference to the sentinel element
-        const sentinel = document.getElementById('lazy-load-sentinel');
-        
-        // Create a document fragment to hold all the new messages
-        const fragment = document.createDocumentFragment();
-        
-        // Add messages in reverse order (oldest first)
-        for (let i = messages.length - 1; i >= 0; i--) {
-            const message = messages[i];
-            
-            // Skip duplicates (messages that already exist in the DOM)
-            if (document.querySelector(`.message[data-message-id="${message.id}"]`)) {
-                continue;
-            }
-            
-            // Check if this message should be grouped with the next message
-            // (which would be the previous message in the UI since we're prepending)
-            let shouldGroup = false;
-            
-            // If this isn't the first message in the batch, check if it should be grouped with the next one
-            if (i < messages.length - 1) {
-                const nextMessage = messages[i + 1];
-                
-                // Check if the messages are from the same sender
-                const sameSender = message.senderId === nextMessage.senderId;
-                
-                // Check if the messages are within 3 minutes of each other
-                const currentTimestamp = message.timestamp ? new Date(message.timestamp) : new Date();
-                const nextTimestamp = nextMessage.timestamp ? new Date(nextMessage.timestamp) : new Date();
-                const timeThreshold = 3 * 60 * 1000; // 3 minutes in milliseconds
-                const closeInTime = Math.abs(currentTimestamp - nextTimestamp) < timeThreshold;
-                
-                shouldGroup = sameSender && closeInTime;
-            }
-            
-            // Create message element with grouping info
-            const messageEl = this._createMessageElement(message, false, shouldGroup);
-            
-            // Add new-loaded class for fade-in animation
-            messageEl.classList.add('new-loaded');
-            
-            // Ensure visibility with explicit styles
-            messageEl.style.visibility = 'visible';
-            messageEl.style.opacity = '0'; // Start at 0 opacity for animation
-            messageEl.style.display = 'flex';
-            
-            // Add to fragment
-            fragment.appendChild(messageEl);
-        }
-        
-        // Measure the height before insertion
-        const beforeHeight = this.messagesContainer.scrollHeight;
-        
-        // Insert all messages at once before the first existing message
-        if (sentinel) {
-            // Insert after the sentinel
-            this.messagesContainer.insertBefore(fragment, sentinel.nextSibling || null);
-        } else {
-            // If no sentinel, insert at the beginning
-            if (this.messagesContainer.firstChild) {
-                this.messagesContainer.insertBefore(fragment, this.messagesContainer.firstChild);
-            } else {
-                this.messagesContainer.appendChild(fragment);
-            }
-        }
-        
-        // Force a reflow to ensure messages are rendered properly
-        this._forceReflow();
-        
-        // Measure the height after insertion
-        const afterHeight = this.messagesContainer.scrollHeight;
-        const heightDifference = afterHeight - beforeHeight;
-        
-        // Maintain scroll position with the new content
-        if (this.messagesContainer) {
-            // Disable smooth scrolling temporarily for precise positioning
-            const originalScrollBehavior = this.messagesContainer.style.scrollBehavior;
-            this.messagesContainer.style.scrollBehavior = 'auto';
-            
-            // Adjust scroll position to account for new content
-            this.messagesContainer.scrollTop = previousScrollData.top + heightDifference;
-            
-            // Use requestAnimationFrame for more precise adjustments
-            requestAnimationFrame(() => {
-                // Double-check the position and make final adjustment if needed
-                const finalHeightDiff = this.messagesContainer.scrollHeight - beforeHeight;
-                this.messagesContainer.scrollTop = previousScrollData.top + finalHeightDiff;
-                
-                // Restore original scroll behavior after adjustment
-                setTimeout(() => {
-                    this.messagesContainer.style.scrollBehavior = originalScrollBehavior;
-                    
-                    // Trigger animations for newly added messages
-                    const newMessages = this.messagesContainer.querySelectorAll('.message.new-loaded');
-                    newMessages.forEach(msg => {
-                        // Stagger the animations slightly for a more natural feel
-                        setTimeout(() => {
-                            msg.style.opacity = '1';
-                        }, Math.random() * 100); // Random delay up to 100ms for natural staggering
-                    });
-                }, 50);
-            });
-        }
-        
-        // Check if the first visible message should be grouped with the next message
-        this._updateMessageGrouping();
-        
-        // Reset loading state
         this.isLoadingMoreMessages = false;
+        this.currentMessageOffset = 0;
         
-        // Update the offset for the next batch
-        this.currentMessageOffset += messages.length;
+        // Get messages for channel - normalize channel name handling
+        const channelKey = channel.startsWith('#') ? channel.substring(1) : channel;
+        const messages = this.channelMessages[channelKey] || [];
         
-        // Only consider it the end when we get exactly 0 messages
-        if (messages.length === 0) {
-            console.log('[CHAT_DEBUG] Received 0 messages, definitely at the end of conversation');
-            this.hasMoreMessagesToLoad = false;
-            this._showBeginningIndicator();
-        } else if (messages.length < this.expectedChunkSize) {
-            // If we got fewer than expected but not zero, log it but don't mark as end
-            console.log(`[CHAT_DEBUG] Received ${messages.length} messages, which is less than expected ${this.expectedChunkSize}, but still have more to load.`);
-            // Keep hasMoreMessagesToLoad as true to allow more loading attempts
+        // Display messages
+        if (messages.length > 0) {
+            console.log(`[CHAT_DEBUG] Displaying ${messages.length} messages for channel ${channel}`);
+            messages.forEach(message => {
+                this._displayMessage(message, false);
+            });
+            
+            // Scroll to bottom
+            this._scrollToBottom();
+            
+            // Set up lazy loading for older messages
+            this._setupLazyLoadingObserver();
+        } else {
+            console.log(`[CHAT_DEBUG] No messages found for channel ${channel}`);
+            
+            // Show empty channel message
+            const emptyMessage = document.createElement('div');
+            emptyMessage.className = 'empty-channel-message';
+            emptyMessage.innerHTML = `
+                <div class="empty-channel-icon">
+                    <i class="bi bi-chat-square-text"></i>
+                </div>
+                <div class="empty-channel-text">
+                    <p>No messages in #${channelKey}</p>
+                    <p class="sub-text">Be the first to send a message!</p>
+                </div>
+            `;
+            
+            this.messagesContainer.appendChild(emptyMessage);
         }
+    }
+    
+    // Request channel messages from server
+    _requestChannelMessages(channel) {
+        console.log(`[CHAT_DEBUG] Requesting channel messages for ${channel}`);
         
-        console.log('[CHAT_DEBUG] Older messages prepended successfully');
+        // Ensure channel name is properly formatted for the server (without hashtag)
+        const dataChannel = channel.startsWith('#') ? channel.substring(1) : channel;
+        
+        // Request messages for the channel with pagination
+        this.socket.emit('get-channel-messages', { 
+            channel: dataChannel,
+            limit: this.messagesPerPage,
+            offset: 0,
+            isInitialLoad: true
+        });
     }
     
     // Delete a message
