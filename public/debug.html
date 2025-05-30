@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="css/dm-friends.css">
     <link rel="stylesheet" href="css/friends.css">
     <link rel="stylesheet" href="css/app-icon.css">
+    <link rel="stylesheet" href="css/message-menu.css">
     <link rel="icon" href="favicon.png" type="image/png">
     <style>
         /* Critical overrides to force visibility */
@@ -1249,8 +1250,40 @@
                     <div class="message-header">
                         <span class="message-author">${senderName}</span>
                         <span class="message-timestamp">${formattedTime}</span>
+                        ${message.edited ? '<span class="message-edited-indicator">(edited)</span>' : ''}
                     </div>
                     <div class="message-text">${message.content}</div>
+                </div>
+                <button class="message-options-btn" aria-label="Message options">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <div class="message-options-menu" style="display: none;">
+                    <div class="menu-item reply-option">
+                        <span class="menu-item-icon"><i class="bi bi-reply"></i></span>
+                        <span class="menu-item-text">Reply</span>
+                    </div>
+                    ${isOwnMessage ? `
+                    <div class="menu-item edit-option">
+                        <span class="menu-item-icon"><i class="bi bi-pencil"></i></span>
+                        <span class="menu-item-text">Edit Message</span>
+                    </div>` : ''}
+                    ${isOwnMessage ? `
+                    <div class="menu-item danger delete-option">
+                        <span class="menu-item-icon"><i class="bi bi-trash"></i></span>
+                        <span class="menu-item-text">Delete Message</span>
+                    </div>` : ''}
+                    <div class="menu-item copy-option">
+                        <span class="menu-item-icon"><i class="bi bi-clipboard"></i></span>
+                        <span class="menu-item-text">Copy Text</span>
+                    </div>
+                    <div class="menu-item react-option">
+                        <span class="menu-item-icon"><i class="bi bi-emoji-smile"></i></span>
+                        <span class="menu-item-text">Add Reaction</span>
+                    </div>
+                    <div class="menu-item pin-option">
+                        <span class="menu-item-icon"><i class="bi bi-pin-angle"></i></span>
+                        <span class="menu-item-text">Pin Message</span>
+                    </div>
                 </div>
             `;
             
@@ -1275,6 +1308,300 @@
                 return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + 
                        ' at ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             }
+        }
+        
+        // Message Options Menu Functionality
+        document.addEventListener('click', function(event) {
+            // Close any open menus when clicking elsewhere
+            if (!event.target.closest('.message-options-btn') && !event.target.closest('.message-options-menu')) {
+                document.querySelectorAll('.message-options-menu').forEach(menu => {
+                    menu.style.display = 'none';
+                });
+            }
+            
+            // Toggle menu when clicking the three dots button
+            if (event.target.closest('.message-options-btn')) {
+                const button = event.target.closest('.message-options-btn');
+                const menu = button.nextElementSibling;
+                
+                // Close all other menus first
+                document.querySelectorAll('.message-options-menu').forEach(m => {
+                    if (m !== menu) m.style.display = 'none';
+                });
+                
+                // Toggle this menu
+                menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+                event.stopPropagation();
+            }
+            
+            // Handle menu item clicks
+            if (event.target.closest('.menu-item')) {
+                const menuItem = event.target.closest('.menu-item');
+                const message = menuItem.closest('.message');
+                const messageId = message.dataset.messageId;
+                const messageText = message.querySelector('.message-text').textContent;
+                
+                // Reply to message
+                if (menuItem.classList.contains('reply-option')) {
+                    // Set reply mode and focus input
+                    const messageInput = document.getElementById('message-input');
+                    if (messageInput) {
+                        messageInput.value = `> ${messageText}\n\n`;
+                        messageInput.focus();
+                        messageInput.setSelectionRange(messageInput.value.length, messageInput.value.length);
+                    }
+                }
+                
+                // Edit message
+                if (menuItem.classList.contains('edit-option')) {
+                    // Create edit box if it doesn't exist
+                    if (!message.querySelector('.message-edit-container')) {
+                        const messageContent = message.querySelector('.message-content');
+                        const messageTextEl = message.querySelector('.message-text');
+                        
+                        // Create edit container
+                        const editContainer = document.createElement('div');
+                        editContainer.className = 'message-edit-container';
+                        editContainer.innerHTML = `
+                            <textarea class="message-edit-input">${messageText}</textarea>
+                            <div class="message-edit-actions">
+                                <button class="edit-btn save">Save</button>
+                                <button class="edit-btn cancel">Cancel</button>
+                                <span class="edit-tip">Press Esc to cancel, Enter to save</span>
+                            </div>
+                        `;
+                        
+                        // Insert after message content
+                        messageContent.parentNode.insertBefore(editContainer, messageContent.nextSibling);
+                        
+                        // Focus the textarea
+                        const textarea = editContainer.querySelector('.message-edit-input');
+                        textarea.focus();
+                        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+                        
+                        // Handle keyboard shortcuts
+                        textarea.addEventListener('keydown', function(e) {
+                            if (e.key === 'Escape') {
+                                // Cancel edit
+                                editContainer.remove();
+                            } else if (e.key === 'Enter' && !e.shiftKey) {
+                                // Save edit
+                                e.preventDefault();
+                                saveEdit(messageId, textarea.value);
+                            }
+                        });
+                        
+                        // Handle save button
+                        editContainer.querySelector('.edit-btn.save').addEventListener('click', function() {
+                            saveEdit(messageId, textarea.value);
+                        });
+                        
+                        // Handle cancel button
+                        editContainer.querySelector('.edit-btn.cancel').addEventListener('click', function() {
+                            editContainer.remove();
+                        });
+                    }
+                }
+                
+                // Delete message
+                if (menuItem.classList.contains('delete-option')) {
+                    if (confirm('Are you sure you want to delete this message?')) {
+                        deleteMessage(messageId);
+                    }
+                }
+                
+                // Copy message text
+                if (menuItem.classList.contains('copy-option')) {
+                    navigator.clipboard.writeText(messageText)
+                        .then(() => {
+                            // Show a small notification
+                            const notification = document.createElement('div');
+                            notification.textContent = 'Copied to clipboard!';
+                            notification.style.position = 'fixed';
+                            notification.style.bottom = '20px';
+                            notification.style.right = '20px';
+                            notification.style.backgroundColor = 'var(--success-color)';
+                            notification.style.color = 'white';
+                            notification.style.padding = '8px 16px';
+                            notification.style.borderRadius = '4px';
+                            notification.style.zIndex = '1000';
+                            document.body.appendChild(notification);
+                            
+                            // Remove after 2 seconds
+                            setTimeout(() => {
+                                notification.remove();
+                            }, 2000);
+                        })
+                        .catch(err => {
+                            console.error('Could not copy text: ', err);
+                        });
+                }
+                
+                // Add reaction (placeholder for now)
+                if (menuItem.classList.contains('react-option')) {
+                    alert('Reaction feature coming soon!');
+                }
+                
+                // Pin message (placeholder for now)
+                if (menuItem.classList.contains('pin-option')) {
+                    alert('Pin feature coming soon!');
+                }
+                
+                // Close the menu after action
+                menuItem.closest('.message-options-menu').style.display = 'none';
+            }
+        });
+        
+        // Function to save edited message
+        function saveEdit(messageId, newContent) {
+            if (!newContent.trim()) {
+                alert('Message cannot be empty');
+                return;
+            }
+            
+            // Find the message element
+            const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+            if (!messageEl) return;
+            
+            // Update UI first for immediate feedback
+            const messageTextEl = messageEl.querySelector('.message-text');
+            if (messageTextEl) {
+                messageTextEl.textContent = newContent;
+            }
+            
+            // Add edited indicator if not already present
+            const messageHeader = messageEl.querySelector('.message-header');
+            if (messageHeader && !messageHeader.querySelector('.message-edited-indicator')) {
+                const editedIndicator = document.createElement('span');
+                editedIndicator.className = 'message-edited-indicator';
+                editedIndicator.textContent = '(edited)';
+                messageHeader.appendChild(editedIndicator);
+            }
+            
+            // Remove edit container
+            const editContainer = messageEl.querySelector('.message-edit-container');
+            if (editContainer) {
+                editContainer.remove();
+            }
+            
+            // Send to server via socket.io
+            if (window.socket && window.socket.connected) {
+                window.socket.emit('edit-message', {
+                    messageId: messageId,
+                    newContent: newContent
+                }, function(response) {
+                    if (!response || !response.success) {
+                        console.error('Failed to edit message:', response ? response.error : 'Unknown error');
+                        // Revert UI changes if server update fails
+                        if (messageTextEl && response && response.originalContent) {
+                            messageTextEl.textContent = response.originalContent;
+                        }
+                    }
+                });
+            } else {
+                console.error('Socket not connected, cannot edit message');
+            }
+        }
+        
+        // Function to delete message
+        function deleteMessage(messageId) {
+            // Find the message element
+            const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+            if (!messageEl) return;
+            
+            // Update UI first for immediate feedback
+            messageEl.classList.add('message-deleted');
+            const messageTextEl = messageEl.querySelector('.message-text');
+            if (messageTextEl) {
+                messageTextEl.textContent = 'This message has been deleted.';
+            }
+            
+            // Remove options button and menu
+            const optionsBtn = messageEl.querySelector('.message-options-btn');
+            const optionsMenu = messageEl.querySelector('.message-options-menu');
+            if (optionsBtn) optionsBtn.remove();
+            if (optionsMenu) optionsMenu.remove();
+            
+            // Send to server via socket.io
+            if (window.socket && window.socket.connected) {
+                window.socket.emit('delete-message', {
+                    messageId: messageId
+                }, function(response) {
+                    if (!response || !response.success) {
+                        console.error('Failed to delete message:', response ? response.error : 'Unknown error');
+                        // Could revert UI changes here if needed
+                    }
+                });
+            } else {
+                console.error('Socket not connected, cannot delete message');
+            }
+        }
+        
+        // Add keyboard shortcut for showing message options
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Shift') {
+                // Add shift-hover class to all messages
+                document.querySelectorAll('.message').forEach(msg => {
+                    msg.classList.add('shift-hover');
+                });
+            }
+        });
+        
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'Shift') {
+                // Remove shift-hover class from all messages
+                document.querySelectorAll('.message').forEach(msg => {
+                    msg.classList.remove('shift-hover');
+                });
+            }
+        });
+        
+        // Listen for message edited events
+        if (window.socket) {
+            window.socket.on('message-edited', function(data) {
+                const { messageId, newContent, userId, username } = data;
+                
+                // Find the message element
+                const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+                if (!messageEl) return;
+                
+                // Update the message content
+                const messageTextEl = messageEl.querySelector('.message-text');
+                if (messageTextEl) {
+                    messageTextEl.textContent = newContent;
+                }
+                
+                // Add edited indicator if not already present
+                const messageHeader = messageEl.querySelector('.message-header');
+                if (messageHeader && !messageHeader.querySelector('.message-edited-indicator')) {
+                    const editedIndicator = document.createElement('span');
+                    editedIndicator.className = 'message-edited-indicator';
+                    editedIndicator.textContent = '(edited)';
+                    messageHeader.appendChild(editedIndicator);
+                }
+            });
+            
+            // Listen for message deleted events
+            window.socket.on('message-deleted', function(data) {
+                const { messageId, userId, username } = data;
+                
+                // Find the message element
+                const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+                if (!messageEl) return;
+                
+                // Update the message content
+                messageEl.classList.add('message-deleted');
+                const messageTextEl = messageEl.querySelector('.message-text');
+                if (messageTextEl) {
+                    messageTextEl.textContent = 'This message has been deleted.';
+                }
+                
+                // Remove options button and menu
+                const optionsBtn = messageEl.querySelector('.message-options-btn');
+                const optionsMenu = messageEl.querySelector('.message-options-menu');
+                if (optionsBtn) optionsBtn.remove();
+                if (optionsMenu) optionsMenu.remove();
+            });
         }
     </script>
 </body>

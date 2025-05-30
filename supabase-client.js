@@ -1013,37 +1013,91 @@ async function uploadFileToSupabase(fileBuffer, fileName, bucket = 'profile-pict
  */
 async function updateUserAvatar(userId, avatarUrl) {
     try {
-        // Use the service client to bypass RLS
+        // Get the appropriate client
         const client = getSupabaseClient(true);
-        
         if (!client) {
-            console.error('Supabase client not initialized');
+            console.error('Cannot update avatar: Supabase client not available');
             return { success: false, error: 'Database connection not available' };
         }
-        
-        // Validate inputs
-        if (!userId || !avatarUrl) {
-            return { success: false, error: 'Missing required parameters' };
-        }
-        
-        console.log(`Updating avatar for user ${userId} to ${avatarUrl}`);
-        
-        // Update the user's avatar_url
+
+        // Update the user's avatar URL
         const { data, error } = await client
             .from('users')
             .update({ avatar_url: avatarUrl })
             .eq('id', userId);
-            
+
         if (error) {
             console.error('Error updating user avatar:', error);
             return { success: false, error: error.message };
         }
-        
-        console.log('Avatar updated successfully');
+
         return { success: true, data };
-    } catch (error) {
-        console.error('Exception in updateUserAvatar:', error);
-        return { success: false, error: error.message };
+    } catch (err) {
+        console.error('Exception updating user avatar:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+/**
+ * Edit a message in Supabase
+ * @param {string} messageId - ID of the message to edit
+ * @param {string} newContent - New content for the message
+ * @param {string} userId - ID of the user making the edit (for permission check)
+ * @returns {Promise<Object>} Result of the edit operation
+ */
+async function editMessage(messageId, newContent, userId) {
+    try {
+        // Get the appropriate client
+        const client = getSupabaseClient(true);
+        if (!client) {
+            console.error('Cannot edit message: Supabase client not available');
+            return { success: false, error: 'Database connection not available' };
+        }
+
+        // First, check if the message exists and belongs to the user
+        const { data: message, error: fetchError } = await client
+            .from('messages')
+            .select('*')
+            .eq('id', messageId)
+            .single();
+
+        if (fetchError) {
+            console.error('Error fetching message for edit:', fetchError);
+            return { success: false, error: fetchError.message, originalContent: null };
+        }
+
+        if (!message) {
+            return { success: false, error: 'Message not found', originalContent: null };
+        }
+
+        // Check if the user is the message owner
+        if (message.sender_id !== userId) {
+            return { 
+                success: false, 
+                error: 'Permission denied: You can only edit your own messages', 
+                originalContent: message.content 
+            };
+        }
+
+        // Update the message
+        const { data, error } = await client
+            .from('messages')
+            .update({ 
+                content: newContent,
+                edited: true,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', messageId);
+
+        if (error) {
+            console.error('Error updating message:', error);
+            return { success: false, error: error.message, originalContent: message.content };
+        }
+
+        return { success: true, data, originalContent: message.content };
+    } catch (err) {
+        console.error('Exception editing message:', err);
+        return { success: false, error: err.message, originalContent: null };
     }
 }
 
@@ -1065,5 +1119,6 @@ module.exports = {
     rejectOrRemoveFriend,
     getFriendships,
     uploadFileToSupabase,
-    updateUserAvatar
+    updateUserAvatar,
+    editMessage
 };

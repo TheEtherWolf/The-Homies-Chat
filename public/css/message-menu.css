@@ -1,0 +1,169 @@
+/* Discord-style 3-dots menu for messages */
+.message-options-btn {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: rgba(44, 62, 80, 0.5);
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+  z-index: 10;
+  font-size: 16px;
+  border: none;
+}
+
+.message:hover .message-options-btn {
+  opacity: 0.7;
+}
+
+.message-options-btn:hover {
+  opacity: 1 !important;
+  background-color: rgba(44, 62, 80, 0.8);
+}
+
+/* Show menu automatically when shift key is held */
+.message.shift-hover .message-options-btn {
+  opacity: 1;
+}
+
+/* Message options dropdown menu */
+.message-options-menu {
+  position: absolute;
+  top: 32px;
+  right: 8px;
+  background-color: var(--dark-secondary);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 180px;
+  z-index: 100;
+  overflow: hidden;
+  animation: menu-appear 0.2s ease forwards;
+}
+
+@keyframes menu-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.menu-item {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  color: var(--text-light);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.menu-item.danger {
+  color: var(--danger-color);
+}
+
+.menu-item.danger:hover {
+  background-color: rgba(231, 76, 60, 0.1);
+}
+
+.menu-item-icon {
+  margin-right: 8px;
+  font-size: 16px;
+  width: 16px;
+  text-align: center;
+}
+
+.menu-item-text {
+  flex: 1;
+}
+
+/* Message editing styles */
+.message-edit-container {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.message-edit-input {
+  width: 100%;
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-light);
+  padding: 8px 12px;
+  font-size: 14px;
+  resize: none;
+  outline: none;
+}
+
+.message-edit-input:focus {
+  border-color: var(--primary-color);
+}
+
+.message-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.edit-btn {
+  background-color: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.edit-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-light);
+}
+
+.edit-btn.save {
+  color: var(--primary-color);
+}
+
+.edit-btn.save:hover {
+  background-color: rgba(52, 152, 219, 0.1);
+}
+
+.edit-btn.cancel {
+  color: var(--text-muted);
+}
+
+.edit-btn.cancel:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Message deleted and edited indicators */
+.message-edited-indicator {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
+  font-style: italic;
+}
+
+.message-deleted {
+  opacity: 0.6;
+}
+
+.message-deleted .message-text {
+  font-style: italic;
+  color: var(--text-muted);
+}

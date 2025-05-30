@@ -3058,44 +3058,117 @@ socket.on('register', async (data) => {
             return;
         }
         
-        // Validate avatar URL
-        if (!data.avatarUrl) {
-            if (callback) callback({ success: false, message: 'Avatar URL is required' });
+        const userId = users[socket.id].id;
+        const username = users[socket.id].username;
+        
+        try {
+            // Update the avatar URL in Supabase
+            const { updateUserAvatar } = require('./supabase-client');
+            const result = await updateUserAvatar(userId, data.avatarUrl);
+            
+            if (result.success) {
+                // Update the user's avatar in memory
+                if (users[socket.id]) {
+                    users[socket.id].avatarUrl = data.avatarUrl;
+                }
+                
+                // Broadcast the avatar change to all clients
+                socket.broadcast.emit('user-avatar-updated', {
+                    userId: userId,
+                    username: username,
+                    avatarUrl: data.avatarUrl
+                });
+                
+                if (callback) callback({ success: true });
+            } else {
+                if (callback) callback({ success: false, error: result.error });
+            }
+        } catch (error) {
+            console.error('Error updating avatar:', error);
+            if (callback) callback({ success: false, error: 'Server error' });
+        }
+    });
+    
+    // Handle message editing
+    socket.on('edit-message', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            if (callback) callback({ success: false, message: 'Not authenticated' });
+            return;
+        }
+        
+        const userId = users[socket.id].id;
+        const { messageId, newContent } = data;
+        
+        if (!messageId || !newContent) {
+            if (callback) callback({ success: false, message: 'Missing required parameters' });
             return;
         }
         
         try {
-            const userId = users[socket.id].id;
-            const username = users[socket.id].username;
+            // Edit the message in Supabase
+            const { editMessage } = require('./supabase-client');
+            const result = await editMessage(messageId, newContent, userId);
             
-            console.log(`Updating avatar for user ${username} (${userId})`);
-            
-            // Update avatar in database using the updateUserAvatar function
-            const result = await updateUserAvatar(userId, data.avatarUrl);
-            
-            if (!result.success) {
-                console.error('Error updating user avatar:', result.error);
-                if (callback) callback({ success: false, message: result.error });
-                return;
+            if (result.success) {
+                // Broadcast the message edit to all clients
+                io.emit('message-edited', { 
+                    messageId, 
+                    newContent, 
+                    userId,
+                    username: users[socket.id].username
+                });
+                
+                if (callback) callback({ success: true });
+            } else {
+                if (callback) callback({ 
+                    success: false, 
+                    error: result.error,
+                    originalContent: result.originalContent
+                });
             }
-            
-            // Update user object in memory
-            if (users[socket.id]) {
-                users[socket.id].avatarUrl = data.avatarUrl;
-            }
-            
-            // Broadcast avatar change to all clients
-            socket.broadcast.emit('user-avatar-updated', {
-                userId: userId,
-                username: username,
-                avatarUrl: data.avatarUrl
-            });
-            
-            // Return success
-            if (callback) callback({ success: true, message: 'Avatar updated successfully' });
         } catch (error) {
-            console.error('Error updating user avatar:', error);
-            if (callback) callback({ success: false, message: 'Server error' });
+            console.error('Error editing message:', error);
+            if (callback) callback({ success: false, error: 'Server error' });
+        }
+    });
+    
+    // Handle message deletion
+    socket.on('delete-message', async (data, callback) => {
+        // Validate authentication
+        if (!users[socket.id] || !users[socket.id].authenticated || !users[socket.id].id) {
+            if (callback) callback({ success: false, message: 'Not authenticated' });
+            return;
+        }
+        
+        const userId = users[socket.id].id;
+        const { messageId } = data;
+        
+        if (!messageId) {
+            if (callback) callback({ success: false, message: 'Missing message ID' });
+            return;
+        }
+        
+        try {
+            // Mark the message as deleted in Supabase
+            const { markMessageAsDeleted } = require('./supabase-client');
+            const result = await markMessageAsDeleted(messageId, userId);
+            
+            if (result.success) {
+                // Broadcast the message deletion to all clients
+                io.emit('message-deleted', { 
+                    messageId, 
+                    userId,
+                    username: users[socket.id].username
+                });
+                
+                if (callback) callback({ success: true });
+            } else {
+                if (callback) callback({ success: false, error: result.error });
+            }
+        } catch (error) {
+            console.error('Error deleting message:', error);
+            if (callback) callback({ success: false, error: 'Server error' });
         }
     });
 });
