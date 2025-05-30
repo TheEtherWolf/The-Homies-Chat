@@ -1785,11 +1785,18 @@ socket.on('register', async (data) => {
                 status: 'online' 
             });
             
-            console.log(`Session registered for ${userData.username} with ID ${userId}`);
-        } catch (error) {
-            console.error('Error during session registration:', error);
-            socket.emit('auth-error', { message: 'Registration failed due to server error' });
+            console.log(`Session registered for ${data.username} with ID ${userId}`);
+        } else {
+            // Standard registration flow for production
+            console.log('Production mode: Standard registration flow');
+            // Implement standard registration flow here
+            socket.emit('auth-error', { message: 'Standard registration not implemented yet' });
+            return;
         }
+    } catch (error) {
+        console.error('Error during session registration:', error);
+        socket.emit('auth-error', { message: 'Registration failed due to server error' });
+    }
     });
 
     // Get user by username
